@@ -14,3 +14,12 @@ struct ChatMessage: Identifiable {
     let isFromUser: Bool
     let timestamp: String
 }
+
+// MARK: - Procedure Model
+struct Procedure: Identifiable {
+    let id = UUID()
+    let name: String
+    let description: String
+    let category: String
+    let imageName: String?
+}

@@ -11,9 +11,10 @@ struct HeroCardView: View {
     let title: String
     let subtitle: String
     let imageName: String?
+    var showLaunchingBadge: Bool = false
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
+        ZStack(alignment: .topLeading) {
             // Background gradient
             LinearGradient(
                 gradient: Gradient(colors: [
@@ -27,8 +28,22 @@ struct HeroCardView: View {
             .frame(height: 200)
             .cornerRadius(Theme.CornerRadius.medium)
 
+            // Launching Soon Badge
+            if showLaunchingBadge {
+                Text("Launching Soon")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.25))
+                    .cornerRadius(16)
+                    .padding(Theme.Spacing.lg)
+            }
+
             // Content overlay
-            HStack(alignment: .bottom) {
+            VStack {
+                Spacer()
+                HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text(title)
                         .font(Theme.Typography.heroTitle)
@@ -55,6 +70,7 @@ struct HeroCardView: View {
                     )
             }
             .padding(Theme.Spacing.lg)
+            }
         }
         .frame(height: 200)
         .shadow(

@@ -9,9 +9,22 @@ import SwiftUI
 
 @main
 struct Renaissance_MobileApp: App {
+    @State private var isLoggedIn = false
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            if isLoggedIn {
+                ContentView()
+            } else {
+                WelcomeView(
+                    onStartConsultation: {
+                        isLoggedIn = true
+                    },
+                    onSignIn: {
+                        isLoggedIn = true
+                    }
+                )
+            }
         }
     }
 }
