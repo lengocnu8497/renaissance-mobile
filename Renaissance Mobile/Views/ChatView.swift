@@ -13,7 +13,13 @@ struct ChatView: View {
     @State private var messages: [ChatMessage] = ChatView.sampleMessages
     @State private var isTyping = true
 
+    var initialMessage: String?
     var onBackButtonTapped: (() -> Void)?
+
+    init(initialMessage: String? = nil, onBackButtonTapped: (() -> Void)? = nil) {
+        self.initialMessage = initialMessage
+        self.onBackButtonTapped = onBackButtonTapped
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,6 +28,31 @@ struct ChatView: View {
             messageInput
         }
         .navigationBarHidden(true)
+        .onAppear {
+            handleInitialMessage()
+        }
+    }
+
+    // MARK: - Initial Message Handler
+    private func handleInitialMessage() {
+        guard let initialMessage = initialMessage, !initialMessage.isEmpty else { return }
+
+        // Auto-send the initial message as a user message bubble
+        let userMessage = ChatMessage(
+            text: initialMessage,
+            isFromUser: true,
+            timestamp: getCurrentTimestamp()
+        )
+        messages.append(userMessage)
+
+        // Keep typing indicator showing (simulate concierge is responding)
+        isTyping = true
+    }
+
+    private func getCurrentTimestamp() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter.string(from: Date())
     }
 
     // MARK: - Subviews

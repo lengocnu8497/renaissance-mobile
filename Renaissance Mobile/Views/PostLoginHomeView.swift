@@ -9,6 +9,10 @@ import SwiftUI
 
 struct PostLoginHomeView: View {
     @State private var searchText = ""
+    @State private var navigateToChat = false
+
+    var onNavigateToChat: ((String) -> Void)?
+    var onNavigateToProcedures: (() -> Void)?
 
     var body: some View {
         NavigationStack {
@@ -46,8 +50,18 @@ struct PostLoginHomeView: View {
                 .padding(.vertical, Theme.Spacing.md)
                 .background(Theme.Colors.inputBackground)
                 .cornerRadius(Theme.CornerRadius.medium, corners: [.topLeft, .bottomLeft])
+                .onSubmit {
+                    // Navigate to chat when user presses return/enter
+                    if !searchText.isEmpty {
+                        handleSearchInput(searchText)
+                    }
+                }
 
-            Button(action: {}) {
+            Button(action: {
+                if !searchText.isEmpty {
+                    handleSearchInput(searchText)
+                }
+            }) {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundColor(.white)
@@ -67,11 +81,21 @@ struct PostLoginHomeView: View {
         .padding(.vertical, Theme.Spacing.md)
     }
 
+    // MARK: - Actions
+    private func handleSearchInput(_ query: String) {
+        onNavigateToChat?(query)
+        // Clear search text after navigation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            searchText = ""
+        }
+    }
+
     private var heroSection: some View {
         HeroCardView(
             title: "Explore Procedures",
             subtitle: "Find the perfect treatment for you.",
-            imageName: nil
+            imageName: nil,
+            showLaunchingBadge: true
         )
         .padding(.horizontal, Theme.Spacing.lg)
     }

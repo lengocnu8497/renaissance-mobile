@@ -15,14 +15,21 @@ struct Theme {
         static let primary = Color(hex: "#D0BB95")
         static let primaryChat = Color(hex: "#D9BFA9")
         static let primaryHome = Color(hex: "#d1a38a")
+        static let primaryProcedures = Color(hex: "#2badee")
+        static let primaryProfile = Color(hex: "#E6C0C0")
+        static let primaryWelcome = Color(hex: "#EAC9C1")
 
         // Backgrounds
         static let backgroundLight = Color(hex: "#f7f7f6")
         static let backgroundChat = Color(hex: "#F8F8F8")
         static let backgroundHome = Color(hex: "#fdf8f5")
+        static let backgroundProcedures = Color(hex: "#f8f8f8")
+        static let backgroundProfile = Color(hex: "#F8F9FA")
+        static let backgroundWelcome = Color(hex: "#F8F7F4")
         static let cardBackground = Color.white
         static let iconCircleBackground = Color(hex: "#DBEAFE")
         static let categoryCircleBackground = Color(hex: "#f9ebe4")
+        static let accentProcedures = Color(hex: "#ead5d1")
         static let inputBackground = Color.white
 
         // Text
@@ -33,6 +40,14 @@ struct Theme {
         static let textChatSecondary = Color(hex: "#999999")
         static let textHomePrimary = Color(hex: "#211713")
         static let textHomeMuted = Color(hex: "#6f6967")
+        static let textProceduresPrimary = Color(hex: "#333333")
+        static let textProceduresSubtle = Color(hex: "#617c89")
+        static let textProfilePrimary = Color(hex: "#343A40")
+        static let textWelcomePrimary = Color(hex: "#333333")
+        static let textWelcomeSecondary = Color(hex: "#617c89")
+
+        // Borders
+        static let borderLight = Color(hex: "#F1F1F1")
 
         // Chat Bubbles
         static let conciergeBubble = Color(hex: "#EFEFEF")
@@ -45,9 +60,13 @@ struct Theme {
     struct Typography {
         // Headers
         static let welcomeHeader = Font.system(size: 28, weight: .semibold)
+        static let welcomeTitle = Font.system(size: 32, weight: .bold)
+        static let welcomeSubtitle = Font.system(size: 16)
         static let homeHeader = Font.system(size: 32, weight: .bold)
         static let chatHeader = Font.system(size: 18, weight: .bold)
         static let sectionTitle = Font.system(size: 20, weight: .bold)
+        static let profileName = Font.system(size: 24, weight: .bold)
+        static let profileSectionHeader = Font.system(size: 12, weight: .bold)
 
         // Card Text
         static let cardTitle = Font.system(size: 18, weight: .semibold)
@@ -94,6 +113,7 @@ struct Theme {
         static let medium: CGFloat = 24
         static let large: CGFloat = 36
         static let avatar: CGFloat = 40
+        static let profileAvatar: CGFloat = 112
         static let iconCircle: CGFloat = 64
     }
 
