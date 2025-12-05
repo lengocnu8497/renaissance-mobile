@@ -1,36 +1,64 @@
 //
-//  SignInView.swift
+//  SignUpView.swift
 //  Renaissance Mobile
 //
-//  Created by Nu Le on 12/2/25.
+//  Created by Nu Le on 12/4/25.
 //
 
 import SwiftUI
 import UIKit
 
-struct SignInView: View {
+struct SignUpView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthViewModel.self) private var authViewModel
+    @State private var fullName = ""
     @State private var email = ""
     @State private var password = ""
+    @State private var confirmPassword = ""
     @State private var isPasswordVisible = false
-    @State private var showError = false
-    @State private var showSignUp = false
+    @State private var isConfirmPasswordVisible = false
 
+    var onSignUp: (() -> Void)?
     var onSignIn: (() -> Void)?
+
+    private var isFormValid: Bool {
+        !fullName.isEmpty &&
+        !email.isEmpty &&
+        !password.isEmpty &&
+        !confirmPassword.isEmpty &&
+        password == confirmPassword
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
-                    // Welcome back text
-                    Text("Welcome back")
+                    // Let's get started text
+                    Text("Let's get started")
                         .font(.system(size: 32, weight: .semibold))
                         .foregroundColor(Theme.Colors.textWelcomePrimary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 24)
                         .padding(.top, 32)
                         .padding(.bottom, 32)
+
+                    // Full Name field
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField("Full Name", text: $fullName)
+                            .font(.system(size: 16))
+                            .foregroundColor(Theme.Colors.textWelcomePrimary)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 18)
+                            .background(Color.white)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                            )
+                            .cornerRadius(12)
+                            .autocapitalization(.words)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 16)
 
                     // Email field
                     VStack(alignment: .leading, spacing: 8) {
@@ -82,21 +110,60 @@ struct SignInView: View {
                         .cornerRadius(12)
                     }
                     .padding(.horizontal, 24)
+                    .padding(.bottom, 16)
 
-                    // Forgot password
-                    Button(action: {
-                        // Handle forgot password
-                    }) {
-                        Text("Forgot your password?")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Color(hex: "#6366f1"))
+                    // Confirm Password field
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            if isConfirmPasswordVisible {
+                                TextField("Confirm Password", text: $confirmPassword)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(Theme.Colors.textWelcomePrimary)
+                            } else {
+                                SecureField("Confirm Password", text: $confirmPassword)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(Theme.Colors.textWelcomePrimary)
+                            }
+
+                            Button(action: {
+                                isConfirmPasswordVisible.toggle()
+                            }) {
+                                Image(systemName: isConfirmPasswordVisible ? "eye.slash" : "eye")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(Color(hex: "#2badee"))
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 18)
+                        .background(Color.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(
+                                    !confirmPassword.isEmpty && password != confirmPassword
+                                    ? Color.red.opacity(0.5)
+                                    : Color.gray.opacity(0.3),
+                                    lineWidth: 1
+                                )
+                        )
+                        .cornerRadius(12)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 24)
-                    .padding(.top, 12)
-                    .padding(.bottom, 24)
 
-                    // Error message
+                    // Password mismatch error
+                    if !confirmPassword.isEmpty && password != confirmPassword {
+                        Text("Passwords do not match")
+                            .font(.system(size: 12))
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 24)
+                            .padding(.top, 4)
+                            .padding(.bottom, 16)
+                    } else {
+                        // Spacer to maintain layout
+                        Color.clear.frame(height: 24)
+                    }
+
+                    // Error message from auth
                     if let errorMessage = authViewModel.errorMessage {
                         Text(errorMessage)
                             .font(.system(size: 14))
@@ -107,12 +174,12 @@ struct SignInView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    // Sign in button
+                    // Create Account button
                     Button(action: {
                         Task {
-                            await authViewModel.signIn(email: email, password: password)
+                            await authViewModel.signUp(email: email, password: password)
                             if authViewModel.isAuthenticated {
-                                onSignIn?()
+                                onSignUp?()
                             }
                         }
                     }) {
@@ -124,16 +191,16 @@ struct SignInView: View {
                                 .background(Color.black)
                                 .cornerRadius(12)
                         } else {
-                            Text("Sign in")
+                            Text("Create Account")
                                 .font(.system(size: 16, weight: .bold))
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 56)
-                                .background(Color.black)
+                                .background(isFormValid ? Color.black : Color.gray.opacity(0.5))
                                 .cornerRadius(12)
                         }
                     }
-                    .disabled(authViewModel.isLoading || email.isEmpty || password.isEmpty)
+                    .disabled(authViewModel.isLoading || !isFormValid)
                     .padding(.horizontal, 24)
                     .padding(.bottom, 24)
 
@@ -164,7 +231,7 @@ struct SignInView: View {
                             }
                             await authViewModel.signInWithGoogle(presentingViewController: viewController)
                             if authViewModel.isAuthenticated {
-                                onSignIn?()
+                                onSignUp?()
                             }
                         }
                     }) {
@@ -191,7 +258,7 @@ struct SignInView: View {
 
                     // Continue with Apple
                     Button(action: {
-                        onSignIn?()
+                        // TODO: Implement Apple Sign In
                     }) {
                         HStack(spacing: 12) {
                             Image(systemName: "apple.logo")
@@ -214,16 +281,16 @@ struct SignInView: View {
                     .padding(.horizontal, 24)
                     .padding(.bottom, 40)
 
-                    // Create account link
+                    // Sign in link
                     HStack(spacing: 4) {
-                        Text("First time here?")
+                        Text("Already have an account?")
                             .font(.system(size: 14))
                             .foregroundColor(Theme.Colors.textSecondary)
 
                         Button(action: {
-                            showSignUp = true
+                            onSignIn?()
                         }) {
-                            Text("Create an account")
+                            Text("Sign in")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundColor(Color(hex: "#6366f1"))
                         }
@@ -233,20 +300,9 @@ struct SignInView: View {
             }
             .background(Theme.Colors.backgroundWelcome)
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showSignUp) {
-                SignUpView(
-                    onSignUp: {
-                        showSignUp = false
-                        onSignIn?()
-                    },
-                    onSignIn: {
-                        showSignUp = false
-                    }
-                )
-            }
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text("Sign in")
+                    Text("Create account")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundColor(Theme.Colors.textWelcomePrimary)
                 }
@@ -282,5 +338,6 @@ struct SignInView: View {
 }
 
 #Preview {
-    SignInView()
+    SignUpView()
+        .environment(AuthViewModel())
 }

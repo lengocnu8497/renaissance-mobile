@@ -8,13 +8,11 @@
 import SwiftUI
 
 struct ProfileView: View {
-    @State private var notificationsEnabled = true
-    @State private var darkModeEnabled = false
+    @Environment(AuthViewModel.self) private var authViewModel
     @State private var showEditProfile = false
     @State private var showPaymentMethods = false
     @State private var showPasswordSecurity = false
     @State private var showHelpSupport = false
-    @State private var showContactSupport = false
 
     var onBackButtonTapped: (() -> Void)?
 
@@ -32,9 +30,6 @@ struct ProfileView: View {
 
                         // Account Section
                         accountSection
-
-                        // Preferences Section
-                        preferencesSection
 
                         // Support Section
                         supportSection
@@ -74,9 +69,6 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showHelpSupport) {
                 HelpSupportView()
-            }
-            .sheet(isPresented: $showContactSupport) {
-                ContactSupportView()
             }
         }
     }
@@ -157,27 +149,6 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: - Preferences Section
-    private var preferencesSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            sectionHeader(title: "PREFERENCES")
-
-            VStack(spacing: 0) {
-                SettingsRowView(
-                    icon: "bell",
-                    title: "Notifications",
-                    type: .toggle(isOn: $notificationsEnabled)
-                )
-            }
-            .background(Theme.Colors.cardBackground)
-            .cornerRadius(Theme.CornerRadius.large)
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                    .stroke(Theme.Colors.borderLight, lineWidth: 1)
-            )
-        }
-    }
-
     // MARK: - Support Section
     private var supportSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
@@ -186,13 +157,6 @@ struct ProfileView: View {
             VStack(spacing: 0) {
                 SettingsRowView(icon: "questionmark.circle", title: "Help Center") {
                     showHelpSupport = true
-                }
-
-                Divider()
-                    .padding(.leading, 56)
-
-                SettingsRowView(icon: "headphones", title: "Contact Support") {
-                    showContactSupport = true
                 }
 
                 Divider()
@@ -214,13 +178,20 @@ struct ProfileView: View {
     // MARK: - Log Out Button
     private var logOutButton: some View {
         Button(action: {
-            // Log out action
+            Task {
+                await authViewModel.signOut()
+            }
         }) {
             HStack(spacing: Theme.Spacing.sm) {
-                Image(systemName: "rectangle.portrait.and.arrow.right")
-                    .font(.system(size: 20))
-                Text("Log Out")
-                    .font(.system(size: 16, weight: .bold))
+                if authViewModel.isLoading {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .red))
+                } else {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                        .font(.system(size: 20))
+                    Text("Log Out")
+                        .font(.system(size: 16, weight: .bold))
+                }
             }
             .foregroundColor(.red)
             .frame(maxWidth: .infinity)
@@ -228,6 +199,7 @@ struct ProfileView: View {
             .background(Color.red.opacity(0.1))
             .cornerRadius(Theme.CornerRadius.medium)
         }
+        .disabled(authViewModel.isLoading)
         .padding(.top, Theme.Spacing.lg)
     }
 
