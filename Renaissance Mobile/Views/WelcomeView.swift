@@ -9,6 +9,7 @@ import SwiftUI
 
 struct WelcomeView: View {
     @State private var showSignIn = false
+    @State private var showSignUp = false
 
     var onStartConsultation: (() -> Void)?
     var onSignIn: (() -> Void)?
@@ -42,6 +43,18 @@ struct WelcomeView: View {
                 onSignIn?()
             })
         }
+        .sheet(isPresented: $showSignUp) {
+            SignUpView(
+                onSignUp: {
+                    showSignUp = false
+                    onSignIn?()
+                },
+                onSignIn: {
+                    showSignUp = false
+                    showSignIn = true
+                }
+            )
+        }
     }
 
     // MARK: - Main Content
@@ -74,6 +87,19 @@ struct WelcomeView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
                     .background(Theme.Colors.primaryWelcome)
+                    .cornerRadius(Theme.CornerRadius.medium)
+            }
+
+            // Create Account Button
+            Button(action: {
+                showSignUp = true
+            }) {
+                Text("Create Account")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(Color.black)
                     .cornerRadius(Theme.CornerRadius.medium)
             }
 

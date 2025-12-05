@@ -6,24 +6,34 @@
 //
 
 import SwiftUI
+import GoogleSignIn
 
 @main
 struct Renaissance_MobileApp: App {
-    @State private var isLoggedIn = false
+    @State private var authViewModel = AuthViewModel()
+
+    init() {
+        // Configure Google Sign-In with your iOS Client ID
+        GIDSignIn.sharedInstance.configuration = GIDConfiguration(
+            clientID: "636103668184-sflddmlbj90salbiit9ted0m0lhrdmag.apps.googleusercontent.com"
+        )
+    }
 
     var body: some Scene {
         WindowGroup {
-            if isLoggedIn {
+            if authViewModel.isAuthenticated {
                 ContentView()
+                    .environment(authViewModel)
             } else {
                 WelcomeView(
                     onStartConsultation: {
-                        isLoggedIn = true
+                        // Navigate to consultation (can still bypass auth for this flow if needed)
                     },
                     onSignIn: {
-                        isLoggedIn = true
+                        // Auth handled by AuthViewModel, no need to manually set state
                     }
                 )
+                .environment(authViewModel)
             }
         }
     }

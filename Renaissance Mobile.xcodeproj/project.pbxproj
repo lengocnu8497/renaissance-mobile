@@ -6,13 +6,37 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A15FB14D2EE14397009BF65B /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = A15FB14C2EE14397009BF65B /* Supabase */; };
+		A15FB14F2EE14397009BF65B /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = A15FB14E2EE14397009BF65B /* Auth */; };
+		A15FB1512EE14397009BF65B /* Functions in Frameworks */ = {isa = PBXBuildFile; productRef = A15FB1502EE14397009BF65B /* Functions */; };
+		A15FB1532EE14397009BF65B /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = A15FB1522EE14397009BF65B /* PostgREST */; };
+		A15FB1552EE14397009BF65B /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = A15FB1542EE14397009BF65B /* Realtime */; };
+		A15FB1572EE14397009BF65B /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = A15FB1562EE14397009BF65B /* Storage */; };
+		A15FB4FD2EE297C4009BF65B /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = A15FB4FC2EE297C4009BF65B /* GoogleSignIn */; };
+		A15FB4FF2EE297C4009BF65B /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = A15FB4FE2EE297C4009BF65B /* GoogleSignInSwift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		A14F67B02EDE95650066D405 /* Renaissance Mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Renaissance Mobile.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A15FB5482EE2B673009BF65B /* Exceptions for "Renaissance Mobile" folder in "Renaissance Mobile" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Renaissance-Mobile-Info.plist",
+			);
+			target = A14F67AF2EDE95650066D405 /* Renaissance Mobile */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A14F67B22EDE95650066D405 /* Renaissance Mobile */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A15FB5482EE2B673009BF65B /* Exceptions for "Renaissance Mobile" folder in "Renaissance Mobile" target */,
+			);
 			path = "Renaissance Mobile";
 			sourceTree = "<group>";
 		};
@@ -23,6 +47,14 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A15FB14D2EE14397009BF65B /* Supabase in Frameworks */,
+				A15FB1532EE14397009BF65B /* PostgREST in Frameworks */,
+				A15FB1512EE14397009BF65B /* Functions in Frameworks */,
+				A15FB4FF2EE297C4009BF65B /* GoogleSignInSwift in Frameworks */,
+				A15FB14F2EE14397009BF65B /* Auth in Frameworks */,
+				A15FB1572EE14397009BF65B /* Storage in Frameworks */,
+				A15FB1552EE14397009BF65B /* Realtime in Frameworks */,
+				A15FB4FD2EE297C4009BF65B /* GoogleSignIn in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +97,14 @@
 			);
 			name = "Renaissance Mobile";
 			packageProductDependencies = (
+				A15FB14C2EE14397009BF65B /* Supabase */,
+				A15FB14E2EE14397009BF65B /* Auth */,
+				A15FB1502EE14397009BF65B /* Functions */,
+				A15FB1522EE14397009BF65B /* PostgREST */,
+				A15FB1542EE14397009BF65B /* Realtime */,
+				A15FB1562EE14397009BF65B /* Storage */,
+				A15FB4FC2EE297C4009BF65B /* GoogleSignIn */,
+				A15FB4FE2EE297C4009BF65B /* GoogleSignInSwift */,
 			);
 			productName = "Renaissance Mobile";
 			productReference = A14F67B02EDE95650066D405 /* Renaissance Mobile.app */;
@@ -94,6 +134,10 @@
 			);
 			mainGroup = A14F67A72EDE95650066D405;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A15FB14D2EE14363009BF65B /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				A15FB4FB2EE297C4009BF65B /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A14F67B12EDE95650066D405 /* Products */;
 			projectDirPath = "";
@@ -253,6 +297,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Renaissance-Mobile-Info.plist";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -284,6 +329,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Renaissance-Mobile-Info.plist";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -328,6 +374,68 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A15FB14D2EE14363009BF65B /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.1;
+			};
+		};
+		A15FB4FB2EE297C4009BF65B /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A15FB14C2EE14397009BF65B /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A15FB14D2EE14363009BF65B /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+		A15FB14E2EE14397009BF65B /* Auth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A15FB14D2EE14363009BF65B /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Auth;
+		};
+		A15FB1502EE14397009BF65B /* Functions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A15FB14D2EE14363009BF65B /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Functions;
+		};
+		A15FB1522EE14397009BF65B /* PostgREST */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A15FB14D2EE14363009BF65B /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = PostgREST;
+		};
+		A15FB1542EE14397009BF65B /* Realtime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A15FB14D2EE14363009BF65B /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Realtime;
+		};
+		A15FB1562EE14397009BF65B /* Storage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A15FB14D2EE14363009BF65B /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Storage;
+		};
+		A15FB4FC2EE297C4009BF65B /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A15FB4FB2EE297C4009BF65B /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		A15FB4FE2EE297C4009BF65B /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A15FB4FB2EE297C4009BF65B /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A14F67A82EDE95650066D405 /* Project object */;
 }

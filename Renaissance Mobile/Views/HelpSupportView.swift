@@ -67,16 +67,6 @@ struct HelpSupportView: View {
                 )
 
                 FAQItemView(
-                    section: .procedures,
-                    isExpanded: expandedSection == .procedures,
-                    onTap: {
-                        withAnimation {
-                            expandedSection = expandedSection == .procedures ? nil : .procedures
-                        }
-                    }
-                )
-
-                FAQItemView(
                     section: .account,
                     isExpanded: expandedSection == .account,
                     onTap: {
@@ -97,25 +87,6 @@ struct HelpSupportView: View {
                 .foregroundColor(Theme.Colors.textProfilePrimary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Theme.Spacing.xs)
-
-            // Chat with Support Button
-            Button(action: {
-                // Handle chat with support
-            }) {
-                HStack(spacing: Theme.Spacing.md) {
-                    Image(systemName: "message.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(Theme.Colors.primaryProfile)
-
-                    Text("Chat with support")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(Theme.Colors.primaryProfile)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .background(Theme.Colors.primaryProfile.opacity(0.15))
-                .cornerRadius(Theme.CornerRadius.large)
-            }
 
             // Email Us Button
             Button(action: {
@@ -142,7 +113,6 @@ struct HelpSupportView: View {
 // MARK: - FAQ Section Enum
 enum FAQSection: String, CaseIterable {
     case payments = "Payments & Pricing"
-    case procedures = "About Procedures"
     case account = "Account & Privacy"
 }
 
