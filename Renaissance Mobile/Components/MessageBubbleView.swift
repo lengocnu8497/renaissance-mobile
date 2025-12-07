@@ -91,7 +91,8 @@ struct MessageBubbleView: View {
             message: ChatMessage(
                 text: "Hello! How can I help you today?",
                 isFromUser: false,
-                timestamp: "10:30 AM"
+                timestamp: "10:30 AM",
+                responseId: nil
             )
         )
 
@@ -99,7 +100,8 @@ struct MessageBubbleView: View {
             message: ChatMessage(
                 text: "I'm interested in learning more about treatments.",
                 isFromUser: true,
-                timestamp: "10:31 AM"
+                timestamp: "10:31 AM",
+                responseId: nil
             )
         )
     }

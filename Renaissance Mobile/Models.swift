@@ -13,6 +13,7 @@ struct ChatMessage: Identifiable {
     let text: String
     let isFromUser: Bool
     let timestamp: String
+    let responseId: String? // OpenAI response ID for maintaining reasoning context
 }
 
 // MARK: - Procedure Model
