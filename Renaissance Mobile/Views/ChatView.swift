@@ -9,9 +9,8 @@ import SwiftUI
 
 struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var viewModel = ChatViewModel()
     @State private var messageText = ""
-    @State private var messages: [ChatMessage] = ChatView.sampleMessages
-    @State private var isTyping = true
 
     var initialMessage: String?
     var onBackButtonTapped: (() -> Void)?
@@ -25,6 +24,7 @@ struct ChatView: View {
         VStack(spacing: 0) {
             chatHeader
             messagesList
+            disclaimer
             messageInput
         }
         .navigationBarHidden(true)
@@ -37,22 +37,24 @@ struct ChatView: View {
     private func handleInitialMessage() {
         guard let initialMessage = initialMessage, !initialMessage.isEmpty else { return }
 
-        // Auto-send the initial message as a user message bubble
-        let userMessage = ChatMessage(
-            text: initialMessage,
-            isFromUser: true,
-            timestamp: getCurrentTimestamp()
-        )
-        messages.append(userMessage)
-
-        // Keep typing indicator showing (simulate concierge is responding)
-        isTyping = true
+        // Auto-send the initial message through the ViewModel
+        Task {
+            await viewModel.sendMessage(initialMessage)
+        }
     }
 
-    private func getCurrentTimestamp() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        return formatter.string(from: Date())
+    // MARK: - Actions
+    private func sendMessage() {
+        let text = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+
+        // Clear the input field
+        messageText = ""
+
+        // Send message through ViewModel
+        Task {
+            await viewModel.sendMessage(text)
+        }
     }
 
     // MARK: - Subviews
@@ -101,22 +103,42 @@ struct ChatView: View {
     }
 
     private var messagesList: some View {
-        ScrollView {
-            VStack(spacing: Theme.Spacing.xl) {
-                dateDivider
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: Theme.Spacing.xl) {
+                    dateDivider
 
-                ForEach(messages) { message in
-                    MessageBubbleView(message: message)
+                    ForEach(viewModel.messages) { message in
+                        MessageBubbleView(message: message)
+                            .id(message.id)
+                    }
+
+                    if viewModel.isTyping {
+                        TypingIndicatorView()
+                            .id("typing")
+                    }
                 }
-
-                if isTyping {
-                    TypingIndicatorView()
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.bottom, Theme.Spacing.lg)
+                .onChange(of: viewModel.messages.count) { _, _ in
+                    // Auto-scroll to the latest message
+                    if let lastMessage = viewModel.messages.last {
+                        withAnimation {
+                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                        }
+                    }
+                }
+                .onChange(of: viewModel.isTyping) { _, isTyping in
+                    // Auto-scroll when typing indicator appears
+                    if isTyping {
+                        withAnimation {
+                            proxy.scrollTo("typing", anchor: .bottom)
+                        }
+                    }
                 }
             }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.bottom, Theme.Spacing.lg)
+            .background(Theme.Colors.backgroundChat)
         }
-        .background(Theme.Colors.backgroundChat)
     }
 
     private var dateDivider: some View {
@@ -130,66 +152,81 @@ struct ChatView: View {
             .padding(.top, Theme.Spacing.lg)
     }
 
-    private var messageInput: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            Button(action: {}) {
-                Image(systemName: "plus.circle")
-                    .font(.system(size: Theme.IconSize.medium))
-                    .foregroundColor(Theme.Colors.textChatSecondary)
-            }
-
-            HStack {
-                TextField("Type your message...", text: $messageText)
-                    .font(Theme.Typography.inputText)
-                    .foregroundColor(Theme.Colors.textChatPrimary)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            .background(Theme.Colors.inputBackground)
-            .cornerRadius(Theme.CornerRadius.xlarge)
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.CornerRadius.xlarge)
-                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-            )
-
-            Button(action: {}) {
-                Image(systemName: "paperplane.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(.black)
-                    .frame(width: 48, height: 48)
-                    .background(Theme.Colors.primaryChat)
-                    .clipShape(Circle())
-            }
-        }
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.vertical, Theme.Spacing.md)
-        .background(Theme.Colors.backgroundChat)
-        .overlay(
-            Rectangle()
-                .frame(height: 1)
-                .foregroundColor(Color.gray.opacity(0.2)),
-            alignment: .top
-        )
+    private var disclaimer: some View {
+        Text("AI can make mistakes. Always consult with a board-certified plastic surgeon for medical advice.")
+            .font(.caption2)
+            .foregroundColor(Theme.Colors.textChatSecondary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, Theme.Spacing.sm)
+            .frame(maxWidth: .infinity)
+            .background(Theme.Colors.backgroundChat)
     }
 
-    // MARK: - Sample Data
-    static let sampleMessages = [
-        ChatMessage(
-            text: "Hello! Welcome to our cosmetic concierge service. How can I assist you today?",
-            isFromUser: false,
-            timestamp: "10:30 AM"
-        ),
-        ChatMessage(
-            text: "Hi, I'm interested in learning more about non-invasive facial treatments.",
-            isFromUser: true,
-            timestamp: "10:31 AM"
-        ),
-        ChatMessage(
-            text: "Of course. We have several options. Are you looking for something to address fine lines, skin texture, or perhaps skin tightening?",
-            isFromUser: false,
-            timestamp: "10:32 AM"
-        )
-    ]
+    private var messageInput: some View {
+        VStack(spacing: 0) {
+            // Error message banner
+            if let errorMessage = viewModel.errorMessage {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                    Spacer()
+                }
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.vertical, Theme.Spacing.sm)
+                .background(Color.orange.opacity(0.1))
+            }
+
+            HStack(spacing: Theme.Spacing.md) {
+                Button(action: {}) {
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: Theme.IconSize.medium))
+                        .foregroundColor(Theme.Colors.textChatSecondary)
+                }
+
+                HStack {
+                    TextField("Type your message...", text: $messageText)
+                        .font(Theme.Typography.inputText)
+                        .foregroundColor(Theme.Colors.textChatPrimary)
+                        .disabled(viewModel.isLoading)
+                        .onSubmit {
+                            sendMessage()
+                        }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .background(Theme.Colors.inputBackground)
+                .cornerRadius(Theme.CornerRadius.xlarge)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.CornerRadius.xlarge)
+                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                )
+
+                Button(action: sendMessage) {
+                    Image(systemName: "paperplane.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.black)
+                        .frame(width: 48, height: 48)
+                        .background(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray.opacity(0.3) : Theme.Colors.primaryChat)
+                        .clipShape(Circle())
+                }
+                .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isLoading)
+            }
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, Theme.Spacing.md)
+            .background(Theme.Colors.backgroundChat)
+            .overlay(
+                Rectangle()
+                    .frame(height: 1)
+                    .foregroundColor(Color.gray.opacity(0.2)),
+                alignment: .top
+            )
+        }
+    }
+
 }
 
 #Preview {

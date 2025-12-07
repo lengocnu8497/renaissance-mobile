@@ -21,22 +21,9 @@
 		A14F67B02EDE95650066D405 /* Renaissance Mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Renaissance Mobile.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		A15FB5482EE2B673009BF65B /* Exceptions for "Renaissance Mobile" folder in "Renaissance Mobile" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				"Renaissance-Mobile-Info.plist",
-			);
-			target = A14F67AF2EDE95650066D405 /* Renaissance Mobile */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A14F67B22EDE95650066D405 /* Renaissance Mobile */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				A15FB5482EE2B673009BF65B /* Exceptions for "Renaissance Mobile" folder in "Renaissance Mobile" target */,
-			);
 			path = "Renaissance Mobile";
 			sourceTree = "<group>";
 		};
