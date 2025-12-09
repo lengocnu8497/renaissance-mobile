@@ -28,14 +28,29 @@ struct MessageBubbleView: View {
             VStack(alignment: .trailing, spacing: 6) {
                 timestampText(prefix: "You")
 
-                Text(message.text)
-                    .font(Theme.Typography.messageText)
-                    .foregroundColor(.black)
-                    .padding(.horizontal, Theme.Spacing.lg)
-                    .padding(.vertical, Theme.Spacing.md)
-                    .background(Theme.Colors.primaryChat)
-                    .cornerRadius(Theme.CornerRadius.medium)
-                    .cornerRadius(2, corners: [.bottomRight])
+                VStack(alignment: .trailing, spacing: 8) {
+                    // Display image if available
+                    if let imageData = message.imageData,
+                       let uiImage = UIImage(data: imageData) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(maxWidth: 200, maxHeight: 200)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
+                    }
+
+                    // Display text if available
+                    if !message.text.isEmpty {
+                        Text(message.text)
+                            .font(Theme.Typography.messageText)
+                            .foregroundColor(.black)
+                            .padding(.horizontal, Theme.Spacing.lg)
+                            .padding(.vertical, Theme.Spacing.md)
+                            .background(Theme.Colors.primaryChat)
+                            .cornerRadius(Theme.CornerRadius.medium)
+                            .cornerRadius(2, corners: [.bottomRight])
+                    }
+                }
             }
             .frame(maxWidth: 280, alignment: .trailing)
 

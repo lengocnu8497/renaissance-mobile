@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     // Now we have the authenticated user - you can use user.id, user.email, etc.
     console.log(`Request from authenticated user: ${user.email}`)
 
-    const { message, conversationHistory, previousResponseId } = await req.json()
+    const { message, conversationHistory, previousResponseId, imageBase64 } = await req.json()
 
     // Validate input
     if (!message || typeof message !== 'string') {
@@ -52,28 +52,53 @@ Deno.serve(async (req) => {
                 "and what to expect. You always emphasize the importance of consulting with board-certified " +
                 "plastic surgeons and never provide specific medical advice or diagnoses. You are supportive but " +
                 "realistic about expectations. Please maintain the tone of being concise, conversational, and " +
-                "action-oriented while still being educational"
+                "action-oriented while still being educational. " +
+                "When users share images of themselves or reference photos, you can provide general educational " +
+                "information about relevant procedures they might be interested in, but you must always clarify " +
+                "that you cannot provide medical diagnoses or personalized treatment plans. Instead, guide them " +
+                "toward consulting with board-certified plastic surgeons for professional assessments."
 
     // Initialize OpenAI client
     const openai = new OpenAI({
       apiKey: Deno.env.get('OPENAI_API_KEY'),
     })
 
+    // Build the user message content
+    // If image is provided, use Vision API format with content array
+    let userMessageContent: any
+    if (imageBase64) {
+      userMessageContent = [
+        {
+          type: 'text',
+          text: message
+        },
+        {
+          type: 'image_url',
+          image_url: {
+            url: `data:image/jpeg;base64,${imageBase64}`
+          }
+        }
+      ]
+      console.log('Including image in user message')
+    } else {
+      userMessageContent = message
+    }
+
     // Build the input messages
     let inputMessages: any[]
 
     // If we have a previous response ID, include it for context continuity
     if (previousResponseId) {
-      inputMessages = [{ role: 'user', content: message }]
+      inputMessages = [{ role: 'user', content: userMessageContent }]
       console.log(`Including previous_response_id: ${previousResponseId}`)
     } else if (conversationHistory && conversationHistory.length > 0) {
       // Include conversation history for first message or non-reasoning models
       inputMessages = [
         ...conversationHistory,
-        { role: 'user', content: message }
+        { role: 'user', content: userMessageContent }
       ]
     } else {
-      inputMessages = [{ role: 'user', content: message }]
+      inputMessages = [{ role: 'user', content: userMessageContent }]
     }
 
     // Build request parameters

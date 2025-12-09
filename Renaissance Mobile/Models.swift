@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import UIKit
 
 // MARK: - Chat Message Model
 struct ChatMessage: Identifiable {
@@ -14,6 +15,15 @@ struct ChatMessage: Identifiable {
     let isFromUser: Bool
     let timestamp: String
     let responseId: String? // OpenAI response ID for maintaining reasoning context
+    let imageData: Data? // Optional image attachment
+
+    init(text: String, isFromUser: Bool, timestamp: String, responseId: String?, imageData: Data? = nil) {
+        self.text = text
+        self.isFromUser = isFromUser
+        self.timestamp = timestamp
+        self.responseId = responseId
+        self.imageData = imageData
+    }
 }
 
 // MARK: - Procedure Model
