@@ -6,11 +6,15 @@
 //
 
 import SwiftUI
+import PhotosUI
 
 struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel = ChatViewModel()
     @State private var messageText = ""
+    @State private var selectedImage: PhotosPickerItem?
+    @State private var selectedImageData: Data?
+    @State private var showImagePicker = false
 
     var initialMessage: String?
     var onBackButtonTapped: (() -> Void)?
@@ -46,14 +50,17 @@ struct ChatView: View {
     // MARK: - Actions
     private func sendMessage() {
         let text = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty || selectedImageData != nil else { return }
 
-        // Clear the input field
+        // Clear the input fields
+        let imageData = selectedImageData
         messageText = ""
+        selectedImageData = nil
+        selectedImage = nil
 
         // Send message through ViewModel
         Task {
-            await viewModel.sendMessage(text)
+            await viewModel.sendMessage(text.isEmpty ? "What do you think about this photo?" : text, imageData: imageData)
         }
     }
 
@@ -180,11 +187,47 @@ struct ChatView: View {
                 .background(Color.orange.opacity(0.1))
             }
 
+            // Image preview
+            if let imageData = selectedImageData,
+               let uiImage = UIImage(data: imageData) {
+                HStack {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 60, height: 60)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.small))
+                        .overlay(
+                            Button(action: {
+                                selectedImageData = nil
+                                selectedImage = nil
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.white)
+                                    .background(Circle().fill(Color.black.opacity(0.5)))
+                            }
+                            .offset(x: 5, y: -5),
+                            alignment: .topTrailing
+                        )
+                    Spacer()
+                }
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.vertical, Theme.Spacing.sm)
+                .background(Theme.Colors.backgroundChat)
+            }
+
             HStack(spacing: Theme.Spacing.md) {
-                Button(action: {}) {
+                PhotosPicker(selection: $selectedImage, matching: .images) {
                     Image(systemName: "plus.circle")
                         .font(.system(size: Theme.IconSize.medium))
                         .foregroundColor(Theme.Colors.textChatSecondary)
+                }
+                .onChange(of: selectedImage) { _, newValue in
+                    Task {
+                        if let data = try? await newValue?.loadTransferable(type: Data.self) {
+                            selectedImageData = data
+                        }
+                    }
                 }
 
                 HStack {
@@ -210,10 +253,10 @@ struct ChatView: View {
                         .font(.system(size: 20))
                         .foregroundColor(.black)
                         .frame(width: 48, height: 48)
-                        .background(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray.opacity(0.3) : Theme.Colors.primaryChat)
+                        .background((messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedImageData == nil) ? Color.gray.opacity(0.3) : Theme.Colors.primaryChat)
                         .clipShape(Circle())
                 }
-                .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isLoading)
+                .disabled((messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedImageData == nil) || viewModel.isLoading)
             }
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.vertical, Theme.Spacing.md)

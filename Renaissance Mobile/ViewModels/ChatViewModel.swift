@@ -24,16 +24,17 @@ class ChatViewModel {
 
     // MARK: - Public Methods
 
-    /// Send a user message and get AI response
-    func sendMessage(_ text: String) async {
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    /// Send a user message with optional image and get AI response
+    func sendMessage(_ text: String, imageData: Data? = nil) async {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || imageData != nil else { return }
 
         // Add user message
         let userMessage = ChatMessage(
             text: text,
             isFromUser: true,
             timestamp: getCurrentTimestamp(),
-            responseId: nil
+            responseId: nil,
+            imageData: imageData
         )
         messages.append(userMessage)
 
@@ -49,7 +50,8 @@ class ChatViewModel {
                 text: "",
                 isFromUser: false,
                 timestamp: getCurrentTimestamp(),
-                responseId: nil
+                responseId: nil,
+                imageData: nil
             )
             messages.append(placeholderMessage)
 
@@ -63,7 +65,8 @@ class ChatViewModel {
             // The streaming will update the placeholder message in real-time
             let response = try await callAIFunction(
                 userMessage: text,
-                previousResponseId: previousResponseId
+                previousResponseId: previousResponseId,
+                imageData: imageData
             )
 
             // Update the final message with the complete response
@@ -72,7 +75,8 @@ class ChatViewModel {
                     text: response.reply,
                     isFromUser: false,
                     timestamp: messages[lastIndex].timestamp,
-                    responseId: response.responseId
+                    responseId: response.responseId,
+                    imageData: nil
                 )
             }
 
@@ -88,7 +92,8 @@ class ChatViewModel {
                 text: "Sorry, I'm having trouble connecting right now. Please try again.",
                 isFromUser: false,
                 timestamp: getCurrentTimestamp(),
-                responseId: nil
+                responseId: nil,
+                imageData: nil
             )
             messages.append(errorMsg)
 
@@ -102,7 +107,8 @@ class ChatViewModel {
             text: text,
             isFromUser: true,
             timestamp: getCurrentTimestamp(),
-            responseId: nil
+            responseId: nil,
+            imageData: nil
         )
         messages.append(userMessage)
 
@@ -119,14 +125,16 @@ class ChatViewModel {
             text: "Hello! Welcome to Renaissance. I'm your personal beauty concierge. How can I assist you today?",
             isFromUser: false,
             timestamp: getCurrentTimestamp(),
-            responseId: nil
+            responseId: nil,
+            imageData: nil
         )
         messages.append(greeting)
     }
 
     private func callAIFunction(
         userMessage: String,
-        previousResponseId: String?
+        previousResponseId: String?,
+        imageData: Data? = nil
     ) async throws -> ChatAIResponse {
         // Prepare the request payload with Codable struct
         let conversationHistory = messages.map { msg in
@@ -136,10 +144,17 @@ class ChatViewModel {
             )
         }
 
+        // Convert image to base64 if provided
+        var imageBase64: String? = nil
+        if let imageData = imageData {
+            imageBase64 = imageData.base64EncodedString()
+        }
+
         let requestBody = ChatAIRequest(
             message: userMessage,
             conversationHistory: conversationHistory,
-            previousResponseId: previousResponseId
+            previousResponseId: previousResponseId,
+            imageBase64: imageBase64
         )
 
         // Convert request body to Data
@@ -195,7 +210,8 @@ class ChatViewModel {
                                 text: fullText,
                                 isFromUser: false,
                                 timestamp: messages[lastIndex].timestamp,
-                                responseId: finalResponseId
+                                responseId: finalResponseId,
+                                imageData: nil
                             )
                         }
                     }
@@ -231,6 +247,7 @@ struct ChatAIRequest: Encodable {
     let message: String
     let conversationHistory: [ConversationMessage]
     let previousResponseId: String?
+    let imageBase64: String?
 }
 
 struct ConversationMessage: Encodable {
