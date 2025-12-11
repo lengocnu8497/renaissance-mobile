@@ -16,10 +16,20 @@ class ChatViewModel {
     var isTyping = false
     var errorMessage: String?
 
+    // Current conversation
+    var currentConversation: ChatConversation?
+
+    // Database service
+    private let databaseService: ChatDatabaseService
+
     // MARK: - Initialization
-    init() {
-        // Start with an initial greeting from the concierge
-        addInitialGreeting()
+    init(databaseService: ChatDatabaseService = ChatDatabaseService(supabase: supabase)) {
+        self.databaseService = databaseService
+
+        // Load or create conversation
+        Task {
+            await loadOrCreateConversation()
+        }
     }
 
     // MARK: - Public Methods
@@ -28,15 +38,61 @@ class ChatViewModel {
     func sendMessage(_ text: String, imageData: Data? = nil) async {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || imageData != nil else { return }
 
-        // Add user message
+        // Ensure we have a conversation
+        if currentConversation == nil {
+            await loadOrCreateConversation()
+        }
+
+        guard let conversation = currentConversation else {
+            errorMessage = "Failed to create conversation"
+            return
+        }
+
+        // Get user ID
+        guard let userId = try? await supabase.auth.session.user.id else {
+            errorMessage = "User not authenticated"
+            return
+        }
+
+        // Upload image if provided
+        var imageUrl: String?
+        let messageId = UUID()
+
+        if let imageData = imageData {
+            do {
+                imageUrl = try await databaseService.uploadImage(
+                    imageData,
+                    conversationId: conversation.id,
+                    messageId: messageId
+                )
+            } catch {
+                print("Failed to upload image: \(error)")
+                // Continue without image URL
+            }
+        }
+
+        // Create user message
         let userMessage = ChatMessage(
-            text: text,
+            id: messageId,
+            conversationId: conversation.id,
+            userId: userId,
+            messageText: text,
             isFromUser: true,
-            timestamp: getCurrentTimestamp(),
-            responseId: nil,
+            createdAt: Date(),
+            hasImage: imageData != nil,
+            imageUrl: imageUrl,
             imageData: imageData
         )
         messages.append(userMessage)
+
+        // Save user message to database
+        Task {
+            do {
+                _ = try await databaseService.saveMessage(userMessage)
+            } catch {
+                print("Failed to save user message: \(error)")
+            }
+        }
 
         // Clear error state
         errorMessage = nil
@@ -46,12 +102,14 @@ class ChatViewModel {
 
         do {
             // Add a placeholder AI message for streaming
+            let aiMessageId = UUID()
             let placeholderMessage = ChatMessage(
-                text: "",
+                id: aiMessageId,
+                conversationId: conversation.id,
+                userId: userId,
+                messageText: "",
                 isFromUser: false,
-                timestamp: getCurrentTimestamp(),
-                responseId: nil,
-                imageData: nil
+                createdAt: Date()
             )
             messages.append(placeholderMessage)
 
@@ -61,23 +119,44 @@ class ChatViewModel {
             // Get the previous response ID (from the last AI message before the placeholder)
             let previousResponseId = messages.dropLast().last(where: { !$0.isFromUser })?.responseId
 
+            // Track response time
+            let startTime = Date()
+
             // Call Supabase Edge Function with streaming
             // The streaming will update the placeholder message in real-time
             let response = try await callAIFunction(
                 userMessage: text,
                 previousResponseId: previousResponseId,
-                imageData: imageData
+                imageData: imageData,
+                conversationId: conversation.id
             )
+
+            let responseTime = Int(Date().timeIntervalSince(startTime) * 1000) // milliseconds
 
             // Update the final message with the complete response
             if let lastIndex = messages.lastIndex(where: { !$0.isFromUser }) {
-                messages[lastIndex] = ChatMessage(
-                    text: response.reply,
+                let finalMessage = ChatMessage(
+                    id: aiMessageId,
+                    conversationId: conversation.id,
+                    userId: userId,
+                    messageText: response.reply,
                     isFromUser: false,
-                    timestamp: messages[lastIndex].timestamp,
-                    responseId: response.responseId,
-                    imageData: nil
+                    createdAt: messages[lastIndex].createdAt,
+                    openaiResponseId: response.responseId,
+                    openaiModel: response.model,
+                    tokensUsed: response.tokensUsed,
+                    responseTimeMs: responseTime
                 )
+                messages[lastIndex] = finalMessage
+
+                // Save AI message to database
+                Task {
+                    do {
+                        _ = try await databaseService.saveMessage(finalMessage)
+                    } catch {
+                        print("Failed to save AI message: \(error)")
+                    }
+                }
             }
 
         } catch {
@@ -120,21 +199,88 @@ class ChatViewModel {
 
     // MARK: - Private Methods
 
-    private func addInitialGreeting() {
+    /// Load existing conversation or create a new one
+    private func loadOrCreateConversation() async {
+        do {
+            // Try to get the most recent conversation
+            let conversations = try await databaseService.getConversations(includeArchived: false)
+
+            if let latestConversation = conversations.first {
+                // Load existing conversation
+                currentConversation = latestConversation
+                await loadMessages(for: latestConversation.id)
+            } else {
+                // Create new conversation
+                await createNewConversation()
+            }
+        } catch {
+            print("Failed to load conversations: \(error)")
+            // Create new conversation on error
+            await createNewConversation()
+        }
+    }
+
+    /// Create a new conversation session
+    private func createNewConversation() async {
+        do {
+            let conversation = try await databaseService.createConversation(title: "New Chat")
+            currentConversation = conversation
+
+            // Add initial greeting
+            await addInitialGreeting()
+        } catch {
+            print("Failed to create conversation: \(error)")
+            errorMessage = "Failed to create conversation"
+        }
+    }
+
+    /// Load messages for a conversation
+    private func loadMessages(for conversationId: UUID) async {
+        do {
+            let loadedMessages = try await databaseService.getMessages(conversationId: conversationId)
+            messages = loadedMessages
+
+            // If no messages, add initial greeting
+            if messages.isEmpty {
+                await addInitialGreeting()
+            }
+        } catch {
+            print("Failed to load messages: \(error)")
+            // Start with greeting on error
+            await addInitialGreeting()
+        }
+    }
+
+    private func addInitialGreeting() async {
+        guard let conversation = currentConversation,
+              let userId = try? await supabase.auth.session.user.id else {
+            return
+        }
+
         let greeting = ChatMessage(
-            text: "Hello! Welcome to Renaissance. I'm your personal beauty concierge. How can I assist you today?",
+            conversationId: conversation.id,
+            userId: userId,
+            messageText: "Hello! Welcome to Renaissance. I'm your personal beauty concierge. How can I assist you today?",
             isFromUser: false,
-            timestamp: getCurrentTimestamp(),
-            responseId: nil,
-            imageData: nil
+            createdAt: Date()
         )
         messages.append(greeting)
+
+        // Save greeting to database
+        Task {
+            do {
+                _ = try await databaseService.saveMessage(greeting)
+            } catch {
+                print("Failed to save greeting: \(error)")
+            }
+        }
     }
 
     private func callAIFunction(
         userMessage: String,
         previousResponseId: String?,
-        imageData: Data? = nil
+        imageData: Data? = nil,
+        conversationId: UUID
     ) async throws -> ChatAIResponse {
         // Prepare the request payload with Codable struct
         let conversationHistory = messages.map { msg in
@@ -154,7 +300,8 @@ class ChatViewModel {
             message: userMessage,
             conversationHistory: conversationHistory,
             previousResponseId: previousResponseId,
-            imageBase64: imageBase64
+            imageBase64: imageBase64,
+            conversationId: conversationId.uuidString
         )
 
         // Convert request body to Data
@@ -206,12 +353,16 @@ class ChatViewModel {
                     // Update the last message in real-time on main thread
                     await MainActor.run {
                         if let lastIndex = messages.lastIndex(where: { !$0.isFromUser }) {
+                            var updatedMessage = messages[lastIndex]
+                            updatedMessage.openaiResponseId = finalResponseId
                             messages[lastIndex] = ChatMessage(
-                                text: fullText,
+                                id: updatedMessage.id,
+                                conversationId: updatedMessage.conversationId,
+                                userId: updatedMessage.userId,
+                                messageText: fullText,
                                 isFromUser: false,
-                                timestamp: messages[lastIndex].timestamp,
-                                responseId: finalResponseId,
-                                imageData: nil
+                                createdAt: updatedMessage.createdAt,
+                                openaiResponseId: finalResponseId
                             )
                         }
                     }
@@ -231,7 +382,7 @@ class ChatViewModel {
             }
         }
 
-        return ChatAIResponse(reply: fullText, responseId: finalResponseId)
+        return ChatAIResponse(reply: fullText, responseId: finalResponseId, model: nil, tokensUsed: nil)
     }
 
     private func getCurrentTimestamp() -> String {
@@ -248,6 +399,7 @@ struct ChatAIRequest: Encodable {
     let conversationHistory: [ConversationMessage]
     let previousResponseId: String?
     let imageBase64: String?
+    let conversationId: String
 }
 
 struct ConversationMessage: Encodable {
@@ -258,6 +410,15 @@ struct ConversationMessage: Encodable {
 struct ChatAIResponse: Decodable {
     let reply: String
     let responseId: String? // OpenAI response ID for next request
+    let model: String?
+    let tokensUsed: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case reply
+        case responseId
+        case model
+        case tokensUsed = "tokens_used"
+    }
 }
 
 // MARK: - Streaming Event Model
