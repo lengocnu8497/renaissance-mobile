@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     // Now we have the authenticated user - you can use user.id, user.email, etc.
     console.log(`Request from authenticated user: ${user.email}`)
 
-    const { message, conversationHistory, previousResponseId, imageBase64 } = await req.json()
+    const { message, conversationHistory, previousResponseId, imageBase64, conversationId } = await req.json()
 
     // Validate input
     if (!message || typeof message !== 'string') {
@@ -126,6 +126,8 @@ Deno.serve(async (req) => {
 
     let fullText = ''
     let responseId = ''
+    let tokensUsed = 0
+    const modelUsed = Deno.env.get('MODEL') || 'gpt-4o'
 
     // Process the OpenAI stream in the background
     ;(async () => {
@@ -149,16 +151,23 @@ Deno.serve(async (req) => {
 
           fullText = event.response.output[0].content[0].text
 
+          // Extract token usage if available
+          if (event.response.usage) {
+            tokensUsed = event.response.usage.total_tokens || 0
+          }
         }
 
         // Send final message with complete response
         await writer.write(encoder.encode(`data: ${JSON.stringify({
           type: 'done',
           reply: fullText,
-          responseId: responseId
+          responseId: responseId,
+          model: modelUsed,
+          tokens_used: tokensUsed
         })}\n\n`))
 
-        console.log(`Streaming complete. Response ID: ${responseId}, Full text length: ${fullText.length}`)
+        console.log(`Streaming complete. Response ID: ${responseId}, Tokens: ${tokensUsed}, Full text length: ${fullText.length}`)
+        console.log(`Conversation ID: ${conversationId}`)
       } catch (error) {
         console.error('Streaming error:', error)
         await writer.write(encoder.encode(`data: ${JSON.stringify({
