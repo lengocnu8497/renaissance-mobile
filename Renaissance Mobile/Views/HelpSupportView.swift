@@ -70,8 +70,9 @@ struct HelpSupportView: View {
                     section: .account,
                     isExpanded: expandedSection == .account,
                     onTap: {
-                        withAnimation {
-                            expandedSection = expandedSection == .account ? nil : .account
+                        // Navigate to privacy policy URL
+                        if let url = URL(string: "https://www.renaesthetic.com/privacy-policy") {
+                            UIApplication.shared.open(url)
                         }
                     }
                 )

@@ -104,6 +104,7 @@ class UserProfileService {
 
         // Update the profile in the database
         do {
+            print("💾 Updating user profile in database for user: \(userId.uuidString)")
             let response: UserProfile = try await supabase.database
                 .from("user_profiles")
                 .update(updatedProfile)
@@ -113,10 +114,13 @@ class UserProfileService {
                 .execute()
                 .value
 
+            print("✅ Successfully updated user profile")
             return response
         } catch {
             // If update fails, the profile might not exist, so create it
-            print("Update failed, attempting to create profile: \(error)")
+            print("❌ Database update error: \(error)")
+            print("❌ Error details: \(error.localizedDescription)")
+            print("⚠️ Update failed, attempting to create profile instead")
 
             // Get email from session if not provided
             let session = try await supabase.auth.session
@@ -175,36 +179,56 @@ class UserProfileService {
         let fileExtension = getImageExtension(from: imageData)
 
         // Create file path: {user_id}/profile.{ext}
-        let filePath = "\(userId.uuidString)/profile.\(fileExtension)"
+        // IMPORTANT: Use lowercased UUID to match auth.uid() in PostgreSQL policies
+        let filePath = "\(userId.uuidString.lowercased())/profile.\(fileExtension)"
+
+        print("📤 Uploading profile image to: \(filePath)")
+        print("📤 User ID (lowercase): \(userId.uuidString.lowercased())")
+        print("📤 Image size: \(imageData.count) bytes")
 
         // Check if file already exists and delete it
         do {
             try await supabase.storage
                 .from("profile-image")
                 .remove(paths: [filePath])
+            print("🗑️ Deleted existing profile image")
         } catch {
             // Ignore error if file doesn't exist
-            print("No existing profile image to delete")
+            print("ℹ️ No existing profile image to delete: \(error.localizedDescription)")
         }
 
         // Upload to storage bucket
-        try await supabase.storage
-            .from("profile-image")
-            .upload(
-                path: filePath,
-                file: imageData,
-                options: FileOptions(
-                    contentType: "image/\(fileExtension)",
-                    upsert: true
+        do {
+            try await supabase.storage
+                .from("profile-image")
+                .upload(
+                    path: filePath,
+                    file: imageData,
+                    options: FileOptions(
+                        contentType: "image/\(fileExtension)",
+                        upsert: true
+                    )
                 )
-            )
+            print("✅ Successfully uploaded profile image")
+        } catch {
+            print("❌ Storage upload error: \(error)")
+            print("❌ Error details: \(error.localizedDescription)")
+            throw UserProfileError.uploadFailed
+        }
 
-        // Get public URL
-        let publicURL = try supabase.storage
+        // Generate a signed URL that expires in 1 year (for authenticated access)
+        // This allows the image to be displayed without making the bucket public
+        let signedURL = try await supabase.storage
             .from("profile-image")
-            .getPublicURL(path: filePath)
+            .createSignedURL(path: filePath, expiresIn: 31536000) // 1 year in seconds
 
-        return publicURL.absoluteString
+        print("🔗 Signed URL: \(signedURL.absoluteString)")
+
+        // Clear old cached image for this user (if any exists)
+        // This ensures the new image is fetched on next load
+        ImageCache.shared.clearCache()
+
+        return signedURL.absoluteString
     }
 
     /// Delete profile image from Supabase Storage
