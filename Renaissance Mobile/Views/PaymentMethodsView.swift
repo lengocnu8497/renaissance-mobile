@@ -10,6 +10,7 @@ import SwiftUI
 struct PaymentMethodsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var savedCards: [PaymentCard] = PaymentMethodsView.sampleCards
+    @State private var showAddNewCard = false
 
     var body: some View {
         NavigationStack {
@@ -46,13 +47,16 @@ struct PaymentMethodsView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showAddNewCard) {
+                AddNewCardView()
+            }
         }
     }
 
     // MARK: - Add New Card Button
     private var addNewCardButton: some View {
         Button(action: {
-            // Handle add new card
+            showAddNewCard = true
         }) {
             HStack(spacing: Theme.Spacing.md) {
                 Image(systemName: "plus")

@@ -193,16 +193,15 @@ struct EditProfileView: View {
                                 .frame(width: Theme.IconSize.profileAvatar, height: Theme.IconSize.profileAvatar)
                                 .clipShape(Circle())
                         } else if let imageUrl = profileImageUrl, let url = URL(string: imageUrl) {
-                            AsyncImage(url: url) { image in
+                            CachedAsyncImage(url: url) { image in
                                 image
                                     .resizable()
                                     .scaledToFill()
                                     .frame(width: Theme.IconSize.profileAvatar, height: Theme.IconSize.profileAvatar)
                                     .clipShape(Circle())
                             } placeholder: {
-                                Image(systemName: "person.fill")
-                                    .font(.system(size: 48))
-                                    .foregroundColor(Theme.Colors.textProfilePrimary.opacity(0.6))
+                                ProgressView()
+                                    .frame(width: Theme.IconSize.profileAvatar, height: Theme.IconSize.profileAvatar)
                             }
                         } else {
                             Image(systemName: "person.fill")
