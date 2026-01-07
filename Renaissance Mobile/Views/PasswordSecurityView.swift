@@ -9,7 +9,7 @@ import SwiftUI
 
 struct PasswordSecurityView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var shareLocationEnabled = false
+    @State private var showChangePassword = false
 
     var body: some View {
         NavigationStack {
@@ -22,9 +22,6 @@ struct PasswordSecurityView: View {
                         // Security Section
                         securitySection
                             .padding(.top, Theme.Spacing.lg)
-
-                        // Location Section
-                        locationSection
 
                         // Account Actions Section
                         accountActionsSection
@@ -47,6 +44,9 @@ struct PasswordSecurityView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showChangePassword) {
+                ChangePasswordView()
+            }
         }
     }
 
@@ -59,7 +59,7 @@ struct PasswordSecurityView: View {
                 .padding(.horizontal, Theme.Spacing.sm)
 
             Button(action: {
-                // Handle change password
+                showChangePassword = true
             }) {
                 HStack(spacing: Theme.Spacing.lg) {
                     // Icon
@@ -94,49 +94,6 @@ struct PasswordSecurityView: View {
                         .stroke(Theme.Colors.borderLight, lineWidth: 1)
                 )
             }
-        }
-    }
-
-    // MARK: - Location Section
-    private var locationSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            Text("LOCATION")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(Theme.Colors.textSecondary)
-                .padding(.horizontal, Theme.Spacing.sm)
-
-            HStack(spacing: Theme.Spacing.lg) {
-                // Icon
-                ZStack {
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.small)
-                        .fill(Theme.Colors.primaryProfile.opacity(0.2))
-                        .frame(width: 36, height: 36)
-
-                    Image(systemName: "location.fill")
-                        .font(.system(size: 18))
-                        .foregroundColor(Theme.Colors.primaryProfile)
-                }
-
-                // Title
-                Text("Share Location")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(Theme.Colors.textProfilePrimary)
-
-                Spacer()
-
-                // Toggle
-                Toggle("", isOn: $shareLocationEnabled)
-                    .labelsHidden()
-                    .tint(Theme.Colors.primaryProfile)
-            }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.vertical, Theme.Spacing.lg)
-            .background(Color.white)
-            .cornerRadius(Theme.CornerRadius.large)
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                    .stroke(Theme.Colors.borderLight, lineWidth: 1)
-            )
         }
     }
 

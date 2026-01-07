@@ -11,7 +11,7 @@ struct TypingIndicatorView: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: Theme.Spacing.md) {
             avatarView
-            typingDots
+            thinkingBubble
             Spacer()
         }
     }
@@ -28,26 +28,15 @@ struct TypingIndicatorView: View {
             )
     }
 
-    private var typingDots: some View {
-        HStack(spacing: 6) {
-            ForEach(0..<3) { index in
-                Circle()
-                    .fill(Color.gray.opacity(0.5))
-                    .frame(width: 8, height: 8)
-                    .scaleEffect(1.0)
-                    .animation(
-                        Animation.easeInOut(duration: 0.6)
-                            .repeatForever()
-                            .delay(Double(index) * 0.2),
-                        value: index
-                    )
-            }
-        }
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.vertical, 14)
-        .background(Theme.Colors.conciergeBubble)
-        .cornerRadius(Theme.CornerRadius.medium)
-        .cornerRadius(2, corners: [.bottomLeft])
+    private var thinkingBubble: some View {
+        Text("Thinking...")
+            .font(Theme.Typography.messageText)
+            .foregroundColor(Theme.Colors.textChatSecondary)
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, 14)
+            .background(Theme.Colors.conciergeBubble)
+            .cornerRadius(Theme.CornerRadius.medium)
+            .cornerRadius(2, corners: [.bottomLeft])
     }
 }
 

@@ -6,12 +6,31 @@
 //
 
 import SwiftUI
+import PhotosUI
 
 struct EditProfileView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var fullName: String = "Sarah Anderson"
-    @State private var email: String = "sarah.anderson@email.com"
-    @State private var phoneNumber: String = "+1 (555) 123-4567"
+
+    // Profile data
+    @State private var fullName: String = ""
+    @State private var email: String = ""
+    @State private var phoneNumber: String = ""
+    @State private var zipCode: String = ""
+    @State private var profileImageUrl: String?
+
+    // Image picker
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var selectedImageData: Data?
+    @State private var profileImage: UIImage?
+
+    // State management
+    @State private var isLoading: Bool = false
+    @State private var isSaving: Bool = false
+    @State private var errorMessage: String?
+    @State private var showError: Bool = false
+
+    // Service
+    private let profileService = UserProfileService(supabase: supabase)
 
     var body: some View {
         NavigationStack {
@@ -19,12 +38,16 @@ struct EditProfileView: View {
                 Theme.Colors.backgroundProfile
                     .ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    ScrollView {
-                        VStack(spacing: Theme.Spacing.xl) {
-                            // Avatar Section
-                            avatarSection
-                                .padding(.top, Theme.Spacing.xl)
+                if isLoading {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                } else {
+                    VStack(spacing: 0) {
+                        ScrollView {
+                            VStack(spacing: Theme.Spacing.xl) {
+                                // Avatar Section
+                                avatarSection
+                                    .padding(.top, Theme.Spacing.xl)
 
                             // Form Fields
                             VStack(spacing: Theme.Spacing.lg) {
@@ -87,6 +110,26 @@ struct EditProfileView: View {
                                     .cornerRadius(Theme.CornerRadius.medium)
                                     .keyboardType(.phonePad)
                             }
+
+                            // Zip Code
+                            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                                Text("Zip Code")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(Theme.Colors.textProfilePrimary)
+
+                                TextField("", text: $zipCode)
+                                    .font(.system(size: 16))
+                                    .foregroundColor(Theme.Colors.textProfilePrimary)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .background(Color.white)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
+                                            .stroke(Theme.Colors.borderLight, lineWidth: 1)
+                                    )
+                                    .cornerRadius(Theme.CornerRadius.medium)
+                                    .keyboardType(.numberPad)
+                            }
                             }
                             .padding(.horizontal, Theme.Spacing.xl)
 
@@ -99,6 +142,7 @@ struct EditProfileView: View {
                         .padding(.horizontal, Theme.Spacing.xl)
                         .padding(.vertical, Theme.Spacing.lg)
                         .background(Theme.Colors.backgroundProfile)
+                    }
                 }
             }
             .navigationTitle("Edit Profile")
@@ -114,6 +158,22 @@ struct EditProfileView: View {
                     }
                 }
             }
+            .alert("Error", isPresented: $showError) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(errorMessage ?? "An error occurred")
+            }
+            .task {
+                await loadProfile()
+            }
+            .onChange(of: selectedPhotoItem) { _, newItem in
+                Task {
+                    if let data = try? await newItem?.loadTransferable(type: Data.self) {
+                        selectedImageData = data
+                        profileImage = UIImage(data: data)
+                    }
+                }
+            }
         }
     }
 
@@ -125,15 +185,34 @@ struct EditProfileView: View {
                 .fill(Theme.Colors.primaryProfile.opacity(0.3))
                 .frame(width: Theme.IconSize.profileAvatar, height: Theme.IconSize.profileAvatar)
                 .overlay(
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 48))
-                        .foregroundColor(Theme.Colors.textProfilePrimary.opacity(0.6))
+                    Group {
+                        if let profileImage = profileImage {
+                            Image(uiImage: profileImage)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: Theme.IconSize.profileAvatar, height: Theme.IconSize.profileAvatar)
+                                .clipShape(Circle())
+                        } else if let imageUrl = profileImageUrl, let url = URL(string: imageUrl) {
+                            CachedAsyncImage(url: url) { image in
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: Theme.IconSize.profileAvatar, height: Theme.IconSize.profileAvatar)
+                                    .clipShape(Circle())
+                            } placeholder: {
+                                ProgressView()
+                                    .frame(width: Theme.IconSize.profileAvatar, height: Theme.IconSize.profileAvatar)
+                            }
+                        } else {
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 48))
+                                .foregroundColor(Theme.Colors.textProfilePrimary.opacity(0.6))
+                        }
+                    }
                 )
 
-            // Edit Button
-            Button(action: {
-                // Handle avatar edit
-            }) {
+            // Edit Button with PhotosPicker
+            PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
                 Circle()
                     .fill(Theme.Colors.primaryProfile)
                     .frame(width: 36, height: 36)
@@ -151,16 +230,85 @@ struct EditProfileView: View {
     // MARK: - Save Button
     private var saveButton: some View {
         Button(action: {
-            // Save profile changes
-            dismiss()
+            Task {
+                await saveProfile()
+            }
         }) {
-            Text("Save Changes")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .background(Color.black)
-                .cornerRadius(Theme.CornerRadius.medium)
+            if isSaving {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(Color.black)
+                    .cornerRadius(Theme.CornerRadius.medium)
+            } else {
+                Text("Save Changes")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(Color.black)
+                    .cornerRadius(Theme.CornerRadius.medium)
+            }
+        }
+        .disabled(isSaving)
+    }
+
+    // MARK: - Data Methods
+
+    /// Load user profile from Supabase
+    private func loadProfile() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let profile = try await profileService.getUserProfile()
+            await MainActor.run {
+                fullName = profile.fullName ?? ""
+                email = profile.email ?? ""
+                phoneNumber = profile.phoneNumber ?? ""
+                zipCode = profile.zipCode ?? ""
+                profileImageUrl = profile.profileImageUrl
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = "Failed to load profile: \(error.localizedDescription)"
+                showError = true
+            }
+        }
+    }
+
+    /// Save profile changes to Supabase
+    private func saveProfile() async {
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            // Convert UIImage to Data if needed
+            var imageData: Data?
+            if let selectedData = selectedImageData {
+                imageData = selectedData
+            }
+
+            // Update profile with all fields
+            _ = try await profileService.updateUserProfile(
+                fullName: fullName.isEmpty ? nil : fullName,
+                email: email.isEmpty ? nil : email,
+                phoneNumber: phoneNumber.isEmpty ? nil : phoneNumber,
+                zipCode: zipCode.isEmpty ? nil : zipCode,
+                billingPlan: nil, // Keep existing billing plan
+                profileImageData: imageData
+            )
+
+            // Dismiss on success
+            await MainActor.run {
+                dismiss()
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = "Failed to save profile: \(error.localizedDescription)"
+                showError = true
+            }
         }
     }
 }

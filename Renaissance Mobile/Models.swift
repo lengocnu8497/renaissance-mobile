@@ -6,13 +6,218 @@
 //
 
 import Foundation
+import UIKit
 
-// MARK: - Chat Message Model
-struct ChatMessage: Identifiable {
-    let id = UUID()
-    let text: String
+// MARK: - Chat Conversation Model (Database)
+struct ChatConversation: Identifiable, Codable {
+    let id: UUID
+    let userId: UUID
+    var title: String?
+    let createdAt: Date
+    var updatedAt: Date
+    var isArchived: Bool
+    var metadata: [String: AnyCodable]?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case title
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case isArchived = "is_archived"
+        case metadata
+    }
+
+    init(id: UUID = UUID(), userId: UUID, title: String? = nil, createdAt: Date = Date(), updatedAt: Date = Date(), isArchived: Bool = false, metadata: [String: AnyCodable]? = nil) {
+        self.id = id
+        self.userId = userId
+        self.title = title
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.isArchived = isArchived
+        self.metadata = metadata
+    }
+}
+
+// MARK: - Chat Message Model (Database)
+struct ChatMessage: Identifiable, Codable {
+    let id: UUID
+    var conversationId: UUID?
+    var userId: UUID?
+    let messageText: String
     let isFromUser: Bool
-    let timestamp: String
+    let createdAt: Date
+    var openaiResponseId: String?
+    var openaiModel: String?
+    var hasImage: Bool
+    var imageUrl: String?
+    var imageMetadata: [String: AnyCodable]?
+    var tokensUsed: Int?
+    var responseTimeMs: Int?
+    var metadata: [String: AnyCodable]?
+
+    // Transient property for local image data (not stored in DB)
+    var imageData: Data?
+
+    // Computed properties for backward compatibility with UI
+    var text: String { messageText }
+    var timestamp: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter.string(from: createdAt)
+    }
+    var responseId: String? { openaiResponseId }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case conversationId = "conversation_id"
+        case userId = "user_id"
+        case messageText = "message_text"
+        case isFromUser = "is_from_user"
+        case createdAt = "created_at"
+        case openaiResponseId = "openai_response_id"
+        case openaiModel = "openai_model"
+        case hasImage = "has_image"
+        case imageUrl = "image_url"
+        case imageMetadata = "image_metadata"
+        case tokensUsed = "tokens_used"
+        case responseTimeMs = "response_time_ms"
+        case metadata
+    }
+
+    // Initializer for creating new messages
+    init(
+        id: UUID = UUID(),
+        conversationId: UUID? = nil,
+        userId: UUID? = nil,
+        messageText: String,
+        isFromUser: Bool,
+        createdAt: Date = Date(),
+        openaiResponseId: String? = nil,
+        openaiModel: String? = nil,
+        hasImage: Bool = false,
+        imageUrl: String? = nil,
+        imageMetadata: [String: AnyCodable]? = nil,
+        tokensUsed: Int? = nil,
+        responseTimeMs: Int? = nil,
+        metadata: [String: AnyCodable]? = nil,
+        imageData: Data? = nil
+    ) {
+        self.id = id
+        self.conversationId = conversationId
+        self.userId = userId
+        self.messageText = messageText
+        self.isFromUser = isFromUser
+        self.createdAt = createdAt
+        self.openaiResponseId = openaiResponseId
+        self.openaiModel = openaiModel
+        self.hasImage = hasImage
+        self.imageUrl = imageUrl
+        self.imageMetadata = imageMetadata
+        self.tokensUsed = tokensUsed
+        self.responseTimeMs = responseTimeMs
+        self.metadata = metadata
+        self.imageData = imageData
+    }
+
+    // Legacy initializer for backward compatibility
+    init(text: String, isFromUser: Bool, timestamp: String, responseId: String?, imageData: Data? = nil) {
+        self.id = UUID()
+        self.conversationId = nil
+        self.userId = nil
+        self.messageText = text
+        self.isFromUser = isFromUser
+        self.createdAt = Date()
+        self.openaiResponseId = responseId
+        self.openaiModel = nil
+        self.hasImage = imageData != nil
+        self.imageUrl = nil
+        self.imageMetadata = nil
+        self.tokensUsed = nil
+        self.responseTimeMs = nil
+        self.metadata = nil
+        self.imageData = imageData
+    }
+}
+
+// MARK: - User Profile Model (Database)
+struct UserProfile: Identifiable, Codable {
+    let id: UUID
+    var fullName: String?
+    var email: String?
+    var phoneNumber: String?
+    var zipCode: String?
+    var billingPlan: BillingPlan
+    var profileImageUrl: String?
+    let createdAt: Date
+    var updatedAt: Date
+    var metadata: [String: AnyCodable]?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case fullName = "full_name"
+        case email
+        case phoneNumber = "phone_number"
+        case zipCode = "zip_code"
+        case billingPlan = "billing_plan"
+        case profileImageUrl = "profile_image_url"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case metadata
+    }
+
+    init(
+        id: UUID = UUID(),
+        fullName: String? = nil,
+        email: String? = nil,
+        phoneNumber: String? = nil,
+        zipCode: String? = nil,
+        billingPlan: BillingPlan = .free,
+        profileImageUrl: String? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date(),
+        metadata: [String: AnyCodable]? = nil
+    ) {
+        self.id = id
+        self.fullName = fullName
+        self.email = email
+        self.phoneNumber = phoneNumber
+        self.zipCode = zipCode
+        self.billingPlan = billingPlan
+        self.profileImageUrl = profileImageUrl
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.metadata = metadata
+    }
+}
+
+// MARK: - Billing Plan Enum
+enum BillingPlan: String, Codable {
+    case free = "free"
+    case basic = "basic"
+    case premium = "premium"
+
+    var displayName: String {
+        switch self {
+        case .free:
+            return "Free"
+        case .basic:
+            return "Basic"
+        case .premium:
+            return "Premium"
+        }
+    }
+
+    var monthlyPrice: String {
+        switch self {
+        case .free:
+            return "$0"
+        case .basic:
+            return "$9.99"
+        case .premium:
+            return "$29.99"
+        }
+    }
 }
 
 // MARK: - Procedure Model

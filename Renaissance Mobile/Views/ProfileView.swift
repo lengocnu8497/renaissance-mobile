@@ -14,6 +14,13 @@ struct ProfileView: View {
     @State private var showPasswordSecurity = false
     @State private var showHelpSupport = false
 
+    // Profile data
+    @State private var userProfile: UserProfile?
+    @State private var isLoadingProfile = true
+
+    // Service
+    private let profileService = UserProfileService(supabase: supabase)
+
     var onBackButtonTapped: (() -> Void)?
 
     var body: some View {
@@ -70,46 +77,75 @@ struct ProfileView: View {
             .sheet(isPresented: $showHelpSupport) {
                 HelpSupportView()
             }
+            .task {
+                await loadProfile()
+            }
+            .onChange(of: showEditProfile) { _, isShowing in
+                // Reload profile when returning from EditProfileView
+                if !isShowing {
+                    Task {
+                        await loadProfile()
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Profile Loading
+
+    /// Load user profile from database
+    private func loadProfile() async {
+        isLoadingProfile = true
+        defer { isLoadingProfile = false }
+
+        do {
+            let profile = try await profileService.getUserProfile()
+            await MainActor.run {
+                userProfile = profile
+            }
+        } catch {
+            print("Failed to load profile: \(error.localizedDescription)")
+            // Continue with nil profile - will show default avatar
         }
     }
 
     // MARK: - Profile Header
     private var profileHeader: some View {
         VStack(spacing: Theme.Spacing.lg) {
-            // Avatar with Edit Button
-            ZStack(alignment: .bottomTrailing) {
-                Image(systemName: "person.circle.fill")
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: Theme.IconSize.profileAvatar, height: Theme.IconSize.profileAvatar)
-                    .foregroundColor(Theme.Colors.textSecondary)
-                    .clipShape(Circle())
-
-                Button(action: {
-                    // Edit photo action
-                }) {
-                    ZStack {
-                        Circle()
-                            .fill(Theme.Colors.primaryProfile)
-                            .frame(width: 32, height: 32)
-                        Circle()
-                            .stroke(Theme.Colors.cardBackground, lineWidth: 2)
-                            .frame(width: 32, height: 32)
-                        Image(systemName: "pencil")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.white)
+            // Avatar (no edit button - user must edit in EditProfileView)
+            Group {
+                if isLoadingProfile {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                        .frame(width: Theme.IconSize.profileAvatar, height: Theme.IconSize.profileAvatar)
+                } else if let imageUrl = userProfile?.profileImageUrl, let url = URL(string: imageUrl) {
+                    CachedAsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: Theme.IconSize.profileAvatar, height: Theme.IconSize.profileAvatar)
+                            .clipShape(Circle())
+                    } placeholder: {
+                        ProgressView()
+                            .frame(width: Theme.IconSize.profileAvatar, height: Theme.IconSize.profileAvatar)
                     }
+                } else {
+                    Image(systemName: "person.circle.fill")
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: Theme.IconSize.profileAvatar, height: Theme.IconSize.profileAvatar)
+                        .foregroundColor(Theme.Colors.textSecondary)
                 }
             }
             .padding(.top, Theme.Spacing.lg)
 
             // Name and Email
             VStack(spacing: Theme.Spacing.xs) {
-                Text("Alexandra Chen")
+                Text(userProfile?.fullName ?? "User")
                     .font(Theme.Typography.profileName)
                     .foregroundColor(Theme.Colors.textProfilePrimary)
 
-                Text("alex.chen@email.com")
+                Text(userProfile?.email ?? "")
                     .font(.system(size: 16))
                     .foregroundColor(Theme.Colors.textSecondary)
             }
@@ -163,7 +199,9 @@ struct ProfileView: View {
                     .padding(.leading, 56)
 
                 SettingsRowView(icon: "doc.text", title: "Terms of Service") {
-                    // Navigate to terms
+                    if let url = URL(string: "https://www.renaesthetic.com/terms-of-service") {
+                        UIApplication.shared.open(url)
+                    }
                 }
             }
             .background(Theme.Colors.cardBackground)
