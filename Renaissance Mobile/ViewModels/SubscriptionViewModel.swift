@@ -83,26 +83,30 @@ class SubscriptionViewModel {
         defer { isLoading = false }
 
         do {
-            let requestBody: [String: Any] = [
-                "priceId": priceId,
-                "tier": tier.rawValue
-            ]
+            struct CreateSubscriptionRequest: Encodable {
+                let priceId: String
+                let tier: String
+            }
 
-            let response = try await supabase.functions.invoke(
+            struct CreateSubscriptionResponse: Decodable {
+                let clientSecret: String
+                let subscriptionId: String
+                let customerId: String
+            }
+
+            let requestBody = CreateSubscriptionRequest(
+                priceId: priceId,
+                tier: tier.rawValue
+            )
+
+            let response: CreateSubscriptionResponse = try await supabase.functions.invoke(
                 "create-subscription",
                 options: FunctionInvokeOptions(
                     body: requestBody
                 )
             )
 
-            guard let data = response.data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let clientSecret = json["clientSecret"] as? String else {
-                errorMessage = "Invalid response from server"
-                return nil
-            }
-
-            return clientSecret
+            return response.clientSecret
         } catch {
             errorMessage = error.localizedDescription
             print("Create subscription error: \(error)")
