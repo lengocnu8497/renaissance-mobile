@@ -15,28 +15,16 @@
 		A15FB1572EE14397009BF65B /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = A15FB1562EE14397009BF65B /* Storage */; };
 		A15FB4FD2EE297C4009BF65B /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = A15FB4FC2EE297C4009BF65B /* GoogleSignIn */; };
 		A15FB4FF2EE297C4009BF65B /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = A15FB4FE2EE297C4009BF65B /* GoogleSignInSwift */; };
+		A1DC0C502EF76AF10082D180 /* StripePaymentSheet in Frameworks */ = {isa = PBXBuildFile; productRef = A1DC0C4F2EF76AF10082D180 /* StripePaymentSheet */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		A14F67B02EDE95650066D405 /* Renaissance Mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Renaissance Mobile.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		A15FB5482EE2B673009BF65B /* Exceptions for "Renaissance Mobile" folder in "Renaissance Mobile" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				"Renaissance-Mobile-Info.plist",
-			);
-			target = A14F67AF2EDE95650066D405 /* Renaissance Mobile */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A14F67B22EDE95650066D405 /* Renaissance Mobile */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				A15FB5482EE2B673009BF65B /* Exceptions for "Renaissance Mobile" folder in "Renaissance Mobile" target */,
-			);
 			path = "Renaissance Mobile";
 			sourceTree = "<group>";
 		};
@@ -54,6 +42,7 @@
 				A15FB14F2EE14397009BF65B /* Auth in Frameworks */,
 				A15FB1572EE14397009BF65B /* Storage in Frameworks */,
 				A15FB1552EE14397009BF65B /* Realtime in Frameworks */,
+				A1DC0C502EF76AF10082D180 /* StripePaymentSheet in Frameworks */,
 				A15FB4FD2EE297C4009BF65B /* GoogleSignIn in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -105,6 +94,7 @@
 				A15FB1562EE14397009BF65B /* Storage */,
 				A15FB4FC2EE297C4009BF65B /* GoogleSignIn */,
 				A15FB4FE2EE297C4009BF65B /* GoogleSignInSwift */,
+				A1DC0C4F2EF76AF10082D180 /* StripePaymentSheet */,
 			);
 			productName = "Renaissance Mobile";
 			productReference = A14F67B02EDE95650066D405 /* Renaissance Mobile.app */;
@@ -137,6 +127,7 @@
 			packageReferences = (
 				A15FB14D2EE14363009BF65B /* XCRemoteSwiftPackageReference "supabase-swift" */,
 				A15FB4FB2EE297C4009BF65B /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				A1DC0C4E2EF76AF10082D180 /* XCRemoteSwiftPackageReference "stripe-ios-spm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A14F67B12EDE95650066D405 /* Products */;
@@ -295,6 +286,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CDWQYPD23H;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Renaissance-Mobile-Info.plist";
@@ -327,6 +319,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CDWQYPD23H;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Renaissance-Mobile-Info.plist";
@@ -392,6 +385,14 @@
 				minimumVersion = 9.0.0;
 			};
 		};
+		A1DC0C4E2EF76AF10082D180 /* XCRemoteSwiftPackageReference "stripe-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stripe/stripe-ios-spm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 25.3.1;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -434,6 +435,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A15FB4FB2EE297C4009BF65B /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignInSwift;
+		};
+		A1DC0C4F2EF76AF10082D180 /* StripePaymentSheet */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1DC0C4E2EF76AF10082D180 /* XCRemoteSwiftPackageReference "stripe-ios-spm" */;
+			productName = StripePaymentSheet;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
