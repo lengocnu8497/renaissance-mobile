@@ -194,17 +194,17 @@ struct UserProfile: Identifiable, Codable {
 // MARK: - Billing Plan Enum
 enum BillingPlan: String, Codable {
     case free = "free"
-    case basic = "basic"
-    case premium = "premium"
+    case silver = "silver"
+    case gold = "gold"
 
     var displayName: String {
         switch self {
         case .free:
             return "Free"
-        case .basic:
-            return "Basic"
-        case .premium:
-            return "Premium"
+        case .silver:
+            return "Silver"
+        case .gold:
+            return "Gold"
         }
     }
 
@@ -212,10 +212,10 @@ enum BillingPlan: String, Codable {
         switch self {
         case .free:
             return "$0"
-        case .basic:
-            return "$9.99"
-        case .premium:
+        case .silver:
             return "$29.99"
+        case .gold:
+            return "$79.99"
         }
     }
 }
@@ -255,9 +255,8 @@ enum SubscriptionStatus: String, Codable {
 }
 
 enum SubscriptionTier: String, Codable {
-    case basic
-    case premium
-    case vip
+    case silver
+    case gold
 }
 
 // MARK: - Transaction Model
@@ -305,61 +304,62 @@ enum TransactionStatus: String, Codable {
     case refunded
 }
 
-// MARK: - AnyCodable Helper
-struct AnyCodable: Codable {
-    let value: Any
+// MARK: - Payment Models
 
-    init(_ value: Any) {
-        self.value = value
+/// Request model for creating a Payment Intent
+struct CreatePaymentIntentRequest: Codable {
+    let amountCents: Int
+    let currency: String
+    let metadata: [String: String]?
+
+    enum CodingKeys: String, CodingKey {
+        case amountCents = "amount_cents"
+        case currency
+        case metadata
     }
+}
 
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
+/// Response model from create-payment-intent Edge Function
+struct CreatePaymentIntentResponse: Codable {
+    let clientSecret: String
+    let paymentIntentId: String
+    let ephemeralKey: String
+    let customer: String
+    let publishableKey: String
 
-        if let intValue = try? container.decode(Int.self) {
-            value = intValue
-        } else if let doubleValue = try? container.decode(Double.self) {
-            value = doubleValue
-        } else if let boolValue = try? container.decode(Bool.self) {
-            value = boolValue
-        } else if let stringValue = try? container.decode(String.self) {
-            value = stringValue
-        } else if let arrayValue = try? container.decode([AnyCodable].self) {
-            value = arrayValue.map { $0.value }
-        } else if let dictValue = try? container.decode([String: AnyCodable].self) {
-            value = dictValue.mapValues { $0.value }
-        } else {
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Unsupported type"
-            )
-        }
+    enum CodingKeys: String, CodingKey {
+        case clientSecret = "client_secret"
+        case paymentIntentId = "payment_intent_id"
+        case ephemeralKey = "ephemeral_key"
+        case customer
+        case publishableKey = "publishable_key"
     }
+}
 
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
+/// Request model for creating a Subscription
+struct CreateSubscriptionRequest: Codable {
+    let priceId: String
+    let tier: String
 
-        switch value {
-        case let intValue as Int:
-            try container.encode(intValue)
-        case let doubleValue as Double:
-            try container.encode(doubleValue)
-        case let boolValue as Bool:
-            try container.encode(boolValue)
-        case let stringValue as String:
-            try container.encode(stringValue)
-        case let arrayValue as [Any]:
-            try container.encode(arrayValue.map { AnyCodable($0) })
-        case let dictValue as [String: Any]:
-            try container.encode(dictValue.mapValues { AnyCodable($0) })
-        default:
-            throw EncodingError.invalidValue(
-                value,
-                EncodingError.Context(
-                    codingPath: container.codingPath,
-                    debugDescription: "Unsupported type"
-                )
-            )
-        }
+    enum CodingKeys: String, CodingKey {
+        case priceId = "price_id"
+        case tier
+    }
+}
+
+/// Response model from create-subscription Edge Function
+struct CreateSubscriptionResponse: Codable {
+    let clientSecret: String
+    let subscriptionId: String
+    let ephemeralKey: String
+    let customer: String
+    let publishableKey: String
+
+    enum CodingKeys: String, CodingKey {
+        case clientSecret = "client_secret"
+        case subscriptionId = "subscription_id"
+        case ephemeralKey = "ephemeral_key"
+        case customer
+        case publishableKey = "publishable_key"
     }
 }

@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
     email TEXT,
     phone_number TEXT,
     zip_code TEXT,
-    billing_plan TEXT NOT NULL DEFAULT 'free' CHECK (billing_plan IN ('free', 'basic', 'premium')),
+    billing_plan TEXT NOT NULL DEFAULT 'free' CHECK (billing_plan IN ('free', 'silver', 'gold')),
     profile_image_url TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
