@@ -7,6 +7,7 @@
 
 import SwiftUI
 import GoogleSignIn
+import StripePaymentSheet
 
 @main
 struct Renaissance_MobileApp: App {
@@ -17,6 +18,9 @@ struct Renaissance_MobileApp: App {
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(
             clientID: "636103668184-sflddmlbj90salbiit9ted0m0lhrdmag.apps.googleusercontent.com"
         )
+
+        // Configure Stripe SDK
+        STPAPIClient.shared.publishableKey = EnvironmentConfig.stripePublishableKey
     }
 
     var body: some Scene {

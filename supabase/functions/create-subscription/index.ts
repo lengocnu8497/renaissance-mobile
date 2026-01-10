@@ -14,7 +14,7 @@ const corsHeaders = {
 
 interface CreateSubscriptionRequest {
   priceId: string
-  tier: 'basic' | 'premium' | 'vip'
+  tier: 'silver' | 'gold'
 }
 
 serve(async (req) => {
