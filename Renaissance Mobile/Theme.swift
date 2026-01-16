@@ -18,6 +18,7 @@ struct Theme {
         static let primaryProcedures = Color(hex: "#2badee")
         static let primaryProfile = Color(hex: "#E6C0C0")
         static let primaryWelcome = Color(hex: "#EAC9C1")
+        static let gold = Color(hex: "#D0BB95")
 
         // Backgrounds
         static let backgroundLight = Color(hex: "#f7f7f6")

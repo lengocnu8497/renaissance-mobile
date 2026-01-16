@@ -38,6 +38,89 @@ Deno.serve(async (req) => {
 
     const { message, conversationHistory, previousResponseId, imageBase64, conversationId } = await req.json()
 
+    // QUOTA ENFORCEMENT: Check user's subscription and usage limits
+    const { data: userProfile, error: profileError } = await supabaseClient
+      .from('user_profiles')
+      .select('subscription_tier, subscription_current_period_end, subscription_status')
+      .eq('id', user.id)
+      .single()
+
+    if (profileError || !userProfile) {
+      return new Response(
+        JSON.stringify({ error: 'Failed to fetch user profile' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const { subscription_tier, subscription_current_period_end, subscription_status } = userProfile
+
+    // Check if user has active subscription
+    if (!subscription_tier || subscription_status !== 'active') {
+      return new Response(
+        JSON.stringify({
+          error: 'No active subscription',
+          code: 'NO_SUBSCRIPTION',
+          message: 'Please upgrade to a Silver or Gold plan to use the AI concierge.'
+        }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Calculate billing period boundaries
+    const periodEnd = new Date(subscription_current_period_end)
+    const periodStart = new Date(periodEnd)
+    periodStart.setMonth(periodStart.getMonth() - 1)
+
+    // Get or create usage record for current period using RPC
+    const { data: usageRecord, error: usageError } = await supabaseClient
+      .rpc('get_or_create_usage_record', {
+        p_user_id: user.id,
+        p_period_start: periodStart.toISOString(),
+        p_period_end: periodEnd.toISOString(),
+        p_tier: subscription_tier
+      })
+
+    if (usageError || !usageRecord) {
+      console.error('Failed to fetch usage record:', usageError)
+      return new Response(
+        JSON.stringify({ error: 'Failed to fetch usage data' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Calculate cost of this request
+    const hasImage = !!imageBase64
+    const messageCost = 1
+    const imageCost = hasImage ? 1 : 0
+    const creditCost = hasImage ? 4 : 2
+
+    // Check if request would exceed any quota limit
+    const wouldExceedMessages = (usageRecord.messages_used + messageCost) > usageRecord.messages_limit
+    const wouldExceedImages = hasImage && ((usageRecord.images_used + imageCost) > usageRecord.images_limit)
+    const wouldExceedCredits = (usageRecord.credits_used + creditCost) > usageRecord.credits_limit
+
+    if (wouldExceedMessages || wouldExceedImages || wouldExceedCredits) {
+      const limitType = wouldExceedMessages ? 'messages' :
+                        wouldExceedImages ? 'images' : 'credits'
+
+      return new Response(
+        JSON.stringify({
+          error: 'Quota exceeded',
+          code: 'QUOTA_EXCEEDED',
+          limitType: limitType,
+          usage: {
+            messages: { used: usageRecord.messages_used, limit: usageRecord.messages_limit },
+            images: { used: usageRecord.images_used, limit: usageRecord.images_limit },
+            credits: { used: usageRecord.credits_used, limit: usageRecord.credits_limit }
+          },
+          periodEnd: subscription_current_period_end
+        }),
+        { status: 429, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    console.log(`Quota check passed - Messages: ${usageRecord.messages_used}/${usageRecord.messages_limit}, Images: ${usageRecord.images_used}/${usageRecord.images_limit}, Credits: ${usageRecord.credits_used}/${usageRecord.credits_limit}`)
+
     // Validate input
     if (!message || typeof message !== 'string') {
       return new Response(
@@ -168,6 +251,28 @@ Deno.serve(async (req) => {
 
         console.log(`Streaming complete. Response ID: ${responseId}, Tokens: ${tokensUsed}, Full text length: ${fullText.length}`)
         console.log(`Conversation ID: ${conversationId}`)
+
+        // INCREMENT USAGE COUNTERS after successful response
+        try {
+          const { error: updateError } = await supabaseClient
+            .from('usage_tracking')
+            .update({
+              messages_used: usageRecord.messages_used + messageCost,
+              images_used: usageRecord.images_used + imageCost,
+              credits_used: usageRecord.credits_used + creditCost
+            })
+            .eq('id', usageRecord.id)
+
+          if (updateError) {
+            console.error('Failed to update usage counters:', updateError)
+            // Don't fail the request - just log the error
+          } else {
+            console.log(`Usage updated: messages +${messageCost}, images +${imageCost}, credits +${creditCost}`)
+          }
+        } catch (usageUpdateError) {
+          console.error('Exception updating usage:', usageUpdateError)
+          // Don't fail the request
+        }
       } catch (error) {
         console.error('Streaming error:', error)
         await writer.write(encoder.encode(`data: ${JSON.stringify({

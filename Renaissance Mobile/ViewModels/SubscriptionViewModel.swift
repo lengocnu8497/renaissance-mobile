@@ -31,7 +31,7 @@ class SubscriptionViewModel {
             }
 
             let response: SubscriptionModel = try await supabase.database
-                .from("profiles")
+                .from("user_profiles")
                 .select()
                 .eq("id", value: userId)
                 .single()
@@ -83,6 +83,11 @@ class SubscriptionViewModel {
         defer { isLoading = false }
 
         do {
+            // Ensure we have a valid session
+            let session = try await supabase.auth.session
+            print("📱 Active session for user: \(session.user.id)")
+            print("📱 Access token present: \(session.accessToken.prefix(20))...")
+
             struct CreateSubscriptionRequest: Encodable {
                 let priceId: String
                 let tier: String
@@ -99,6 +104,9 @@ class SubscriptionViewModel {
                 tier: tier.rawValue
             )
 
+            print("📱 Calling create-subscription edge function...")
+
+            // Call the edge function - the SDK should automatically include auth headers
             let response: CreateSubscriptionResponse = try await supabase.functions.invoke(
                 "create-subscription",
                 options: FunctionInvokeOptions(
@@ -106,10 +114,14 @@ class SubscriptionViewModel {
                 )
             )
 
+            print("📱 Subscription created successfully")
             return response.clientSecret
         } catch {
             errorMessage = error.localizedDescription
-            print("Create subscription error: \(error)")
+            print("❌ Create subscription error: \(error)")
+            print("❌ Error type: \(type(of: error))")
+            print("❌ Error description: \(error.localizedDescription)")
+
             return nil
         }
     }

@@ -10,7 +10,7 @@ import SwiftUI
 struct ProfileView: View {
     @Environment(AuthViewModel.self) private var authViewModel
     @State private var showEditProfile = false
-    @State private var showPaymentMethods = false
+    @State private var showSettings = false
     @State private var showPasswordSecurity = false
     @State private var showHelpSupport = false
 
@@ -37,6 +37,9 @@ struct ProfileView: View {
 
                         // Account Section
                         accountSection
+
+                        // AI Credits Usage Display
+                        UsageQuotaView()
 
                         // Support Section
                         supportSection
@@ -68,8 +71,8 @@ struct ProfileView: View {
             .sheet(isPresented: $showEditProfile) {
                 EditProfileView()
             }
-            .sheet(isPresented: $showPaymentMethods) {
-                PaymentMethodsView()
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
             }
             .sheet(isPresented: $showPasswordSecurity) {
                 PasswordSecurityView()
@@ -165,8 +168,8 @@ struct ProfileView: View {
                 Divider()
                     .padding(.leading, 56)
 
-                SettingsRowView(icon: "creditcard", title: "Payment Methods") {
-                    showPaymentMethods = true
+                SettingsRowView(icon: "gearshape", title: "Settings") {
+                    showSettings = true
                 }
 
                 Divider()

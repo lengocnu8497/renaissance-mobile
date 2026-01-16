@@ -7,6 +7,9 @@
 
 import SwiftUI
 import PhotosUI
+import StripePaymentSheet
+import Supabase
+import Auth
 
 struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
@@ -15,6 +18,13 @@ struct ChatView: View {
     @State private var selectedImage: PhotosPickerItem?
     @State private var selectedImageData: Data?
     @State private var showImagePicker = false
+    @State private var showQuotaExceeded = false
+    @State private var subscriptionViewModel = SubscriptionViewModel()
+    @State private var paymentViewModel = PaymentViewModel()
+    @State private var showPaymentError = false
+    @State private var paymentErrorMessage = ""
+    @State private var hasCheckedSubscription = false
+    @FocusState private var isTextFieldFocused: Bool
 
     var initialMessage: String?
     var onBackButtonTapped: (() -> Void)?
@@ -32,6 +42,32 @@ struct ChatView: View {
             messageInput
         }
         .navigationBarHidden(true)
+        .sheet(isPresented: $showQuotaExceeded) {
+            QuotaExceededView(
+                reason: viewModel.quotaExceededReason ?? "You've exceeded your quota",
+                onUpgrade: { tier in
+                    await handleUpgrade(tier: tier)
+                },
+                onDismiss: {
+                    showQuotaExceeded = false
+                    hasCheckedSubscription = false  // Reset so it checks again next time
+                    viewModel.quotaExceeded = false  // Reset quota exceeded state so onChange can trigger again
+                    viewModel.quotaExceededReason = nil
+                    viewModel.errorMessage = nil
+                }
+            )
+            .interactiveDismissDisabled()
+        }
+        .alert("Payment Error", isPresented: $showPaymentError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(paymentErrorMessage)
+        }
+        .onChange(of: viewModel.quotaExceeded) { _, exceeded in
+            if exceeded {
+                showQuotaExceeded = true
+            }
+        }
         .onAppear {
             handleInitialMessage()
         }
@@ -61,6 +97,155 @@ struct ChatView: View {
         // Send message through ViewModel
         Task {
             await viewModel.sendMessage(text.isEmpty ? "What do you think about this photo?" : text, imageData: imageData)
+        }
+    }
+
+    private func checkSubscriptionStatus() async {
+        // Only check once per session
+        guard !hasCheckedSubscription else { return }
+        hasCheckedSubscription = true
+
+        // Check if user has silver or gold subscription
+        do {
+            guard let userId = try? await supabase.auth.session.user.id else {
+                return
+            }
+
+            let profile: UserProfile = try await supabase.database
+                .from("user_profiles")
+                .select()
+                .eq("id", value: userId.uuidString)
+                .single()
+                .execute()
+                .value
+
+            // If user doesn't have silver or gold, show subscription modal
+            if profile.billingPlan != .silver && profile.billingPlan != .gold {
+                viewModel.quotaExceeded = true
+                viewModel.quotaExceededReason = "Subscribe to unlock AI chat and get personalized beauty recommendations"
+                viewModel.errorMessage = viewModel.quotaExceededReason
+            }
+        } catch {
+            print("Error checking subscription: \(error)")
+        }
+    }
+
+    private func handleUpgrade(tier: SubscriptionTier) async {
+        // Store the selected tier for later use after payment
+        let selectedTier = tier
+
+        // Get price ID from environment config based on selected tier
+        let priceId: String
+        switch tier {
+        case .silver:
+            priceId = EnvironmentConfig.stripeSilverPriceId
+        case .gold:
+            priceId = EnvironmentConfig.stripeGoldPriceId
+        }
+
+        // Validate price ID is configured
+        guard !priceId.contains("REPLACE_WITH_YOUR") else {
+            paymentErrorMessage = "Subscription plan not configured. Please add Stripe price IDs to EnvironmentConfig."
+            showPaymentError = true
+            return
+        }
+
+        // Step 1: Create subscription and get client secret
+        guard let clientSecret = await subscriptionViewModel.createSubscription(
+            priceId: priceId,
+            tier: tier
+        ) else {
+            paymentErrorMessage = subscriptionViewModel.errorMessage ?? "Failed to create subscription"
+            showPaymentError = true
+            return
+        }
+
+        // Step 2: Configure Payment Sheet for subscription
+        var configuration = PaymentSheet.Configuration()
+        configuration.merchantDisplayName = "Renaissance"
+        configuration.allowsDelayedPaymentMethods = true
+        configuration.returnURL = "renaissance://payment-complete"
+
+        // Appearance customization
+        var appearance = PaymentSheet.Appearance()
+        appearance.colors.primary = UIColor(red: 208/255, green: 187/255, blue: 149/255, alpha: 1.0)
+        appearance.colors.background = UIColor(red: 247/255, green: 247/255, blue: 246/255, alpha: 1.0)
+        appearance.cornerRadius = 16
+        configuration.appearance = appearance
+
+        // Billing details
+        configuration.billingDetailsCollectionConfiguration.name = .always
+        configuration.billingDetailsCollectionConfiguration.email = .always
+        configuration.billingDetailsCollectionConfiguration.phone = .always
+        configuration.billingDetailsCollectionConfiguration.address = .full
+
+        // Step 3: Initialize Payment Sheet with subscription setup intent client secret
+        // For subscriptions, the client secret is from the payment intent attached to the subscription
+        let paymentSheet = PaymentSheet(
+            paymentIntentClientSecret: clientSecret,
+            configuration: configuration
+        )
+
+        // Get the topmost view controller
+        guard let topViewController = UIApplication.shared.topViewController else {
+            paymentErrorMessage = "Unable to present payment screen"
+            showPaymentError = true
+            return
+        }
+
+        // Present Payment Sheet and wait for result
+        let result = await withCheckedContinuation { continuation in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                paymentSheet.present(from: topViewController) { result in
+                    continuation.resume(returning: result)
+                }
+            }
+        }
+
+        // Step 4: Handle payment result
+        switch result {
+        case .completed:
+            // Payment successful - update billing plan immediately
+            await updateBillingPlan(to: selectedTier)
+
+            // Close modal and reset state
+            showQuotaExceeded = false
+            viewModel.quotaExceeded = false
+            viewModel.quotaExceededReason = nil
+            viewModel.errorMessage = nil
+
+            // Reset subscription check flag so they can use the chat
+            hasCheckedSubscription = false
+
+        case .canceled:
+            // User canceled - keep modal open so they can try again
+            break
+
+        case .failed(let error):
+            // Payment failed - show error but keep modal open
+            paymentErrorMessage = error.localizedDescription
+            showPaymentError = true
+        }
+    }
+
+    private func updateBillingPlan(to tier: SubscriptionTier) async {
+        do {
+            guard let userId = try? await supabase.auth.session.user.id else {
+                print("❌ Failed to get user ID for billing plan update")
+                return
+            }
+
+            // Update the user's billing plan in the database
+            try await supabase.database
+                .from("user_profiles")
+                .update(["billing_plan": tier.rawValue])
+                .eq("id", value: userId.uuidString)
+                .execute()
+
+            print("✅ Billing plan updated to \(tier.rawValue)")
+        } catch {
+            print("❌ Error updating billing plan: \(error)")
+            // Don't show error to user - webhook will update it anyway
         }
     }
 
@@ -235,8 +420,17 @@ struct ChatView: View {
                         .font(Theme.Typography.inputText)
                         .foregroundColor(Theme.Colors.textChatPrimary)
                         .disabled(viewModel.isLoading)
+                        .focused($isTextFieldFocused)
                         .onSubmit {
                             sendMessage()
+                        }
+                        .onChange(of: isTextFieldFocused) { _, isFocused in
+                            if isFocused {
+                                // User tapped in the input box - check subscription
+                                Task {
+                                    await checkSubscriptionStatus()
+                                }
+                            }
                         }
                 }
                 .padding(.horizontal, 20)
