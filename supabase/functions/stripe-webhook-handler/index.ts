@@ -41,11 +41,12 @@ serve(async (req) => {
 
         // Update profile with subscription info
         await supabaseAdmin
-          .from('profiles')
+          .from('user_profiles')
           .update({
             stripe_subscription_id: subscription.id,
             subscription_status: subscription.status,
             subscription_tier: tier,
+            billing_plan: tier, // Update billing_plan to match subscription tier
             subscription_current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
           })
           .eq('id', userId)
@@ -65,11 +66,12 @@ serve(async (req) => {
 
         // Clear subscription info
         await supabaseAdmin
-          .from('profiles')
+          .from('user_profiles')
           .update({
             stripe_subscription_id: null,
             subscription_status: 'canceled',
             subscription_tier: null,
+            billing_plan: 'free', // Reset billing plan to free when subscription is canceled
             subscription_current_period_end: null,
           })
           .eq('id', userId)
@@ -87,7 +89,7 @@ serve(async (req) => {
 
         // Get user_id from profile
         const { data: profile } = await supabaseAdmin
-          .from('profiles')
+          .from('user_profiles')
           .select('id, stripe_subscription_id')
           .eq('stripe_customer_id', customerId)
           .single()
@@ -127,7 +129,7 @@ serve(async (req) => {
 
         // Get user_id from profile
         const { data: profile } = await supabaseAdmin
-          .from('profiles')
+          .from('user_profiles')
           .select('id, stripe_subscription_id')
           .eq('stripe_customer_id', customerId)
           .single()
@@ -139,7 +141,7 @@ serve(async (req) => {
 
         // Update subscription status to past_due
         await supabaseAdmin
-          .from('profiles')
+          .from('user_profiles')
           .update({ subscription_status: 'past_due' })
           .eq('id', profile.id)
 

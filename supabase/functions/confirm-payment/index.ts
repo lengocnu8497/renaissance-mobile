@@ -60,7 +60,7 @@ serve(async (req) => {
 
     if (!amount_cents || !currency) {
       return new Response(
-        JSON.stringify({ error: 'Missing amount_cents or currency' }),
+        JSON.stringify({ error: 'Missing required parameters: amount_cents and currency' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -100,9 +100,9 @@ serve(async (req) => {
 
     // Create Payment Intent with the confirmation token
     const paymentIntent = await stripe.paymentIntents.create({
+      customer: customerId,
       amount: amount_cents,
       currency: currency.toLowerCase(),
-      customer: customerId,
       confirm: true,
       confirmation_token: confirmation_token,
       return_url: 'renaissance://payment-complete',

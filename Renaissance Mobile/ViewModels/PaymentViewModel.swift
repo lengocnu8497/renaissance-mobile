@@ -124,6 +124,8 @@ class PaymentViewModel {
 
         struct ConfirmPaymentResponse: Decodable {
             let payment_intent_id: String
+            let client_secret: String
+            let status: String
         }
 
         let requestBody = ConfirmPaymentRequest(
@@ -141,7 +143,9 @@ class PaymentViewModel {
                     options: FunctionInvokeOptions(body: requestBody)
                 )
 
-            return response.payment_intent_id
+            // Return the client secret, not the payment intent ID
+            // The callback expects a client secret in format: "pi_xxx_secret_xxx"
+            return response.client_secret
         } catch {
             print("Error confirming payment: \(error)")
             throw PaymentError.confirmationFailed(error.localizedDescription)

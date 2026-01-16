@@ -213,9 +213,9 @@ enum BillingPlan: String, Codable {
         case .free:
             return "$0"
         case .silver:
-            return "$29.99"
+            return "$14.99"
         case .gold:
-            return "$79.99"
+            return "$29.99"
         }
     }
 }
@@ -361,5 +361,89 @@ struct CreateSubscriptionResponse: Codable {
         case ephemeralKey = "ephemeral_key"
         case customer
         case publishableKey = "publishable_key"
+    }
+}
+
+// MARK: - Usage Tracking Models
+
+struct UsageQuota: Identifiable, Codable {
+    let id: UUID
+    let userId: UUID
+    let periodStart: Date
+    let periodEnd: Date
+
+    let messagesUsed: Int
+    let imagesUsed: Int
+    let creditsUsed: Int
+
+    let messagesLimit: Int
+    let imagesLimit: Int
+    let creditsLimit: Int
+
+    let subscriptionTier: SubscriptionTier?
+    let createdAt: Date
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case periodStart = "period_start"
+        case periodEnd = "period_end"
+        case messagesUsed = "messages_used"
+        case imagesUsed = "images_used"
+        case creditsUsed = "credits_used"
+        case messagesLimit = "messages_limit"
+        case imagesLimit = "images_limit"
+        case creditsLimit = "credits_limit"
+        case subscriptionTier = "subscription_tier"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    // Computed properties
+    var messagesRemaining: Int { max(0, messagesLimit - messagesUsed) }
+    var imagesRemaining: Int { max(0, imagesLimit - imagesUsed) }
+    var creditsRemaining: Int { max(0, creditsLimit - creditsUsed) }
+
+    var hasExceededAnyLimit: Bool {
+        messagesUsed >= messagesLimit ||
+        imagesUsed >= imagesLimit ||
+        creditsUsed >= creditsLimit
+    }
+}
+
+// Error response from Edge Function when quota exceeded
+struct QuotaExceededError: Codable {
+    let error: String
+    let code: String
+    let limitType: String
+    let usage: UsageSnapshot
+    let periodEnd: String
+
+    struct UsageSnapshot: Codable {
+        let messages: LimitInfo
+        let images: LimitInfo
+        let credits: LimitInfo
+    }
+
+    struct LimitInfo: Codable {
+        let used: Int
+        let limit: Int
+    }
+}
+
+// Tier-specific quota configuration
+struct TierQuotaLimits {
+    let messagesLimit: Int
+    let imagesLimit: Int
+    let creditsLimit: Int
+
+    static func limits(for tier: SubscriptionTier) -> TierQuotaLimits {
+        switch tier {
+        case .silver:
+            return TierQuotaLimits(messagesLimit: 30, imagesLimit: 5, creditsLimit: 80)
+        case .gold:
+            return TierQuotaLimits(messagesLimit: 75, imagesLimit: 15, creditsLimit: 210)
+        }
     }
 }

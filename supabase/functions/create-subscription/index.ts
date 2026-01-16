@@ -24,7 +24,7 @@ serve(async (req) => {
   }
 
   try {
-    // Verify authentication
+    // Authenticate user
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -35,17 +35,30 @@ serve(async (req) => {
       }
     )
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseClient.auth.getUser()
+    const authHeader = req.headers.get('Authorization')
+    console.log('📥 Authorization header present:', !!authHeader)
 
-    if (authError || !user) {
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
+        JSON.stringify({ error: 'Missing authorization header' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    console.log('📥 Auth header preview:', authHeader?.substring(0, 30) + '...')
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
+
+    if (authError || !user) {
+      console.error('❌ Auth error:', authError)
+      console.error('❌ User:', user)
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized', details: authError?.message }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    console.log('✅ User authenticated:', user.id)
 
     // Parse request body
     const { priceId, tier }: CreateSubscriptionRequest = await req.json()
@@ -59,7 +72,7 @@ serve(async (req) => {
 
     // Get or create Stripe customer
     const { data: profile } = await supabaseClient
-      .from('profiles')
+      .from('user_profiles')
       .select('stripe_customer_id, email, full_name')
       .eq('id', user.id)
       .single()
@@ -79,7 +92,7 @@ serve(async (req) => {
 
       // Save customer ID to profile
       await supabaseClient
-        .from('profiles')
+        .from('user_profiles')
         .update({ stripe_customer_id: customerId })
         .eq('id', user.id)
     }
@@ -97,6 +110,9 @@ serve(async (req) => {
       metadata: {
         user_id: user.id,
         tier: tier,
+      },
+       billing_cycle_anchor_config: {
+        day_of_month: 31,
       },
     })
 

@@ -16,15 +16,24 @@ class ChatViewModel {
     var isTyping = false
     var errorMessage: String?
 
+    // Quota state
+    var quotaExceeded = false
+    var quotaExceededReason: String?
+
     // Current conversation
     var currentConversation: ChatConversation?
 
-    // Database service
+    // Services
     private let databaseService: ChatDatabaseService
+    private let usageService: UsageTrackingService
 
     // MARK: - Initialization
-    init(databaseService: ChatDatabaseService = ChatDatabaseService(supabase: supabase)) {
+    init(
+        databaseService: ChatDatabaseService = ChatDatabaseService(supabase: supabase),
+        usageService: UsageTrackingService = UsageTrackingService(supabase: supabase)
+    ) {
         self.databaseService = databaseService
+        self.usageService = usageService
 
         // Load or create conversation
         Task {
@@ -37,6 +46,28 @@ class ChatViewModel {
     /// Send a user message with optional image and get AI response
     func sendMessage(_ text: String, imageData: Data? = nil) async {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || imageData != nil else { return }
+
+        // CHECK QUOTA BEFORE SENDING
+        let hasImage = imageData != nil
+        do {
+            let (canSend, reason) = try await usageService.canSendMessage(hasImage: hasImage)
+
+            if !canSend {
+                quotaExceeded = true
+                quotaExceededReason = reason
+                errorMessage = reason
+                return
+            }
+
+            // Clear quota exceeded state
+            quotaExceeded = false
+            quotaExceededReason = nil
+        } catch {
+            quotaExceeded = true
+            quotaExceededReason = error.localizedDescription
+            errorMessage = error.localizedDescription
+            return
+        }
 
         // Ensure we have a conversation
         if currentConversation == nil {
@@ -326,8 +357,20 @@ class ChatViewModel {
         // Create a streaming URLSession
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "ChatViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to connect to AI service"])
+        }
+
+        // Check for quota exceeded (HTTP 429)
+        if httpResponse.statusCode == 429 {
+            quotaExceeded = true
+            quotaExceededReason = "You've exceeded your quota limit"
+            throw NSError(domain: "ChatViewModel", code: 429, userInfo: [
+                NSLocalizedDescriptionKey: "You've exceeded your quota limit"
+            ])
+        }
+
+        guard httpResponse.statusCode == 200 else {
             throw NSError(domain: "ChatViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to connect to AI service"])
         }
 
