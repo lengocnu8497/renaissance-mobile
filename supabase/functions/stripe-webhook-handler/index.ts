@@ -1,6 +1,6 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { serve } from 'https://deno.land/std@0.192.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
-import Stripe from 'https://esm.sh/stripe@14.10.0?target=deno'
+import Stripe from 'https://esm.sh/stripe@17.4.0?target=deno&no-check'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY_DEV') || '', {
   apiVersion: '2023-10-16',
@@ -20,7 +20,7 @@ serve(async (req) => {
 
   try {
     const body = await req.text()
-    const event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
+    const event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret)
 
     // Use service role key for server-side operations
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
@@ -162,6 +162,93 @@ serve(async (req) => {
         })
 
         console.log(`Recorded failed payment for invoice: ${invoice.id}`)
+        break
+      }
+
+      case 'payment_intent.succeeded': {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent
+        const customerId = paymentIntent.customer as string
+        const userId = paymentIntent.metadata?.user_id
+
+        // Get user_id from metadata or lookup by customer
+        let profileId = userId
+        if (!profileId && customerId) {
+          const { data: profile } = await supabaseAdmin
+            .from('user_profiles')
+            .select('id')
+            .eq('stripe_customer_id', customerId)
+            .single()
+          profileId = profile?.id
+        }
+
+        if (!profileId) {
+          console.error('Could not find user for payment intent:', paymentIntent.id)
+          break
+        }
+
+        // Create transaction record
+        await supabaseAdmin.from('transactions').insert({
+          user_id: profileId,
+          transaction_type: paymentIntent.metadata?.transaction_type || 'payment',
+          amount_cents: paymentIntent.amount,
+          currency: paymentIntent.currency,
+          status: 'succeeded',
+          stripe_payment_intent_id: paymentIntent.id,
+          stripe_subscription_id: paymentIntent.metadata?.subscription_id || null,
+          metadata: {
+            payment_method: paymentIntent.payment_method,
+            description: paymentIntent.description,
+          },
+        })
+
+        console.log(`Created transaction for successful payment: ${paymentIntent.id}`)
+        break
+      }
+
+      case 'payment_intent.payment_failed': {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent
+        const customerId = paymentIntent.customer as string
+        const userId = paymentIntent.metadata?.user_id
+
+        // Get user_id from metadata or lookup by customer
+        let profileId = userId
+        if (!profileId && customerId) {
+          const { data: profile } = await supabaseAdmin
+            .from('user_profiles')
+            .select('id')
+            .eq('stripe_customer_id', customerId)
+            .single()
+          profileId = profile?.id
+        }
+
+        if (!profileId) {
+          console.error('Could not find user for failed payment intent:', paymentIntent.id)
+          break
+        }
+
+        // If this is tied to a subscription, update status to past_due
+        if (paymentIntent.metadata?.subscription_id) {
+          await supabaseAdmin
+            .from('user_profiles')
+            .update({ subscription_status: 'past_due' })
+            .eq('id', profileId)
+        }
+
+        // Create failed transaction record
+        await supabaseAdmin.from('transactions').insert({
+          user_id: profileId,
+          transaction_type: paymentIntent.metadata?.transaction_type || 'payment',
+          amount_cents: paymentIntent.amount,
+          currency: paymentIntent.currency,
+          status: 'failed',
+          stripe_payment_intent_id: paymentIntent.id,
+          metadata: {
+            error_message: paymentIntent.last_payment_error?.message,
+            error_code: paymentIntent.last_payment_error?.code,
+          },
+        })
+
+        console.log(`Recorded failed payment: ${paymentIntent.id}`)
         break
       }
 

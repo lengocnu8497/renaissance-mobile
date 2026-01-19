@@ -12,8 +12,13 @@ struct SettingsView: View {
     @State private var userProfile: UserProfile?
     @State private var isLoadingProfile = true
     @State private var showCancelConfirmation = false
+    @State private var isCanceling = false
+    @State private var showCancelSuccess = false
+    @State private var showCancelError = false
+    @State private var cancelErrorMessage = ""
 
     private let profileService = UserProfileService(supabase: supabase)
+    private let subscriptionViewModel = SubscriptionViewModel()
 
     var body: some View {
         NavigationStack {
@@ -160,9 +165,14 @@ struct SettingsView: View {
                     showCancelConfirmation = true
                 }) {
                     HStack(spacing: Theme.Spacing.sm) {
-                        Image(systemName: "xmark.circle")
-                            .font(.system(size: 20))
-                        Text("Cancel Subscription")
+                        if isCanceling {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .red))
+                        } else {
+                            Image(systemName: "xmark.circle")
+                                .font(.system(size: 20))
+                        }
+                        Text(isCanceling ? "Canceling..." : "Cancel Subscription")
                             .font(.system(size: 16, weight: .semibold))
                     }
                     .foregroundColor(.red)
@@ -171,7 +181,18 @@ struct SettingsView: View {
                     .background(Color.red.opacity(0.1))
                     .cornerRadius(Theme.CornerRadius.medium)
                 }
+                .disabled(isCanceling)
             }
+        }
+        .alert("Subscription Canceled", isPresented: $showCancelSuccess) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Your subscription has been canceled. You will continue to have access until the end of your billing period.")
+        }
+        .alert("Error", isPresented: $showCancelError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(cancelErrorMessage)
         }
     }
 
@@ -228,8 +249,19 @@ struct SettingsView: View {
 
     // MARK: - Cancel Subscription
     private func cancelSubscription() async {
-        // TODO: Implement subscription cancellation via Stripe API
-        print("Cancel subscription requested")
+        isCanceling = true
+        defer { isCanceling = false }
+
+        let success = await subscriptionViewModel.cancelSubscription()
+
+        if success {
+            // Reload profile to reflect the updated status
+            await loadProfile()
+            showCancelSuccess = true
+        } else {
+            cancelErrorMessage = subscriptionViewModel.errorMessage ?? "Failed to cancel subscription. Please try again."
+            showCancelError = true
+        }
     }
 
     // MARK: - Section Header
