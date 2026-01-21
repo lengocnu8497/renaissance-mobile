@@ -16,6 +16,7 @@ struct SettingsView: View {
     @State private var showCancelSuccess = false
     @State private var showCancelError = false
     @State private var cancelErrorMessage = ""
+    @State private var subscriptionEndDate: Date?
 
     private let profileService = UserProfileService(supabase: supabase)
     private let subscriptionViewModel = SubscriptionViewModel()
@@ -187,7 +188,7 @@ struct SettingsView: View {
         .alert("Subscription Canceled", isPresented: $showCancelSuccess) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Your subscription has been canceled. You will continue to have access until the end of your billing period.")
+            Text("Your subscription has been canceled. You will continue to have access until \(formattedEndDate).")
         }
         .alert("Error", isPresented: $showCancelError) {
             Button("OK", role: .cancel) {}
@@ -252,9 +253,10 @@ struct SettingsView: View {
         isCanceling = true
         defer { isCanceling = false }
 
-        let success = await subscriptionViewModel.cancelSubscription()
+        let result = await subscriptionViewModel.cancelSubscription()
 
-        if success {
+        if result.success {
+            subscriptionEndDate = result.periodEndDate
             // Reload profile to reflect the updated status
             await loadProfile()
             showCancelSuccess = true
@@ -262,6 +264,16 @@ struct SettingsView: View {
             cancelErrorMessage = subscriptionViewModel.errorMessage ?? "Failed to cancel subscription. Please try again."
             showCancelError = true
         }
+    }
+
+    private var formattedEndDate: String {
+        guard let date = subscriptionEndDate else {
+            return "the end of your billing period"
+        }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .long
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
     }
 
     // MARK: - Section Header

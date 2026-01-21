@@ -13,6 +13,11 @@ struct CreateSubscriptionResult {
     let subscriptionId: String
 }
 
+struct CancelSubscriptionResult {
+    let success: Bool
+    let periodEndDate: Date?
+}
+
 @MainActor
 @Observable
 class SubscriptionViewModel {
@@ -138,7 +143,7 @@ class SubscriptionViewModel {
 
     // MARK: - Cancel Subscription
 
-    func cancelSubscription() async -> Bool {
+    func cancelSubscription() async -> CancelSubscriptionResult {
         isLoading = true
         errorMessage = nil
 
@@ -161,10 +166,13 @@ class SubscriptionViewModel {
 
             print("✅ Subscription canceled, will end at period end: \(response.cancelAtPeriodEnd)")
 
+            // Convert Unix timestamp to Date
+            let periodEndDate = Date(timeIntervalSince1970: TimeInterval(response.currentPeriodEnd))
+
             // Refresh subscription data
             await fetchSubscription()
 
-            return response.success
+            return CancelSubscriptionResult(success: response.success, periodEndDate: periodEndDate)
         } catch let error as FunctionsError {
             // Extract more details from the FunctionsError
             switch error {
@@ -176,11 +184,11 @@ class SubscriptionViewModel {
                 print("❌ Cancel subscription relay error")
                 errorMessage = "Network relay error"
             }
-            return false
+            return CancelSubscriptionResult(success: false, periodEndDate: nil)
         } catch {
             errorMessage = error.localizedDescription
             print("❌ Cancel subscription error: \(error)")
-            return false
+            return CancelSubscriptionResult(success: false, periodEndDate: nil)
         }
     }
 }
