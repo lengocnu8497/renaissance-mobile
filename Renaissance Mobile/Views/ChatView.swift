@@ -151,7 +151,7 @@ struct ChatView: View {
         }
 
         // Step 1: Create subscription and get client secret
-        guard let clientSecret = await subscriptionViewModel.createSubscription(
+        guard let subscriptionResult = await subscriptionViewModel.createSubscription(
             priceId: priceId,
             tier: tier
         ) else {
@@ -159,6 +159,9 @@ struct ChatView: View {
             showPaymentError = true
             return
         }
+
+        let clientSecret = subscriptionResult.clientSecret
+        let subscriptionId = subscriptionResult.subscriptionId
 
         // Step 2: Configure Payment Sheet for subscription
         var configuration = PaymentSheet.Configuration()
@@ -205,8 +208,8 @@ struct ChatView: View {
         // Step 4: Handle payment result
         switch result {
         case .completed:
-            // Payment successful - update billing plan immediately
-            await updateBillingPlan(to: selectedTier)
+            // Payment successful - update profile immediately (webhook is backup)
+            await updateSubscriptionInProfile(tier: selectedTier, subscriptionId: subscriptionId)
 
             // Close modal and reset state
             showQuotaExceeded = false
@@ -228,24 +231,36 @@ struct ChatView: View {
         }
     }
 
-    private func updateBillingPlan(to tier: SubscriptionTier) async {
+    /// Updates the user's subscription info in Supabase after successful payment.
+    /// This is the primary update path - webhook serves as backup/redundancy.
+    private func updateSubscriptionInProfile(tier: SubscriptionTier, subscriptionId: String) async {
         do {
             guard let userId = try? await supabase.auth.session.user.id else {
-                print("❌ Failed to get user ID for billing plan update")
+                print("❌ Failed to get user ID for subscription update")
                 return
             }
 
-            // Update the user's billing plan in the database
+            let tierValue = tier.rawValue
+            let userIdString = userId.uuidString.lowercased()
+            print("📝 Updating subscription for user: \(userIdString)")
+            print("📝 - billing_plan: '\(tierValue)'")
+            print("📝 - stripe_subscription_id: '\(subscriptionId)'")
+
             try await supabase.database
                 .from("user_profiles")
-                .update(["billing_plan": tier.rawValue])
-                .eq("id", value: userId.uuidString)
+                .update([
+                    "billing_plan": tierValue,
+                    "stripe_subscription_id": subscriptionId,
+                    "subscription_status": "active",
+                    "subscription_tier": tierValue
+                ])
+                .eq("id", value: userIdString)
                 .execute()
 
-            print("✅ Billing plan updated to \(tier.rawValue)")
+            print("✅ Subscription updated successfully")
         } catch {
-            print("❌ Error updating billing plan: \(error)")
-            // Don't show error to user - webhook will update it anyway
+            print("❌ Error updating subscription: \(error)")
+            // Non-fatal: webhook will eventually update it
         }
     }
 

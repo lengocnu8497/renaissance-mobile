@@ -8,6 +8,16 @@
 import Foundation
 import Supabase
 
+struct CreateSubscriptionResult {
+    let clientSecret: String
+    let subscriptionId: String
+}
+
+struct CancelSubscriptionResult {
+    let success: Bool
+    let periodEndDate: Date?
+}
+
 @MainActor
 @Observable
 class SubscriptionViewModel {
@@ -15,6 +25,7 @@ class SubscriptionViewModel {
     var transactions: [TransactionModel] = []
     var isLoading = false
     var errorMessage: String?
+    var lastCreatedSubscriptionId: String?
 
     // MARK: - Fetch Current Subscription
 
@@ -76,7 +87,7 @@ class SubscriptionViewModel {
 
     // MARK: - Create Subscription
 
-    func createSubscription(priceId: String, tier: SubscriptionTier) async -> String? {
+    func createSubscription(priceId: String, tier: SubscriptionTier) async -> CreateSubscriptionResult? {
         isLoading = true
         errorMessage = nil
 
@@ -114,8 +125,12 @@ class SubscriptionViewModel {
                 )
             )
 
-            print("📱 Subscription created successfully")
-            return response.clientSecret
+            print("📱 Subscription created successfully, ID: \(response.subscriptionId)")
+            lastCreatedSubscriptionId = response.subscriptionId
+            return CreateSubscriptionResult(
+                clientSecret: response.clientSecret,
+                subscriptionId: response.subscriptionId
+            )
         } catch {
             errorMessage = error.localizedDescription
             print("❌ Create subscription error: \(error)")
@@ -123,6 +138,57 @@ class SubscriptionViewModel {
             print("❌ Error description: \(error.localizedDescription)")
 
             return nil
+        }
+    }
+
+    // MARK: - Cancel Subscription
+
+    func cancelSubscription() async -> CancelSubscriptionResult {
+        isLoading = true
+        errorMessage = nil
+
+        defer { isLoading = false }
+
+        do {
+            let session = try await supabase.auth.session
+            print("📱 Canceling subscription for user: \(session.user.id)")
+
+            struct CancelSubscriptionResponse: Decodable {
+                let success: Bool
+                let cancelAtPeriodEnd: Bool
+                let currentPeriodEnd: Int
+            }
+
+            let response: CancelSubscriptionResponse = try await supabase.functions.invoke(
+                "cancel-subscription",
+                options: FunctionInvokeOptions()
+            )
+
+            print("✅ Subscription canceled, will end at period end: \(response.cancelAtPeriodEnd)")
+
+            // Convert Unix timestamp to Date
+            let periodEndDate = Date(timeIntervalSince1970: TimeInterval(response.currentPeriodEnd))
+
+            // Refresh subscription data
+            await fetchSubscription()
+
+            return CancelSubscriptionResult(success: response.success, periodEndDate: periodEndDate)
+        } catch let error as FunctionsError {
+            // Extract more details from the FunctionsError
+            switch error {
+            case .httpError(let code, let data):
+                let responseBody = String(data: data, encoding: .utf8) ?? "Unable to decode"
+                print("❌ Cancel subscription HTTP error \(code): \(responseBody)")
+                errorMessage = "Server error: \(responseBody)"
+            case .relayError:
+                print("❌ Cancel subscription relay error")
+                errorMessage = "Network relay error"
+            }
+            return CancelSubscriptionResult(success: false, periodEndDate: nil)
+        } catch {
+            errorMessage = error.localizedDescription
+            print("❌ Cancel subscription error: \(error)")
+            return CancelSubscriptionResult(success: false, periodEndDate: nil)
         }
     }
 }

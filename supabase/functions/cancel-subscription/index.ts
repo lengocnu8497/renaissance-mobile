@@ -12,11 +12,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-interface CreateSubscriptionRequest {
-  priceId: string
-  tier: 'silver' | 'gold'
-}
-
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -36,8 +31,6 @@ serve(async (req) => {
     )
 
     const authHeader = req.headers.get('Authorization')
-    console.log('📥 Authorization header present:', !!authHeader)
-
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: 'Missing authorization header' }),
@@ -45,13 +38,11 @@ serve(async (req) => {
       )
     }
 
-    console.log('📥 Auth header preview:', authHeader?.substring(0, 30) + '...')
     const token = authHeader.replace('Bearer ', '')
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
 
     if (authError || !user) {
       console.error('❌ Auth error:', authError)
-      console.error('❌ User:', user)
       return new Response(
         JSON.stringify({ error: 'Unauthorized', details: authError?.message }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -60,73 +51,66 @@ serve(async (req) => {
 
     console.log('✅ User authenticated:', user.id)
 
-    // Parse request body
-    const { priceId, tier }: CreateSubscriptionRequest = await req.json()
+    // Get user's subscription ID from profile
+    const { data: profile, error: profileError } = await supabaseClient
+      .from('user_profiles')
+      .select('stripe_subscription_id, stripe_customer_id, subscription_status')
+      .eq('id', user.id)
+      .single()
 
-    if (!priceId || !tier) {
+    console.log('📝 Profile data:', JSON.stringify(profile))
+    console.log('📝 Profile error:', profileError)
+
+    if (profileError) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: priceId, tier' }),
+        JSON.stringify({ error: 'Failed to fetch profile', details: profileError.message }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Get or create Stripe customer
-    const { data: profile } = await supabaseClient
-      .from('user_profiles')
-      .select('stripe_customer_id, email, full_name')
-      .eq('id', user.id)
-      .single()
-
-    let customerId = profile?.stripe_customer_id
-
-    if (!customerId) {
-      // Create new Stripe customer
-      const customer = await stripe.customers.create({
-        email: user.email,
-        name: profile?.full_name || undefined,
-        metadata: {
-          user_id: user.id,
-        },
-      })
-      customerId = customer.id
-
-      // Save customer ID to profile
-      await supabaseClient
-        .from('user_profiles')
-        .update({ stripe_customer_id: customerId })
-        .eq('id', user.id)
+    if (!profile?.stripe_subscription_id) {
+      return new Response(
+        JSON.stringify({
+          error: 'No active subscription found',
+          details: 'stripe_subscription_id is null. The webhook may not have updated the profile yet.',
+          profile: {
+            hasCustomerId: !!profile?.stripe_customer_id,
+            subscriptionStatus: profile?.subscription_status
+          }
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    // Create subscription
-    const subscription = await stripe.subscriptions.create({
-      customer: customerId,
-      items: [{ price: priceId }],
-      payment_behavior: 'default_incomplete',
-      payment_settings: {
-        payment_method_types: ['card'],
-        save_default_payment_method: 'on_subscription',
-      },
-      expand: ['latest_invoice.payment_intent'],
-      metadata: {
-        user_id: user.id,
-        tier: tier,
-      },
+    const subscriptionId = profile.stripe_subscription_id
+    console.log('📝 Canceling subscription:', subscriptionId)
+
+    // Cancel subscription at period end (graceful cancellation)
+    const subscription = await stripe.subscriptions.update(subscriptionId, {
+      cancel_at_period_end: true,
     })
 
-    const invoice = subscription.latest_invoice as Stripe.Invoice
-    const paymentIntent = invoice.payment_intent as Stripe.PaymentIntent
+    console.log('✅ Subscription set to cancel at period end:', subscription.cancel_at_period_end)
 
-    // Return client secret for Payment Sheet
+    // Update user profile to reflect pending cancellation
+    const userIdString = user.id.toLowerCase()
+    await supabaseClient
+      .from('user_profiles')
+      .update({
+        subscription_status: 'canceled',
+      })
+      .eq('id', userIdString)
+
     return new Response(
       JSON.stringify({
-        subscriptionId: subscription.id,
-        clientSecret: paymentIntent.client_secret,
-        customerId: customerId,
+        success: true,
+        cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        currentPeriodEnd: subscription.current_period_end,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (error) {
-    console.error('Error creating subscription:', error)
+    console.error('Error canceling subscription:', error)
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
