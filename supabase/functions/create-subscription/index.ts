@@ -36,7 +36,6 @@ serve(async (req) => {
     )
 
     const authHeader = req.headers.get('Authorization')
-    console.log('📥 Authorization header present:', !!authHeader)
 
     if (!authHeader) {
       return new Response(
@@ -45,7 +44,6 @@ serve(async (req) => {
       )
     }
 
-    console.log('📥 Auth header preview:', authHeader?.substring(0, 30) + '...')
     const token = authHeader.replace('Bearer ', '')
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
 
@@ -57,8 +55,6 @@ serve(async (req) => {
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
-
-    console.log('✅ User authenticated:', user.id)
 
     // Parse request body
     const { priceId, tier }: CreateSubscriptionRequest = await req.json()

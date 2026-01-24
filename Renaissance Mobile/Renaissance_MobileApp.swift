@@ -25,19 +25,33 @@ struct Renaissance_MobileApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if authViewModel.isAuthenticated {
-                ContentView()
+            Group {
+                if authViewModel.isAuthenticated {
+                    ContentView()
+                        .environment(authViewModel)
+                } else {
+                    WelcomeView(
+                        onStartConsultation: {
+                            // Navigate to consultation (can still bypass auth for this flow if needed)
+                        },
+                        onSignIn: {
+                            // Auth handled by AuthViewModel, no need to manually set state
+                        }
+                    )
                     .environment(authViewModel)
-            } else {
-                WelcomeView(
-                    onStartConsultation: {
-                        // Navigate to consultation (can still bypass auth for this flow if needed)
-                    },
-                    onSignIn: {
-                        // Auth handled by AuthViewModel, no need to manually set state
-                    }
-                )
-                .environment(authViewModel)
+                }
+            }
+            .sheet(isPresented: Binding(
+                get: { authViewModel.showUpdatePassword },
+                set: { authViewModel.showUpdatePassword = $0 }
+            )) {
+                UpdatePasswordView()
+                    .environment(authViewModel)
+            }
+            .onOpenURL { url in
+                Task {
+                    await authViewModel.handleDeepLink(url)
+                }
             }
         }
     }

@@ -26,7 +26,9 @@ let supabase = SupabaseClient(
     supabaseKey: EnvironmentConfig.supabaseAnonKey,
     options: SupabaseClientOptions(
         auth: .init(
-            emitLocalSessionAsInitialSession: true
+            redirectToURL: URL(string: "renaissance://reset-callback"),
+            flowType: .pkce,
+            autoRefreshToken: true
         )
     )
 )

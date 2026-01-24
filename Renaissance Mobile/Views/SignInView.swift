@@ -16,6 +16,7 @@ struct SignInView: View {
     @State private var isPasswordVisible = false
     @State private var showError = false
     @State private var showSignUp = false
+    @State private var showResetPassword = false
 
     var onSignIn: (() -> Void)?
 
@@ -85,7 +86,7 @@ struct SignInView: View {
 
                     // Forgot password
                     Button(action: {
-                        // Handle forgot password
+                        showResetPassword = true
                     }) {
                         Text("Forgot your password?")
                             .font(.system(size: 14, weight: .medium))
@@ -191,7 +192,12 @@ struct SignInView: View {
 
                     // Continue with Apple
                     Button(action: {
-                        onSignIn?()
+                        Task {
+                            await authViewModel.signInWithApple()
+                            if authViewModel.isAuthenticated {
+                                onSignIn?()
+                            }
+                        }
                     }) {
                         HStack(spacing: 12) {
                             Image(systemName: "apple.logo")
@@ -241,6 +247,13 @@ struct SignInView: View {
                     },
                     onSignIn: {
                         showSignUp = false
+                    }
+                )
+            }
+            .sheet(isPresented: $showResetPassword) {
+                ResetPasswordView(
+                    onSignIn: {
+                        showResetPassword = false
                     }
                 )
             }

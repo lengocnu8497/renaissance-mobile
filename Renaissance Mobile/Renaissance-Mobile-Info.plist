@@ -18,10 +18,10 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>CFBundleURLName</key>
-			<string>renaissance.stripe-redirect</string>
+			<string>renaissance.deep-links</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>renaissance://payment-complete</string>
+				<string>renaissance</string>
 			</array>
 		</dict>
 	</array>
