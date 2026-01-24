@@ -33,9 +33,6 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Now we have the authenticated user - you can use user.id, user.email, etc.
-    console.log(`Request from authenticated user: ${user.email}`)
-
     const { message, conversationHistory, previousResponseId, imageBase64, conversationId } = await req.json()
 
     // QUOTA ENFORCEMENT: Check user's subscription and usage limits
@@ -119,8 +116,6 @@ Deno.serve(async (req) => {
       )
     }
 
-    console.log(`Quota check passed - Messages: ${usageRecord.messages_used}/${usageRecord.messages_limit}, Images: ${usageRecord.images_used}/${usageRecord.images_limit}, Credits: ${usageRecord.credits_used}/${usageRecord.credits_limit}`)
-
     // Validate input
     if (!message || typeof message !== 'string') {
       return new Response(
@@ -162,7 +157,6 @@ Deno.serve(async (req) => {
           }
         }
       ]
-      console.log('Including image in user message')
     } else {
       userMessageContent = message
     }
@@ -173,7 +167,6 @@ Deno.serve(async (req) => {
     // If we have a previous response ID, include it for context continuity
     if (previousResponseId) {
       inputMessages = [{ role: 'user', content: userMessageContent }]
-      console.log(`Including previous_response_id: ${previousResponseId}`)
     } else if (conversationHistory && conversationHistory.length > 0) {
       // Include conversation history for first message or non-reasoning models
       inputMessages = [
@@ -249,9 +242,6 @@ Deno.serve(async (req) => {
           tokens_used: tokensUsed
         })}\n\n`))
 
-        console.log(`Streaming complete. Response ID: ${responseId}, Tokens: ${tokensUsed}, Full text length: ${fullText.length}`)
-        console.log(`Conversation ID: ${conversationId}`)
-
         // INCREMENT USAGE COUNTERS after successful response
         try {
           const { error: updateError } = await supabaseClient
@@ -264,10 +254,7 @@ Deno.serve(async (req) => {
             .eq('id', usageRecord.id)
 
           if (updateError) {
-            console.error('Failed to update usage counters:', updateError)
             // Don't fail the request - just log the error
-          } else {
-            console.log(`Usage updated: messages +${messageCost}, images +${imageCost}, credits +${creditCost}`)
           }
         } catch (usageUpdateError) {
           console.error('Exception updating usage:', usageUpdateError)

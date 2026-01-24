@@ -258,7 +258,12 @@ struct SignUpView: View {
 
                     // Continue with Apple
                     Button(action: {
-                        // TODO: Implement Apple Sign In
+                        Task {
+                            await authViewModel.signInWithApple()
+                            if authViewModel.isAuthenticated {
+                                onSignUp?()
+                            }
+                        }
                     }) {
                         HStack(spacing: 12) {
                             Image(systemName: "apple.logo")

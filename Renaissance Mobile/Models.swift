@@ -149,6 +149,8 @@ struct UserProfile: Identifiable, Codable {
     var zipCode: String?
     var billingPlan: BillingPlan
     var profileImageUrl: String?
+    var subscriptionStatus: SubscriptionStatus?
+    var subscriptionCurrentPeriodEnd: Date?
     let createdAt: Date
     var updatedAt: Date
     var metadata: [String: AnyCodable]?
@@ -161,6 +163,8 @@ struct UserProfile: Identifiable, Codable {
         case zipCode = "zip_code"
         case billingPlan = "billing_plan"
         case profileImageUrl = "profile_image_url"
+        case subscriptionStatus = "subscription_status"
+        case subscriptionCurrentPeriodEnd = "subscription_current_period_end"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case metadata
@@ -174,6 +178,8 @@ struct UserProfile: Identifiable, Codable {
         zipCode: String? = nil,
         billingPlan: BillingPlan = .free,
         profileImageUrl: String? = nil,
+        subscriptionStatus: SubscriptionStatus? = nil,
+        subscriptionCurrentPeriodEnd: Date? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         metadata: [String: AnyCodable]? = nil
@@ -185,6 +191,8 @@ struct UserProfile: Identifiable, Codable {
         self.zipCode = zipCode
         self.billingPlan = billingPlan
         self.profileImageUrl = profileImageUrl
+        self.subscriptionStatus = subscriptionStatus
+        self.subscriptionCurrentPeriodEnd = subscriptionCurrentPeriodEnd
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.metadata = metadata

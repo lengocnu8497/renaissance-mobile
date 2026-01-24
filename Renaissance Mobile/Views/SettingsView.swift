@@ -129,6 +129,16 @@ struct SettingsView: View {
                         }
                         .padding(.horizontal, Theme.Spacing.lg)
                         .padding(.bottom, Theme.Spacing.md)
+
+                        // Subscription Status
+                        if let status = userProfile?.subscriptionStatus {
+                            Divider()
+                                .padding(.horizontal, Theme.Spacing.lg)
+
+                            subscriptionStatusView(status: status)
+                                .padding(.horizontal, Theme.Spacing.lg)
+                                .padding(.bottom, Theme.Spacing.md)
+                        }
                     }
                 }
             }
@@ -144,7 +154,9 @@ struct SettingsView: View {
     // MARK: - Cancel Subscription Button
     private var cancelSubscriptionButton: some View {
         VStack(spacing: Theme.Spacing.md) {
-            if userProfile?.billingPlan == .silver || userProfile?.billingPlan == .gold {
+            // Only show cancel button for active paid subscriptions (not already canceled)
+            if (userProfile?.billingPlan == .silver || userProfile?.billingPlan == .gold) &&
+                userProfile?.subscriptionStatus != .canceled {
                 // Disclaimer note
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     HStack(alignment: .top, spacing: Theme.Spacing.sm) {
@@ -209,6 +221,81 @@ struct SettingsView: View {
                 .font(.system(size: 14))
                 .foregroundColor(Theme.Colors.textSecondary)
         }
+    }
+
+    @ViewBuilder
+    private func subscriptionStatusView(status: SubscriptionStatus) -> some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            Image(systemName: statusIcon(for: status))
+                .font(.system(size: 14))
+                .foregroundColor(statusColor(for: status))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Status: \(statusDisplayName(for: status))")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(statusColor(for: status))
+
+                if status == .canceled, let endDate = userProfile?.subscriptionCurrentPeriodEnd {
+                    Text("Access until \(formatDate(endDate))")
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                }
+            }
+
+            Spacer()
+        }
+    }
+
+    private func statusIcon(for status: SubscriptionStatus) -> String {
+        switch status {
+        case .active:
+            return "checkmark.circle.fill"
+        case .canceled:
+            return "clock.fill"
+        case .pastDue:
+            return "exclamationmark.triangle.fill"
+        default:
+            return "questionmark.circle.fill"
+        }
+    }
+
+    private func statusColor(for status: SubscriptionStatus) -> Color {
+        switch status {
+        case .active:
+            return .green
+        case .canceled:
+            return .orange
+        case .pastDue:
+            return .red
+        default:
+            return Theme.Colors.textSecondary
+        }
+    }
+
+    private func statusDisplayName(for status: SubscriptionStatus) -> String {
+        switch status {
+        case .active:
+            return "Active"
+        case .canceled:
+            return "Cancels at end of billing period"
+        case .pastDue:
+            return "Past Due"
+        case .trialing:
+            return "Trial"
+        case .incomplete:
+            return "Incomplete"
+        case .incompleteExpired:
+            return "Expired"
+        case .unpaid:
+            return "Unpaid"
+        }
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .long
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
     }
 
     // MARK: - Computed Properties

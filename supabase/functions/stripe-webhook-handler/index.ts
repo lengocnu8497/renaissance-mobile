@@ -25,8 +25,6 @@ serve(async (req) => {
     // Use service role key for server-side operations
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
-    console.log('Processing webhook event:', event.type)
-
     switch (event.type) {
       case 'customer.subscription.created':
       case 'customer.subscription.updated': {
@@ -51,7 +49,6 @@ serve(async (req) => {
           })
           .eq('id', userId)
 
-        console.log(`Updated subscription for user ${userId}`)
         break
       }
 
@@ -76,7 +73,6 @@ serve(async (req) => {
           })
           .eq('id', userId)
 
-        console.log(`Canceled subscription for user ${userId}`)
         break
       }
 
@@ -116,7 +112,6 @@ serve(async (req) => {
           },
         })
 
-        console.log(`Created transaction for successful payment: ${invoice.id}`)
         break
       }
 
@@ -161,7 +156,6 @@ serve(async (req) => {
           },
         })
 
-        console.log(`Recorded failed payment for invoice: ${invoice.id}`)
         break
       }
 
@@ -201,7 +195,6 @@ serve(async (req) => {
           },
         })
 
-        console.log(`Created transaction for successful payment: ${paymentIntent.id}`)
         break
       }
 
@@ -248,12 +241,8 @@ serve(async (req) => {
           },
         })
 
-        console.log(`Recorded failed payment: ${paymentIntent.id}`)
         break
       }
-
-      default:
-        console.log(`Unhandled event type: ${event.type}`)
     }
 
     return new Response(JSON.stringify({ received: true }), { status: 200 })

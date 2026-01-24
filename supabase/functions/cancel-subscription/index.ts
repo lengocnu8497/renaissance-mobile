@@ -49,17 +49,12 @@ serve(async (req) => {
       )
     }
 
-    console.log('✅ User authenticated:', user.id)
-
     // Get user's subscription ID from profile
     const { data: profile, error: profileError } = await supabaseClient
       .from('user_profiles')
       .select('stripe_subscription_id, stripe_customer_id, subscription_status')
       .eq('id', user.id)
       .single()
-
-    console.log('📝 Profile data:', JSON.stringify(profile))
-    console.log('📝 Profile error:', profileError)
 
     if (profileError) {
       return new Response(
@@ -83,14 +78,11 @@ serve(async (req) => {
     }
 
     const subscriptionId = profile.stripe_subscription_id
-    console.log('📝 Canceling subscription:', subscriptionId)
 
     // Cancel subscription at period end (graceful cancellation)
     const subscription = await stripe.subscriptions.update(subscriptionId, {
       cancel_at_period_end: true,
     })
-
-    console.log('✅ Subscription set to cancel at period end:', subscription.cancel_at_period_end)
 
     // Update user profile to reflect pending cancellation
     const userIdString = user.id.toLowerCase()

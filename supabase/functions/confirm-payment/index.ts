@@ -65,10 +65,6 @@ serve(async (req) => {
       )
     }
 
-    console.log('Processing payment confirmation for user:', user.id)
-    console.log('Confirmation token:', confirmation_token)
-    console.log('Amount:', amount_cents, 'Currency:', currency)
-
     // Get or create Stripe customer
     const { data: profile } = await supabaseClient
       .from('profiles')
@@ -79,7 +75,6 @@ serve(async (req) => {
     let customerId = profile?.stripe_customer_id
 
     if (!customerId) {
-      console.log('Creating new Stripe customer for user:', user.id)
       // Create new Stripe customer
       const customer = await stripe.customers.create({
         email: profile?.email || user.email,
@@ -95,7 +90,6 @@ serve(async (req) => {
         .update({ stripe_customer_id: customerId })
         .eq('id', user.id)
 
-      console.log('Created Stripe customer:', customerId)
     }
 
     // Create Payment Intent with the confirmation token
@@ -111,8 +105,6 @@ serve(async (req) => {
         ...metadata,
       },
     })
-
-    console.log('Payment Intent created:', paymentIntent.id, 'Status:', paymentIntent.status)
 
     // Optional: Log transaction in database
     try {
