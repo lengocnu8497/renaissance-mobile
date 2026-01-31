@@ -43,6 +43,20 @@ class ChatViewModel {
 
     // MARK: - Public Methods
 
+    /// Start a new chat session - clears UI and creates fresh conversation
+    func startNewChat() async {
+        // Clear the current messages from UI
+        messages = []
+        currentConversation = nil
+        errorMessage = nil
+        isTyping = false
+        quotaExceeded = false
+        quotaExceededReason = nil
+
+        // Create a new conversation with greeting
+        await createNewConversation()
+    }
+
     /// Send a user message with optional image and get AI response
     func sendMessage(_ text: String, imageData: Data? = nil) async {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || imageData != nil else { return }
@@ -128,33 +142,18 @@ class ChatViewModel {
         // Clear error state
         errorMessage = nil
 
-        // Show typing indicator
+        // Show typing indicator (stays visible until first streaming delta arrives)
         isTyping = true
 
         do {
-            // Add a placeholder AI message for streaming
-            let aiMessageId = UUID()
-            let placeholderMessage = ChatMessage(
-                id: aiMessageId,
-                conversationId: conversation.id,
-                userId: userId,
-                messageText: "",
-                isFromUser: false,
-                createdAt: Date()
-            )
-            messages.append(placeholderMessage)
-
-            // Hide typing indicator since we're now showing the streaming message
-            isTyping = false
-
-            // Get the previous response ID (from the last AI message before the placeholder)
-            let previousResponseId = messages.dropLast().last(where: { !$0.isFromUser })?.responseId
+            // Get the previous response ID from the last AI message
+            let previousResponseId = messages.last(where: { !$0.isFromUser })?.responseId
 
             // Track response time
             let startTime = Date()
 
             // Call Supabase Edge Function with streaming
-            // The streaming will update the placeholder message in real-time
+            // Message is created on first delta and updated in real-time
             let response = try await callAIFunction(
                 userMessage: text,
                 previousResponseId: previousResponseId,
@@ -164,15 +163,19 @@ class ChatViewModel {
 
             let responseTime = Int(Date().timeIntervalSince(startTime) * 1000) // milliseconds
 
-            // Update the final message with the complete response
+            // Ensure typing indicator is hidden after streaming completes
+            isTyping = false
+
+            // Update the final message with complete metadata
             if let lastIndex = messages.lastIndex(where: { !$0.isFromUser }) {
-                let finalMessage = ChatMessage(
-                    id: aiMessageId,
+                var finalMessage = messages[lastIndex]
+                finalMessage = ChatMessage(
+                    id: finalMessage.id,
                     conversationId: conversation.id,
                     userId: userId,
                     messageText: response.reply,
                     isFromUser: false,
-                    createdAt: messages[lastIndex].createdAt,
+                    createdAt: finalMessage.createdAt,
                     openaiResponseId: response.responseId,
                     openaiModel: response.model,
                     tokensUsed: response.tokensUsed,
@@ -376,6 +379,8 @@ class ChatViewModel {
 
         var fullText = ""
         var finalResponseId: String?
+        var aiMessageId: UUID?
+        let messageCreatedAt = Date()
 
         // Process the Server-Sent Events stream
         for try await line in bytes.lines {
@@ -393,20 +398,35 @@ class ChatViewModel {
                     fullText += event.delta ?? ""
                     finalResponseId = event.responseId
 
-                    // Update the last message in real-time on main thread
+                    // Update UI on main thread
                     await MainActor.run {
-                        if let lastIndex = messages.lastIndex(where: { !$0.isFromUser }) {
-                            var updatedMessage = messages[lastIndex]
-                            updatedMessage.openaiResponseId = finalResponseId
-                            messages[lastIndex] = ChatMessage(
-                                id: updatedMessage.id,
-                                conversationId: updatedMessage.conversationId,
-                                userId: updatedMessage.userId,
+                        // On first delta: hide typing indicator and create the AI message
+                        if aiMessageId == nil {
+                            isTyping = false
+                            aiMessageId = UUID()
+                            let newMessage = ChatMessage(
+                                id: aiMessageId!,
+                                conversationId: conversationId,
+                                userId: nil,
                                 messageText: fullText,
                                 isFromUser: false,
-                                createdAt: updatedMessage.createdAt,
+                                createdAt: messageCreatedAt,
                                 openaiResponseId: finalResponseId
                             )
+                            messages.append(newMessage)
+                        } else {
+                            // Subsequent deltas: update existing message
+                            if let lastIndex = messages.lastIndex(where: { $0.id == aiMessageId }) {
+                                messages[lastIndex] = ChatMessage(
+                                    id: aiMessageId!,
+                                    conversationId: conversationId,
+                                    userId: messages[lastIndex].userId,
+                                    messageText: fullText,
+                                    isFromUser: false,
+                                    createdAt: messageCreatedAt,
+                                    openaiResponseId: finalResponseId
+                                )
+                            }
                         }
                     }
 
