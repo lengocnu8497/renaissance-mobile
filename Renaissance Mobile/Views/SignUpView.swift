@@ -44,9 +44,9 @@ struct SignUpView: View {
 
                     // Full Name field
                     VStack(alignment: .leading, spacing: 8) {
-                        TextField("Full Name", text: $fullName)
+                        TextField("", text: $fullName, prompt: Text("Full Name").foregroundColor(Color.gray.opacity(0.7)))
                             .font(.system(size: 16))
-                            .foregroundColor(Theme.Colors.textWelcomePrimary)
+                            .foregroundColor(.black)
                             .padding(.horizontal, 20)
                             .padding(.vertical, 18)
                             .background(Color.white)
@@ -62,9 +62,9 @@ struct SignUpView: View {
 
                     // Email field
                     VStack(alignment: .leading, spacing: 8) {
-                        TextField("Email", text: $email)
+                        TextField("", text: $email, prompt: Text("Email").foregroundColor(Color.gray.opacity(0.7)))
                             .font(.system(size: 16))
-                            .foregroundColor(Theme.Colors.textWelcomePrimary)
+                            .foregroundColor(.black)
                             .padding(.horizontal, 20)
                             .padding(.vertical, 18)
                             .background(Color.white)
@@ -83,13 +83,13 @@ struct SignUpView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             if isPasswordVisible {
-                                TextField("Password", text: $password)
+                                TextField("", text: $password, prompt: Text("Password").foregroundColor(Color.gray.opacity(0.7)))
                                     .font(.system(size: 16))
-                                    .foregroundColor(Theme.Colors.textWelcomePrimary)
+                                    .foregroundColor(.black)
                             } else {
-                                SecureField("Password", text: $password)
+                                SecureField("", text: $password, prompt: Text("Password").foregroundColor(Color.gray.opacity(0.7)))
                                     .font(.system(size: 16))
-                                    .foregroundColor(Theme.Colors.textWelcomePrimary)
+                                    .foregroundColor(.black)
                             }
 
                             Button(action: {
@@ -116,13 +116,13 @@ struct SignUpView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             if isConfirmPasswordVisible {
-                                TextField("Confirm Password", text: $confirmPassword)
+                                TextField("", text: $confirmPassword, prompt: Text("Confirm Password").foregroundColor(Color.gray.opacity(0.7)))
                                     .font(.system(size: 16))
-                                    .foregroundColor(Theme.Colors.textWelcomePrimary)
+                                    .foregroundColor(.black)
                             } else {
-                                SecureField("Confirm Password", text: $confirmPassword)
+                                SecureField("", text: $confirmPassword, prompt: Text("Confirm Password").foregroundColor(Color.gray.opacity(0.7)))
                                     .font(.system(size: 16))
-                                    .foregroundColor(Theme.Colors.textWelcomePrimary)
+                                    .foregroundColor(.black)
                             }
 
                             Button(action: {

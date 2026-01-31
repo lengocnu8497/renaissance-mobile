@@ -10,9 +10,12 @@ import SwiftUI
 struct PostLoginHomeView: View {
     @State private var searchText = ""
     @State private var navigateToChat = false
+    @State private var firstName: String = ""
 
     var onNavigateToChat: ((String) -> Void)?
     var onNavigateToProcedures: (() -> Void)?
+
+    private let userProfileService = UserProfileService(supabase: supabase)
 
     var body: some View {
         NavigationStack {
@@ -28,12 +31,28 @@ struct PostLoginHomeView: View {
             }
             .background(Theme.Colors.backgroundHome)
             .navigationBarHidden(true)
+            .task {
+                await loadUserProfile()
+            }
+        }
+    }
+
+    // MARK: - Data Loading
+    private func loadUserProfile() async {
+        do {
+            let profile = try await userProfileService.getUserProfile()
+            if let fullName = profile.fullName, !fullName.isEmpty {
+                // Extract first name (first word of full name)
+                firstName = fullName.components(separatedBy: " ").first ?? fullName
+            }
+        } catch {
+            print("Failed to load user profile: \(error)")
         }
     }
 
     // MARK: - Subviews
     private var headerSection: some View {
-        Text("Hello, Jessica")
+        Text("Hello, \(firstName.isEmpty ? "there" : firstName)")
             .font(Theme.Typography.homeHeader)
             .foregroundColor(Theme.Colors.textHomePrimary)
             .padding(.horizontal, Theme.Spacing.lg)
