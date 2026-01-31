@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import OpenAI from 'openai'
+import prompts from './prompts.json' with { type: 'json' }
 
 Deno.serve(async (req) => {
   try {
@@ -125,16 +126,7 @@ Deno.serve(async (req) => {
     }
 
     // System instructions for the AI
-    const instructions = "You are an educational assistant helping people understand plastic surgery procedures. " +
-                "You provide evidence-based information about cosmetic procedures, candidacy requirements, " +
-                "and what to expect. You always emphasize the importance of consulting with board-certified " +
-                "plastic surgeons and never provide specific medical advice or diagnoses. You are supportive but " +
-                "realistic about expectations. Please maintain the tone of being concise, conversational, and " +
-                "action-oriented while still being educational. " +
-                "When users share images of themselves or reference photos, you can provide general educational " +
-                "information about relevant procedures they might be interested in, but you must always clarify " +
-                "that you cannot provide medical diagnoses or personalized treatment plans. Instead, guide them " +
-                "toward consulting with board-certified plastic surgeons for professional assessments."
+    const instructions = prompts.systemInstructions
 
     // Initialize OpenAI client
     const openai = new OpenAI({

@@ -294,8 +294,17 @@ struct ChatView: View {
 
                 Spacer()
 
-                // Spacer for symmetry
-                Color.clear.frame(width: 44, height: 44)
+                // New Chat button
+                Button(action: {
+                    Task {
+                        await viewModel.startNewChat()
+                    }
+                }) {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(Theme.Colors.textChatPrimary)
+                }
+                .disabled(viewModel.isLoading || viewModel.isTyping)
             }
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.vertical, Theme.Spacing.md)
