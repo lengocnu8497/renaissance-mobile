@@ -10,6 +10,7 @@ import SwiftUI
 struct WelcomeView: View {
     @State private var showSignIn = false
     @State private var showSignUp = false
+    @State private var showConsultationQuiz = false
 
     var onStartConsultation: (() -> Void)?
     var onSignIn: (() -> Void)?
@@ -55,6 +56,15 @@ struct WelcomeView: View {
                 }
             )
         }
+        .sheet(isPresented: $showConsultationQuiz) {
+            ConsultationQuizView(
+                onContinue: { birthday in
+                    showConsultationQuiz = false
+                    // TODO: Store birthday and continue to next step or signup
+                    showSignUp = true
+                }
+            )
+        }
     }
 
     // MARK: - Main Content
@@ -79,7 +89,7 @@ struct WelcomeView: View {
         VStack(spacing: 16) {
             // Start Consultation Button
             Button(action: {
-                onStartConsultation?()
+                showConsultationQuiz = true
             }) {
                 Text("Start My Consultation")
                     .font(.system(size: 18, weight: .semibold))
