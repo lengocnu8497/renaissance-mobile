@@ -169,10 +169,16 @@ struct ChatView: View {
         configuration.allowsDelayedPaymentMethods = true
         configuration.returnURL = "renaissance://payment-complete"
 
-        // Appearance customization
+        // Appearance customization - light theme for input fields
         var appearance = PaymentSheet.Appearance()
-        appearance.colors.primary = UIColor(red: 208/255, green: 187/255, blue: 149/255, alpha: 1.0)
+        appearance.colors.primary = UIColor(red: 208/255, green: 187/255, blue: 149/255, alpha: 1.0) // Renaissance gold
         appearance.colors.background = UIColor(red: 247/255, green: 247/255, blue: 246/255, alpha: 1.0)
+        appearance.colors.componentBackground = UIColor.white
+        appearance.colors.componentBorder = UIColor(red: 230/255, green: 230/255, blue: 230/255, alpha: 1.0)
+        appearance.colors.componentDivider = UIColor(red: 230/255, green: 230/255, blue: 230/255, alpha: 1.0)
+        appearance.colors.text = UIColor(red: 51/255, green: 51/255, blue: 51/255, alpha: 1.0)
+        appearance.colors.textSecondary = UIColor(red: 130/255, green: 130/255, blue: 130/255, alpha: 1.0)
+        appearance.colors.placeholderText = UIColor(red: 160/255, green: 160/255, blue: 160/255, alpha: 1.0)
         appearance.cornerRadius = 16
         configuration.appearance = appearance
 
@@ -181,6 +187,12 @@ struct ChatView: View {
         configuration.billingDetailsCollectionConfiguration.email = .always
         configuration.billingDetailsCollectionConfiguration.phone = .always
         configuration.billingDetailsCollectionConfiguration.address = .full
+
+        // Enable Apple Pay for subscriptions
+        configuration.applePay = PaymentSheet.ApplePayConfiguration(
+            merchantId: EnvironmentConfig.appleMerchantId,
+            merchantCountryCode: "US"
+        )
 
         // Step 3: Initialize Payment Sheet with subscription setup intent client secret
         // For subscriptions, the client secret is from the payment intent attached to the subscription
