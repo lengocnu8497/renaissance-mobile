@@ -66,14 +66,39 @@ struct MessageBubbleView: View {
             VStack(alignment: .leading, spacing: 6) {
                 timestampText(prefix: "Concierge")
 
-                Text(message.text)
-                    .font(Theme.Typography.messageText)
-                    .foregroundColor(Theme.Colors.textChatPrimary)
-                    .padding(.horizontal, Theme.Spacing.lg)
-                    .padding(.vertical, Theme.Spacing.md)
-                    .background(Theme.Colors.conciergeBubble)
-                    .cornerRadius(Theme.CornerRadius.medium)
-                    .cornerRadius(2, corners: [.bottomLeft])
+                VStack(alignment: .leading, spacing: 8) {
+                    // Display text if available
+                    if !message.text.isEmpty {
+                        Text(message.text)
+                            .font(Theme.Typography.messageText)
+                            .foregroundColor(Theme.Colors.textChatPrimary)
+                            .padding(.horizontal, Theme.Spacing.lg)
+                            .padding(.vertical, Theme.Spacing.md)
+                            .background(Theme.Colors.conciergeBubble)
+                            .cornerRadius(Theme.CornerRadius.medium)
+                            .cornerRadius(2, corners: [.bottomLeft])
+                    }
+
+                    // Display AI-generated image if available
+                    if let imageUrlString = message.generatedImageUrl,
+                       let url = URL(string: imageUrlString) {
+                        CachedAsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: 250, maxHeight: 250)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
+                        } placeholder: {
+                            RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
+                                .fill(Color.gray.opacity(0.2))
+                                .frame(width: 200, height: 200)
+                                .overlay(
+                                    ProgressView()
+                                        .tint(Theme.Colors.primaryChat)
+                                )
+                        }
+                    }
+                }
             }
             .frame(maxWidth: 280, alignment: .leading)
 

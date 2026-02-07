@@ -178,8 +178,10 @@ class ChatViewModel {
                     createdAt: finalMessage.createdAt,
                     openaiResponseId: response.responseId,
                     openaiModel: response.model,
+                    hasImage: response.generatedImageUrl != nil,
                     tokensUsed: response.tokensUsed,
-                    responseTimeMs: responseTime
+                    responseTimeMs: responseTime,
+                    generatedImageUrl: response.generatedImageUrl
                 )
                 messages[lastIndex] = finalMessage
 
@@ -379,6 +381,7 @@ class ChatViewModel {
 
         var fullText = ""
         var finalResponseId: String?
+        var generatedImageUrl: String?
         var aiMessageId: UUID?
         let messageCreatedAt = Date()
 
@@ -434,6 +437,7 @@ class ChatViewModel {
                     // Final message received
                     fullText = event.reply ?? fullText
                     finalResponseId = event.responseId
+                    generatedImageUrl = event.generatedImageUrl
                     break
 
                 case "error":
@@ -445,7 +449,7 @@ class ChatViewModel {
             }
         }
 
-        return ChatAIResponse(reply: fullText, responseId: finalResponseId, model: nil, tokensUsed: nil)
+        return ChatAIResponse(reply: fullText, responseId: finalResponseId, model: nil, tokensUsed: nil, generatedImageUrl: generatedImageUrl)
     }
 
     private func getCurrentTimestamp() -> String {
@@ -475,12 +479,14 @@ struct ChatAIResponse: Decodable {
     let responseId: String? // OpenAI response ID for next request
     let model: String?
     let tokensUsed: Int?
+    let generatedImageUrl: String? // DALL-E generated image URL
 
     enum CodingKeys: String, CodingKey {
         case reply
         case responseId
         case model
         case tokensUsed = "tokens_used"
+        case generatedImageUrl = "generated_image_url"
     }
 }
 
@@ -492,4 +498,14 @@ struct StreamEvent: Decodable {
     let reply: String?
     let responseId: String?
     let error: String?
+    let generatedImageUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case delta
+        case reply
+        case responseId
+        case error
+        case generatedImageUrl = "generated_image_url"
+    }
 }

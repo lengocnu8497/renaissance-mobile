@@ -2,6 +2,52 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import OpenAI from 'openai'
 import prompts from './prompts.json' with { type: 'json' }
 
+// DALL-E image generation function
+async function generateImageWithDalle(openai: OpenAI, prompt: string): Promise<string> {
+  const response = await openai.images.generate({
+    model: "dall-e-3",
+    prompt: prompt,
+    n: 1,
+    size: "1024x1024",
+    quality: "standard",
+    response_format: "b64_json"
+  })
+  return response.data[0].b64_json!
+}
+
+// Upload generated image to Supabase Storage
+async function uploadGeneratedImage(
+  supabaseClient: any,
+  userId: string,
+  conversationId: string,
+  base64Data: string
+): Promise<string> {
+  const imageId = crypto.randomUUID()
+  const filePath = `${userId}/${conversationId}/generated-${imageId}.png`
+
+  // Decode base64 to binary
+  const binaryString = atob(base64Data)
+  const bytes = new Uint8Array(binaryString.length)
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i)
+  }
+
+  const { error } = await supabaseClient.storage
+    .from('chat-images')
+    .upload(filePath, bytes, { contentType: 'image/png' })
+
+  if (error) {
+    console.error('Failed to upload generated image:', error)
+    throw error
+  }
+
+  const { data } = supabaseClient.storage
+    .from('chat-images')
+    .getPublicUrl(filePath)
+
+  return data.publicUrl
+}
+
 Deno.serve(async (req) => {
   try {
     // AUTHENTICATION: Create Supabase client with user's auth context
@@ -195,7 +241,12 @@ Deno.serve(async (req) => {
     let fullText = ''
     let responseId = ''
     let tokensUsed = 0
+    let generatedImageUrl: string | null = null
+    let dalleCreditsUsed = 0
     const modelUsed = Deno.env.get('MODEL') || 'gpt-4o'
+
+    // DALL-E generation costs 8 additional credits
+    const dalleCredits = 8
 
     // Process the OpenAI stream in the background
     ;(async () => {
@@ -225,13 +276,61 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Check if GPT-4o wants to generate an image
+        const generateMatch = fullText.match(/\[GENERATE_IMAGE:\s*(.+?)\]/s)
+        if (generateMatch) {
+          const dallePrompt = generateMatch[1].trim()
+
+          // Check if user has enough credits for DALL-E generation
+          const canGenerateImage = (usageRecord.credits_used + creditCost + dalleCredits) <= usageRecord.credits_limit
+
+          if (canGenerateImage) {
+            try {
+              console.log('Generating image with DALL-E:', dallePrompt.substring(0, 100) + '...')
+
+              // Generate image with DALL-E
+              const imageBase64 = await generateImageWithDalle(openai, dallePrompt)
+
+              // Upload to Supabase Storage
+              generatedImageUrl = await uploadGeneratedImage(
+                supabaseClient,
+                user.id,
+                conversationId,
+                imageBase64
+              )
+
+              dalleCreditsUsed = dalleCredits
+              console.log('Image generated and uploaded:', generatedImageUrl)
+            } catch (dalleError) {
+              console.error('DALL-E generation failed:', dalleError)
+              // Continue without image, add note to response
+              fullText = fullText.replace(
+                /\[GENERATE_IMAGE:\s*.+?\]/s,
+                '\n\n(Image generation failed. Please try again.)'
+              )
+            }
+          } else {
+            // Not enough credits for image generation
+            fullText = fullText.replace(
+              /\[GENERATE_IMAGE:\s*.+?\]/s,
+              '\n\n(Image generation skipped - quota limit reached. Please upgrade your plan for more credits.)'
+            )
+          }
+
+          // Remove the marker from displayed text (if image was generated successfully)
+          if (generatedImageUrl) {
+            fullText = fullText.replace(/\[GENERATE_IMAGE:\s*.+?\]/s, '').trim()
+          }
+        }
+
         // Send final message with complete response
         await writer.write(encoder.encode(`data: ${JSON.stringify({
           type: 'done',
           reply: fullText,
           responseId: responseId,
           model: modelUsed,
-          tokens_used: tokensUsed
+          tokens_used: tokensUsed,
+          generated_image_url: generatedImageUrl
         })}\n\n`))
 
         // INCREMENT USAGE COUNTERS after successful response
@@ -240,13 +339,13 @@ Deno.serve(async (req) => {
             .from('usage_tracking')
             .update({
               messages_used: usageRecord.messages_used + messageCost,
-              images_used: usageRecord.images_used + imageCost,
-              credits_used: usageRecord.credits_used + creditCost
+              images_used: usageRecord.images_used + imageCost + (generatedImageUrl ? 1 : 0),
+              credits_used: usageRecord.credits_used + creditCost + dalleCreditsUsed
             })
             .eq('id', usageRecord.id)
 
           if (updateError) {
-            // Don't fail the request - just log the error
+            console.error('Failed to update usage:', updateError)
           }
         } catch (usageUpdateError) {
           console.error('Exception updating usage:', usageUpdateError)

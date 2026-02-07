@@ -178,7 +178,6 @@ struct ChatView: View {
         appearance.colors.componentDivider = UIColor(red: 230/255, green: 230/255, blue: 230/255, alpha: 1.0)
         appearance.colors.text = UIColor(red: 51/255, green: 51/255, blue: 51/255, alpha: 1.0)
         appearance.colors.textSecondary = UIColor(red: 130/255, green: 130/255, blue: 130/255, alpha: 1.0)
-        appearance.colors.placeholderText = UIColor(red: 160/255, green: 160/255, blue: 160/255, alpha: 1.0)
         appearance.cornerRadius = 16
         configuration.appearance = appearance
 
