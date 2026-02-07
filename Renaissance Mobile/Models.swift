@@ -59,6 +59,9 @@ struct ChatMessage: Identifiable, Codable {
     // Transient property for local image data (not stored in DB)
     var imageData: Data?
 
+    // AI-generated image URL (from DALL-E)
+    var generatedImageUrl: String?
+
     // Computed properties for backward compatibility with UI
     var text: String { messageText }
     var timestamp: String {
@@ -83,6 +86,7 @@ struct ChatMessage: Identifiable, Codable {
         case tokensUsed = "tokens_used"
         case responseTimeMs = "response_time_ms"
         case metadata
+        case generatedImageUrl = "generated_image_url"
     }
 
     // Initializer for creating new messages
@@ -101,7 +105,8 @@ struct ChatMessage: Identifiable, Codable {
         tokensUsed: Int? = nil,
         responseTimeMs: Int? = nil,
         metadata: [String: AnyCodable]? = nil,
-        imageData: Data? = nil
+        imageData: Data? = nil,
+        generatedImageUrl: String? = nil
     ) {
         self.id = id
         self.conversationId = conversationId
@@ -118,6 +123,7 @@ struct ChatMessage: Identifiable, Codable {
         self.responseTimeMs = responseTimeMs
         self.metadata = metadata
         self.imageData = imageData
+        self.generatedImageUrl = generatedImageUrl
     }
 
     // Legacy initializer for backward compatibility
@@ -137,6 +143,7 @@ struct ChatMessage: Identifiable, Codable {
         self.responseTimeMs = nil
         self.metadata = nil
         self.imageData = imageData
+        self.generatedImageUrl = nil
     }
 }
 
