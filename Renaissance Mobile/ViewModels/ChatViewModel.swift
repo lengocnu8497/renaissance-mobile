@@ -35,9 +35,9 @@ class ChatViewModel {
         self.databaseService = databaseService
         self.usageService = usageService
 
-        // Load or create conversation
+        // Always start a fresh conversation when the app opens
         Task {
-            await loadOrCreateConversation()
+            await createNewConversation()
         }
     }
 
@@ -166,16 +166,18 @@ class ChatViewModel {
             // Ensure typing indicator is hidden after streaming completes
             isTyping = false
 
-            // Update the final message with complete metadata
-            if let lastIndex = messages.lastIndex(where: { !$0.isFromUser }) {
-                var finalMessage = messages[lastIndex]
+            // Update existing AI message if created during streaming, or create a new one
+            let finalMessage: ChatMessage
+            if let aiMsgId = response.streamingMessageId,
+               let existingIndex = messages.lastIndex(where: { $0.id == aiMsgId }) {
+                // Update the message created during delta streaming
                 finalMessage = ChatMessage(
-                    id: finalMessage.id,
+                    id: aiMsgId,
                     conversationId: conversation.id,
                     userId: userId,
                     messageText: response.reply,
                     isFromUser: false,
-                    createdAt: finalMessage.createdAt,
+                    createdAt: messages[existingIndex].createdAt,
                     openaiResponseId: response.responseId,
                     openaiModel: response.model,
                     hasImage: response.generatedImageUrl != nil,
@@ -183,15 +185,32 @@ class ChatViewModel {
                     responseTimeMs: responseTime,
                     generatedImageUrl: response.generatedImageUrl
                 )
-                messages[lastIndex] = finalMessage
+                messages[existingIndex] = finalMessage
+            } else {
+                // No message was created during streaming (no delta events) — append a new one
+                finalMessage = ChatMessage(
+                    id: UUID(),
+                    conversationId: conversation.id,
+                    userId: userId,
+                    messageText: response.reply,
+                    isFromUser: false,
+                    createdAt: Date(),
+                    openaiResponseId: response.responseId,
+                    openaiModel: response.model,
+                    hasImage: response.generatedImageUrl != nil,
+                    tokensUsed: response.tokensUsed,
+                    responseTimeMs: responseTime,
+                    generatedImageUrl: response.generatedImageUrl
+                )
+                messages.append(finalMessage)
+            }
 
-                // Save AI message to database
-                Task {
-                    do {
-                        _ = try await databaseService.saveMessage(finalMessage)
-                    } catch {
-                        print("Failed to save AI message: \(error)")
-                    }
+            // Save AI message to database
+            Task {
+                do {
+                    _ = try await databaseService.saveMessage(finalMessage)
+                } catch {
+                    print("Failed to save AI message: \(error)")
                 }
             }
 
@@ -296,7 +315,7 @@ class ChatViewModel {
         let greeting = ChatMessage(
             conversationId: conversation.id,
             userId: userId,
-            messageText: "Hello! Welcome to Renaissance. I'm your personal beauty concierge. How can I assist you today?",
+            messageText: "Hello! I'm Rena -- your personal beauty concierge assistant. How can I assist you today?",
             isFromUser: false,
             createdAt: Date()
         )
@@ -318,12 +337,19 @@ class ChatViewModel {
         imageData: Data? = nil,
         conversationId: UUID
     ) async throws -> ChatAIResponse {
-        // Prepare the request payload with Codable struct
-        let conversationHistory = messages.map { msg in
-            ConversationMessage(
-                role: msg.isFromUser ? "user" : "assistant",
-                content: msg.text
-            )
+        // Only send conversation history if we don't have a previousResponseId
+        // (OpenAI maintains context via response ID, so history is redundant and wastes TPM)
+        let conversationHistory: [ConversationMessage]?
+        if previousResponseId != nil {
+            conversationHistory = nil
+        } else {
+            // Trim to last 6 messages to avoid unbounded payload growth
+            conversationHistory = messages.suffix(6).map { msg in
+                ConversationMessage(
+                    role: msg.isFromUser ? "user" : "assistant",
+                    content: msg.text
+                )
+            }
         }
 
         // Convert image to base64 if provided
@@ -359,8 +385,8 @@ class ChatViewModel {
         }
         request.setValue(EnvironmentConfig.supabaseAnonKey, forHTTPHeaderField: "apikey")
 
-        // Create a streaming URLSession
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        // Call the edge function
+        let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw NSError(domain: "ChatViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to connect to AI service"])
@@ -376,80 +402,35 @@ class ChatViewModel {
         }
 
         guard httpResponse.statusCode == 200 else {
-            throw NSError(domain: "ChatViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to connect to AI service"])
-        }
+            let errorBody = String(data: data, encoding: .utf8) ?? ""
+            print("AI service error - Status: \(httpResponse.statusCode), Body: \(errorBody)")
 
-        var fullText = ""
-        var finalResponseId: String?
-        var generatedImageUrl: String?
-        var aiMessageId: UUID?
-        let messageCreatedAt = Date()
-
-        // Process the Server-Sent Events stream
-        for try await line in bytes.lines {
-            if line.hasPrefix("data: ") {
-                let jsonString = String(line.dropFirst(6))
-
-                guard let data = jsonString.data(using: .utf8),
-                      let event = try? JSONDecoder().decode(StreamEvent.self, from: data) else {
-                    continue
-                }
-
-                switch event.type {
-                case "delta":
-                    // Append delta to full text
-                    fullText += event.delta ?? ""
-                    finalResponseId = event.responseId
-
-                    // Update UI on main thread
-                    await MainActor.run {
-                        // On first delta: hide typing indicator and create the AI message
-                        if aiMessageId == nil {
-                            isTyping = false
-                            aiMessageId = UUID()
-                            let newMessage = ChatMessage(
-                                id: aiMessageId!,
-                                conversationId: conversationId,
-                                userId: nil,
-                                messageText: fullText,
-                                isFromUser: false,
-                                createdAt: messageCreatedAt,
-                                openaiResponseId: finalResponseId
-                            )
-                            messages.append(newMessage)
-                        } else {
-                            // Subsequent deltas: update existing message
-                            if let lastIndex = messages.lastIndex(where: { $0.id == aiMessageId }) {
-                                messages[lastIndex] = ChatMessage(
-                                    id: aiMessageId!,
-                                    conversationId: conversationId,
-                                    userId: messages[lastIndex].userId,
-                                    messageText: fullText,
-                                    isFromUser: false,
-                                    createdAt: messageCreatedAt,
-                                    openaiResponseId: finalResponseId
-                                )
-                            }
-                        }
-                    }
-
-                case "done":
-                    // Final message received
-                    fullText = event.reply ?? fullText
-                    finalResponseId = event.responseId
-                    generatedImageUrl = event.generatedImageUrl
-                    break
-
-                case "error":
-                    throw NSError(domain: "ChatViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: event.error ?? "Unknown error"])
-
-                default:
-                    break
-                }
+            let errorMessage: String
+            switch httpResponse.statusCode {
+            case 401:
+                errorMessage = "Authentication failed. Please sign in again."
+            case 403:
+                errorMessage = "No active subscription. Please upgrade to use the AI concierge."
+            case 500:
+                errorMessage = "Server error. Please try again later."
+            default:
+                errorMessage = "Failed to connect to AI service (HTTP \(httpResponse.statusCode))"
             }
+            throw NSError(domain: "ChatViewModel", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMessage])
         }
 
-        return ChatAIResponse(reply: fullText, responseId: finalResponseId, model: nil, tokensUsed: nil, generatedImageUrl: generatedImageUrl)
+        // Parse JSON response
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NSError(domain: "ChatViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response from AI service"])
+        }
+
+        let fullText = json["reply"] as? String ?? ""
+        let finalResponseId = json["responseId"] as? String
+        let model = json["model"] as? String
+        let tokensUsed = json["tokens_used"] as? Int
+        let generatedImageUrl = json["generated_image_url"] as? String
+
+        return ChatAIResponse(reply: fullText, responseId: finalResponseId, model: model, tokensUsed: tokensUsed, generatedImageUrl: generatedImageUrl, streamingMessageId: nil)
     }
 
     private func getCurrentTimestamp() -> String {
@@ -463,7 +444,7 @@ class ChatViewModel {
 
 struct ChatAIRequest: Encodable {
     let message: String
-    let conversationHistory: [ConversationMessage]
+    let conversationHistory: [ConversationMessage]?
     let previousResponseId: String?
     let imageBase64: String?
     let conversationId: String
@@ -474,20 +455,13 @@ struct ConversationMessage: Encodable {
     let content: String
 }
 
-struct ChatAIResponse: Decodable {
+struct ChatAIResponse {
     let reply: String
     let responseId: String? // OpenAI response ID for next request
     let model: String?
     let tokensUsed: Int?
     let generatedImageUrl: String? // DALL-E generated image URL
-
-    enum CodingKeys: String, CodingKey {
-        case reply
-        case responseId
-        case model
-        case tokensUsed = "tokens_used"
-        case generatedImageUrl = "generated_image_url"
-    }
+    let streamingMessageId: UUID? // ID of message created during delta streaming
 }
 
 // MARK: - Streaming Event Model

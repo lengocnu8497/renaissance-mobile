@@ -170,7 +170,7 @@ class ChatDatabaseService {
         let fileExtension = getImageExtension(from: imageData)
 
         // Create file path: {user_id}/{conversation_id}/{message_id}.{ext}
-        let filePath = "\(userId.uuidString)/\(conversationId.uuidString)/\(messageId.uuidString).\(fileExtension)"
+        let filePath = "\(userId.uuidString.lowercased())/\(conversationId.uuidString.lowercased())/\(messageId.uuidString.lowercased()).\(fileExtension)"
 
         // Upload to storage bucket
         try await supabase.storage
