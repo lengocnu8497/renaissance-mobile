@@ -84,14 +84,10 @@ serve(async (req) => {
       cancel_at_period_end: true,
     })
 
-    // Update user profile to reflect pending cancellation
-    const userIdString = user.id.toLowerCase()
-    await supabaseClient
-      .from('user_profiles')
-      .update({
-        subscription_status: 'canceled',
-      })
-      .eq('id', userIdString)
+    // Note: Do NOT set subscription_status to 'canceled' here.
+    // Stripe still considers the subscription 'active' until the period ends.
+    // The stripe-webhook-handler will set it to 'canceled' when Stripe fires
+    // the 'customer.subscription.deleted' event at the end of the billing period.
 
     return new Response(
       JSON.stringify({
