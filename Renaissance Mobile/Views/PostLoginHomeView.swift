@@ -113,7 +113,7 @@ struct PostLoginHomeView: View {
         HeroCardView(
             title: "Explore Procedures",
             subtitle: "Find the perfect treatment for you.",
-            imageName: nil,
+            imageName: "HeroImage",
             showLaunchingBadge: true
         )
         .padding(.horizontal, Theme.Spacing.lg)

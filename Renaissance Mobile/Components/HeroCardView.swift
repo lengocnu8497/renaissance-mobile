@@ -14,65 +14,83 @@ struct HeroCardView: View {
     var showLaunchingBadge: Bool = false
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            // Background gradient
+        ZStack(alignment: .bottomLeading) {
+            // Background image or fallback gradient
+            if let imageName = imageName {
+                Image(imageName)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(height: 220)
+                    .clipped()
+            } else {
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color.pink.opacity(0.3),
+                        Color.orange.opacity(0.2),
+                        Theme.Colors.primaryHome.opacity(0.4)
+                    ]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .frame(height: 220)
+            }
+
+            // Dark gradient overlay for text legibility
             LinearGradient(
                 gradient: Gradient(colors: [
-                    Color.pink.opacity(0.3),
-                    Color.orange.opacity(0.2),
-                    Theme.Colors.primaryHome.opacity(0.4)
+                    .clear,
+                    .black.opacity(0.6)
                 ]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
+                startPoint: .top,
+                endPoint: .bottom
             )
-            .frame(height: 200)
-            .cornerRadius(Theme.CornerRadius.medium)
+            .frame(height: 220)
 
-            // Launching Soon Badge
-            if showLaunchingBadge {
-                Text("Launching Soon")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.25))
-                    .cornerRadius(16)
-                    .padding(Theme.Spacing.lg)
-            }
-
-            // Content overlay
-            VStack {
-                Spacer()
-                HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text(title)
-                        .font(Theme.Typography.heroTitle)
+            // Content
+            VStack(alignment: .leading, spacing: 0) {
+                // Launching Soon Badge
+                if showLaunchingBadge {
+                    Text("Launching Soon")
+                        .font(.system(size: 11, weight: .semibold))
+                        .tracking(0.5)
+                        .textCase(.uppercase)
                         .foregroundColor(.white)
-                        .lineLimit(2)
-
-                    Text(subtitle)
-                        .font(Theme.Typography.heroSubtitle)
-                        .foregroundColor(.white.opacity(0.95))
-                        .lineLimit(1)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(.ultraThinMaterial)
+                        .cornerRadius(4)
+                        .padding(.bottom, Theme.Spacing.md)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Spacer()
 
-                // Arrow button
-                Circle()
-                    .fill(Color.white.opacity(0.2))
-                    .frame(width: 32, height: 32)
-                    .overlay(
-                        Image(systemName: "arrow.forward")
-                            .font(.system(size: 16, weight: .semibold))
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(title)
+                            .font(Theme.Typography.heroTitle)
                             .foregroundColor(.white)
-                    )
+                            .lineLimit(2)
+
+                        Text(subtitle)
+                            .font(Theme.Typography.heroSubtitle)
+                            .foregroundColor(.white.opacity(0.85))
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "arrow.forward")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 28, height: 28)
+                        .background(.white.opacity(0.2))
+                        .clipShape(Circle())
+                }
             }
             .padding(Theme.Spacing.lg)
-            }
         }
-        .frame(height: 200)
+        .frame(height: 220)
+        .cornerRadius(Theme.CornerRadius.medium)
         .shadow(
             color: Theme.Shadow.card.color,
             radius: Theme.Shadow.card.radius,
@@ -86,7 +104,8 @@ struct HeroCardView: View {
     HeroCardView(
         title: "Explore Procedures",
         subtitle: "Find the perfect treatment for you.",
-        imageName: nil
+        imageName: "HeroImage",
+        showLaunchingBadge: true
     )
     .padding()
     .background(Theme.Colors.backgroundHome)
