@@ -1,5 +1,6 @@
 {
   "imports": {
-    "openai": "npm:openai@^4.76.0"
+    "openai": "npm:openai@^4.76.0",
+    "@google/genai": "npm:@google/genai@^1.0.0"
   }
 }
