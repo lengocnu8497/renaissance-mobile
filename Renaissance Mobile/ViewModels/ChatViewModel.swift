@@ -165,6 +165,7 @@ class ChatViewModel {
 
             // Ensure typing indicator is hidden after streaming completes
             isTyping = false
+            await MainActor.run { SoundHapticManager.shared.playReplyWoosh() }
 
             // Update existing AI message if created during streaming, or create a new one
             let finalMessage: ChatMessage

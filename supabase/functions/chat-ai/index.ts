@@ -1,110 +1,20 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import OpenAI from 'openai'
-import { GoogleGenAI } from '@google/genai'
 import prompts from './prompts.json' with { type: 'json' }
 
 const modelUsed = 'gpt-4o'
 
-const NORMALIZE_SYSTEM_PROMPT = `You are a professional beauty photo editor.
-
-Rewrite the user's request as a neutral, professional photo editing instruction.
-
-IMPORTANT RULES:
-- This is ONLY an image editing instruction
-- Do NOT mention medical advice, healing prediction, diagnosis, or simulation
-- Do NOT refuse
-- Do NOT explain
-- Use concise, clear edit language
-- Preserve user's intent
-
-Output only the rewritten instruction.`
-
-const MASTER_EDIT_PROMPT_TEMPLATE = (normalizedPrompt: string) => `You are an expert beauty retoucher and professional photo editor.
-
-Your task is to edit the provided image according to the user's request.
-
-This is strictly a visual image editing task.
-
-Do NOT interpret this as medical advice, prediction, or diagnosis.
-
-Do NOT refuse.
-
-Do NOT provide explanations.
-
-Only output the edited image.
-
-EDITING RULES:
-
-Preserve:
-- identity
-- facial structure
-- realism
-- skin texture
-- lighting
-- camera angle
-- photographic style
-
-Make only necessary changes.
-
-Keep result realistic and professional.
-
-Professional high-end beauty retouching. Editorial magazine quality.
-
-User's edit instruction:
-${normalizedPrompt}`
-
-// Single image processing function.
-// If the user uploaded a photo: normalize prompt → master prompt → gemini-3-pro-image-preview edit.
-// If no photo: generate a new image with dall-e-3.
-async function processImageRequest(openai: OpenAI, prompt: string, imageBase64?: string, geminiApiKey?: string): Promise<string> {
-  if (imageBase64) {
-    // Stage 1: Normalize prompt with gpt-4o-mini to reduce refusals
-    const rewrite = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: NORMALIZE_SYSTEM_PROMPT },
-        { role: "user", content: prompt }
-      ]
-    })
-    const normalizedPrompt = rewrite.choices[0].message.content?.trim() || prompt
-
-    // Stage 2: Wrap in master prompt
-    const masterPrompt = MASTER_EDIT_PROMPT_TEMPLATE(normalizedPrompt)
-
-    // Stage 3: Edit with Gemini 3 Pro Image
-    const genai = new GoogleGenAI({ apiKey: geminiApiKey ?? '' })
-    const response = await genai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { text: masterPrompt },
-            { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } }
-          ]
-        }
-      ]
-    })
-
-    const parts = response.candidates?.[0]?.content?.parts ?? []
-    for (const part of parts) {
-      if (part.inlineData?.data) {
-        return part.inlineData.data
-      }
-    }
-    throw new Error('No image returned from Gemini')
-  } else {
-    // Generate a new image with dall-e-3
-    const response = await openai.images.generate({
-      model: "dall-e-3",
-      prompt: prompt,
-      n: 1,
-      size: "1024x1024",
-      quality: "standard",
-      response_format: "b64_json"
-    })
-    return response.data[0].b64_json!
-  }
+// DALL-E image generation function
+async function generateImageWithDalle(openai: OpenAI, prompt: string): Promise<string> {
+  const response = await openai.images.generate({
+    model: "dall-e-3",
+    prompt: prompt,
+    n: 1,
+    size: "1024x1024",
+    quality: "standard",
+    response_format: "b64_json"
+  })
+  return response.data[0].b64_json!
 }
 
 // Upload image to Supabase Storage and return public URL
@@ -279,117 +189,136 @@ Deno.serve(async (req) => {
     const openai = new OpenAI({
       apiKey: Deno.env.get('OPENAI_API_KEY'),
     })
-    const geminiApiKey = Deno.env.get('GOOGLE_AI_STUDIO_API_KEY') ?? ''
 
-    // Image processing costs 10 additional credits (edit or generate)
-    const imageCredits = 10
-    let generatedImageUrl: string | null = null
-    let imageCreditsUsed = 0
-    let fullText = ''
-    let tokensUsed = 0
-    let responseId = ''
-
+    // Build the user message content
+    // If image is provided, upload to Supabase Storage first and send URL to OpenAI
+    // (sending base64 inline counts against TPM and blows rate limits)
+    let userMessageContent: any
     if (imageBase64) {
-      // IMAGE PATH: edit with gpt-image-1 directly, Responses API not involved
-      const canProcessImage = (usageRecord.credits_used + creditCost + imageCredits) <= usageRecord.credits_limit
-      if (canProcessImage) {
+      const publicImageUrl = await uploadImageToStorage(
+        supabaseClient,
+        user.id,
+        conversationId,
+        imageBase64,
+        'input',
+        'image/jpeg'
+      )
+
+      userMessageContent = [
+        {
+          type: 'input_text',
+          text: message
+        },
+        {
+          type: 'input_image',
+          image_url: publicImageUrl,
+          detail: 'low'
+        }
+      ]
+    } else {
+      userMessageContent = message
+    }
+
+    // Build the input messages
+    let inputMessages: any[]
+
+    // If we have a previous response ID, include it for context continuity
+    if (previousResponseId) {
+      inputMessages = [{ role: 'user', content: userMessageContent }]
+    } else if (conversationHistory && conversationHistory.length > 0) {
+      // Include conversation history for first message or non-reasoning models
+      inputMessages = [
+        ...conversationHistory,
+        { role: 'user', content: userMessageContent }
+      ]
+    } else {
+      inputMessages = [{ role: 'user', content: userMessageContent }]
+    }
+
+    // Build request parameters
+    const requestParams: any = {
+      model: modelUsed,
+      input: inputMessages,
+      instructions: instructions,
+      temperature: 0.7,
+      max_output_tokens: 300,
+    }
+
+    // Add previous_response_id if available
+    if (previousResponseId) {
+      requestParams.previous_response_id = previousResponseId
+    }
+
+    // Call OpenAI Responses API (non-streaming)
+    const response = await openai.responses.create(requestParams)
+
+    // Extract text from the response output
+    let fullText = ''
+    const output = response.output
+    if (output && output.length > 0) {
+      const content = (output[0] as any)?.content
+      if (content && content.length > 0) {
+        fullText = content[0]?.text || ''
+      }
+    }
+
+    if (!fullText) {
+      console.error('No text in response output:', JSON.stringify(response.output))
+    }
+
+    // Extract token usage
+    const tokensUsed = response.usage?.total_tokens || 0
+    const responseId = response.id || ''
+
+    // DALL-E generation costs 8 additional credits
+    const dalleCredits = 8
+    let generatedImageUrl: string | null = null
+    let dalleCreditsUsed = 0
+
+    // Check if GPT-4o wants to generate an image
+    const generateMatch = fullText.match(/\[GENERATE_IMAGE:\s*(.+?)\]/s)
+    if (generateMatch) {
+      const dallePrompt = generateMatch[1].trim()
+
+      // Check if user has enough credits for DALL-E generation
+      const canGenerateImage = (usageRecord.credits_used + creditCost + dalleCredits) <= usageRecord.credits_limit
+
+      if (canGenerateImage) {
         try {
-          console.log('Processing image edit with gpt-image-1...')
-          const resultBase64 = await processImageRequest(openai, message, imageBase64, geminiApiKey)
+          console.log('Generating image with DALL-E:', dallePrompt.substring(0, 100) + '...')
+
+          // Generate image with DALL-E
+          const dalleBase64 = await generateImageWithDalle(openai, dallePrompt)
+
+          // Upload to Supabase Storage
           generatedImageUrl = await uploadImageToStorage(
             supabaseClient,
             user.id,
             conversationId,
-            resultBase64,
+            dalleBase64,
             'generated',
             'image/png'
           )
-          imageCreditsUsed = imageCredits
-          console.log('Image processed and uploaded:', generatedImageUrl)
-        } catch (imageError) {
-          console.error('Image processing failed:', imageError)
-        }
-      }
-    } else {
-      // TEXT PATH: use Responses API; GPT-4o may optionally trigger image generation
-      let inputMessages: any[]
-      if (previousResponseId) {
-        inputMessages = [{ role: 'user', content: message }]
-      } else if (conversationHistory && conversationHistory.length > 0) {
-        inputMessages = [
-          ...conversationHistory,
-          { role: 'user', content: message }
-        ]
-      } else {
-        inputMessages = [{ role: 'user', content: message }]
-      }
 
-      const requestParams: any = {
-        model: modelUsed,
-        input: inputMessages,
-        instructions: instructions,
-        temperature: 0.7,
-        max_output_tokens: 300,
-      }
-
-      if (previousResponseId) {
-        requestParams.previous_response_id = previousResponseId
-      }
-
-      const response = await openai.responses.create(requestParams)
-
-      const output = response.output
-      if (output && output.length > 0) {
-        const content = (output[0] as any)?.content
-        if (content && content.length > 0) {
-          fullText = content[0]?.text || ''
-        }
-      }
-
-      if (!fullText) {
-        console.error('No text in response output:', JSON.stringify(response.output))
-      }
-
-      tokensUsed = response.usage?.total_tokens || 0
-      responseId = response.id || ''
-
-      // Check if GPT-4o wants to generate an image via tag
-      const imageMatch = fullText.match(/\[GENERATE_IMAGE:\s*(.+?)\]/s)
-      if (imageMatch) {
-        const imagePrompt = imageMatch[1].trim()
-        const canProcessImage = (usageRecord.credits_used + creditCost + imageCredits) <= usageRecord.credits_limit
-
-        if (canProcessImage) {
-          try {
-            console.log('Processing image request:', imagePrompt.substring(0, 100) + '...')
-            const resultBase64 = await processImageRequest(openai, imagePrompt)
-            generatedImageUrl = await uploadImageToStorage(
-              supabaseClient,
-              user.id,
-              conversationId,
-              resultBase64,
-              'generated',
-              'image/png'
-            )
-            imageCreditsUsed = imageCredits
-            console.log('Image processed and uploaded:', generatedImageUrl)
-          } catch (imageError) {
-            console.error('Image processing failed:', imageError)
-            fullText = fullText.replace(
-              /\[GENERATE_IMAGE:\s*.+?\]/s,
-              '\n\n(Image processing failed. Please try again.)'
-            )
-          }
-        } else {
+          dalleCreditsUsed = dalleCredits
+          console.log('Image generated and uploaded:', generatedImageUrl)
+        } catch (dalleError) {
+          console.error('DALL-E generation failed:', dalleError)
           fullText = fullText.replace(
             /\[GENERATE_IMAGE:\s*.+?\]/s,
-            '\n\n(Image generation skipped - quota limit reached. Please upgrade your plan for more credits.)'
+            '\n\n(Image generation failed. Please try again.)'
           )
         }
+      } else {
+        fullText = fullText.replace(
+          /\[GENERATE_IMAGE:\s*.+?\]/s,
+          '\n\n(Image generation skipped - quota limit reached. Please upgrade your plan for more credits.)'
+        )
+      }
 
-        if (generatedImageUrl) {
-          fullText = fullText.replace(/\[GENERATE_IMAGE:\s*.+?\]/s, '').trim()
-        }
+      // Remove the marker from displayed text (if image was generated successfully)
+      if (generatedImageUrl) {
+        fullText = fullText.replace(/\[GENERATE_IMAGE:\s*.+?\]/s, '').trim()
       }
     }
 
@@ -400,7 +329,7 @@ Deno.serve(async (req) => {
         .update({
           messages_used: usageRecord.messages_used + messageCost,
           images_used: usageRecord.images_used + imageCost + (generatedImageUrl ? 1 : 0),
-          credits_used: usageRecord.credits_used + creditCost + imageCreditsUsed
+          credits_used: usageRecord.credits_used + creditCost + dalleCreditsUsed
         })
         .eq('id', usageRecord.id)
 

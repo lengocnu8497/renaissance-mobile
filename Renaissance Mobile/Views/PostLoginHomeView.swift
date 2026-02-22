@@ -11,6 +11,7 @@ struct PostLoginHomeView: View {
     @State private var searchText = ""
     @State private var navigateToChat = false
     @State private var firstName: String = ""
+    @FocusState private var isSearchFocused: Bool
 
     var onNavigateToChat: ((String) -> Void)?
     var onNavigateToProcedures: (() -> Void)?
@@ -31,6 +32,9 @@ struct PostLoginHomeView: View {
             }
             .background(Theme.Colors.backgroundHome)
             .navigationBarHidden(true)
+            .onTapGesture {
+                isSearchFocused = false
+            }
             .task {
                 await loadUserProfile()
             }
@@ -61,41 +65,25 @@ struct PostLoginHomeView: View {
     }
 
     private var searchBar: some View {
-        HStack(spacing: 0) {
-            TextField("Ask about a procedure...", text: $searchText)
+        HStack(spacing: Theme.Spacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(Color(hex: "#8E4C5C").opacity(0.6))
+
+            TextField("Enter name, tags, description...", text: $searchText)
                 .font(Theme.Typography.inputText)
                 .foregroundColor(Theme.Colors.textHomePrimary)
-                .padding(.horizontal, Theme.Spacing.lg)
-                .padding(.vertical, Theme.Spacing.md)
-                .background(Theme.Colors.inputBackground)
-                .cornerRadius(Theme.CornerRadius.medium, corners: [.topLeft, .bottomLeft])
+                .focused($isSearchFocused)
                 .onSubmit {
-                    // Navigate to chat when user presses return/enter
                     if !searchText.isEmpty {
                         handleSearchInput(searchText)
                     }
                 }
-
-            Button(action: {
-                if !searchText.isEmpty {
-                    handleSearchInput(searchText)
-                }
-            }) {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 48, height: 48)
-                    .background(Theme.Colors.primaryHome)
-                    .cornerRadius(Theme.CornerRadius.medium, corners: [.topRight, .bottomRight])
-            }
         }
-        .cornerRadius(Theme.CornerRadius.medium)
-        .shadow(
-            color: Theme.Shadow.card.color,
-            radius: 2,
-            x: 0,
-            y: 1
-        )
+        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.vertical, 14)
+        .background(Theme.Colors.iconCircleBackground.opacity(0.45))
+        .cornerRadius(Theme.CornerRadius.xlarge)
         .padding(.horizontal, Theme.Spacing.lg)
         .padding(.vertical, Theme.Spacing.md)
     }

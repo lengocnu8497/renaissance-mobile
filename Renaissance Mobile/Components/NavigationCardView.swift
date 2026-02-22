@@ -13,6 +13,9 @@ struct NavigationCardView: View {
     let subtitle: String
     let iconBackgroundColor: Color
     let iconColor: Color
+    var backgroundColor: Color = Theme.Colors.cardBackground
+    var titleColor: Color = Color(red: 61/255, green: 43/255, blue: 46/255)
+    var subtitleColor: Color = Color(red: 184/255, green: 169/255, blue: 171/255)
 
     var body: some View {
         VStack(spacing: Theme.Spacing.lg) {
@@ -22,7 +25,7 @@ struct NavigationCardView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, Theme.Spacing.xl)
         .padding(.horizontal, Theme.Spacing.xl)
-        .background(Theme.Colors.cardBackground)
+        .background(backgroundColor)
         .cornerRadius(Theme.CornerRadius.large)
         .shadow(
             color: Theme.Shadow.card.color,
@@ -49,11 +52,11 @@ struct NavigationCardView: View {
         VStack(spacing: Theme.Spacing.xs) {
             Text(title)
                 .font(Theme.Typography.cardTitle)
-                .foregroundColor(Theme.Colors.textPrimary)
+                .foregroundColor(titleColor)
 
             Text(subtitle)
                 .font(Theme.Typography.cardSubtitle)
-                .foregroundColor(Theme.Colors.textSecondary)
+                .foregroundColor(subtitleColor)
         }
     }
 }
