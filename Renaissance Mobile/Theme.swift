@@ -13,34 +13,34 @@ struct Theme {
     struct Colors {
         // Primary
         static let primary = Color(hex: "#D0BB95")
-        static let primaryChat = Color(hex: "#D9BFA9")
-        static let primaryHome = Color(hex: "#d1a38a")
+        static let primaryChat = Color(hex: "#C4929A")
+        static let primaryHome = Color(hex: "#8E4C5C")
         static let primaryProcedures = Color(hex: "#2badee")
         static let primaryProfile = Color(hex: "#E6C0C0")
-        static let primaryWelcome = Color(hex: "#EAC9C1")
+        static let primaryWelcome = Color(hex: "#C4929A")
         static let gold = Color(hex: "#D0BB95")
 
         // Backgrounds
-        static let backgroundLight = Color(hex: "#f7f7f6")
-        static let backgroundChat = Color(hex: "#F8F8F8")
-        static let backgroundHome = Color(hex: "#fdf8f5")
+        static let backgroundLight = Color(hex: "#FFF8F6")
+        static let backgroundChat = Color(hex: "#FFF8F6")
+        static let backgroundHome = Color(hex: "#FFF8F6")
         static let backgroundProcedures = Color(hex: "#f8f8f8")
         static let backgroundProfile = Color(hex: "#F8F9FA")
-        static let backgroundWelcome = Color(hex: "#F8F7F4")
+        static let backgroundWelcome = Color(hex: "#FFF8F6")
         static let cardBackground = Color.white
-        static let iconCircleBackground = Color(hex: "#DBEAFE")
-        static let categoryCircleBackground = Color(hex: "#f9ebe4")
+        static let iconCircleBackground = Color(hex: "#F2D7DB")
+        static let categoryCircleBackground = Color(hex: "#F2D7DB")
         static let accentProcedures = Color(hex: "#ead5d1")
         static let inputBackground = Color.white
 
         // Text
-        static let textPrimary = Color(hex: "#1F2937")
-        static let textSecondary = Color(hex: "#6B7280")
+        static let textPrimary = Color(hex: "#3D2B2E")
+        static let textSecondary = Color(hex: "#B8A9AB")
         static let textTertiary = Color(hex: "#9CA3AF")
-        static let textChatPrimary = Color(hex: "#333333")
-        static let textChatSecondary = Color(hex: "#999999")
-        static let textHomePrimary = Color(hex: "#211713")
-        static let textHomeMuted = Color(hex: "#6f6967")
+        static let textChatPrimary = Color(hex: "#3D2B2E")
+        static let textChatSecondary = Color(hex: "#B8A9AB")
+        static let textHomePrimary = Color(hex: "#3D2B2E")
+        static let textHomeMuted = Color(hex: "#B8A9AB")
         static let textProceduresPrimary = Color(hex: "#333333")
         static let textProceduresSubtle = Color(hex: "#617c89")
         static let textProfilePrimary = Color(hex: "#343A40")
@@ -51,7 +51,7 @@ struct Theme {
         static let borderLight = Color(hex: "#F1F1F1")
 
         // Chat Bubbles
-        static let conciergeBubble = Color(hex: "#EFEFEF")
+        static let conciergeBubble = Color(hex: "#F2D7DB")
 
         // Status
         static let online = Color(hex: "#10b981")
@@ -63,18 +63,18 @@ struct Theme {
         static let welcomeHeader = Font.system(size: 28, weight: .semibold)
         static let welcomeTitle = Font.system(size: 32, weight: .bold)
         static let welcomeSubtitle = Font.system(size: 16)
-        static let homeHeader = Font.system(size: 32, weight: .bold)
-        static let chatHeader = Font.system(size: 18, weight: .bold)
-        static let sectionTitle = Font.system(size: 20, weight: .bold)
+        static let homeHeader = Font.system(size: 32, weight: .light, design: .serif)
+        static let chatHeader = Font.system(size: 18, weight: .light, design: .serif)
+        static let sectionTitle = Font.system(size: 18, weight: .regular)
         static let profileName = Font.system(size: 24, weight: .bold)
         static let profileSectionHeader = Font.system(size: 12, weight: .bold)
 
         // Card Text
-        static let cardTitle = Font.system(size: 18, weight: .semibold)
-        static let cardSubtitle = Font.system(size: 14)
-        static let heroTitle = Font.system(size: 24, weight: .bold)
-        static let heroSubtitle = Font.system(size: 16, weight: .medium)
-        static let categoryLabel = Font.system(size: 14, weight: .semibold)
+        static let cardTitle = Font.system(size: 18, weight: .regular)
+        static let cardSubtitle = Font.system(size: 14, weight: .light)
+        static let heroTitle = Font.system(size: 24, weight: .light, design: .serif)
+        static let heroSubtitle = Font.system(size: 15, weight: .light)
+        static let categoryLabel = Font.system(size: 14, weight: .regular)
 
         // Chat
         static let messageText = Font.system(size: 16)

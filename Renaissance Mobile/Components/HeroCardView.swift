@@ -15,18 +15,10 @@ struct HeroCardView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // Background gradient
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    Color.pink.opacity(0.3),
-                    Color.orange.opacity(0.2),
-                    Theme.Colors.primaryHome.opacity(0.4)
-                ]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .frame(height: 200)
-            .cornerRadius(Theme.CornerRadius.medium)
+            // Background — Mauve Berry
+            Theme.Colors.primaryHome
+                .frame(height: 200)
+                .cornerRadius(Theme.CornerRadius.medium)
 
             // Launching Soon Badge
             if showLaunchingBadge {

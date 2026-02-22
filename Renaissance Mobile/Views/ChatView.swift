@@ -10,6 +10,7 @@ import PhotosUI
 import StripePaymentSheet
 import Supabase
 import Auth
+import Network
 
 struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
@@ -25,6 +26,8 @@ struct ChatView: View {
     @State private var paymentErrorMessage = ""
     @State private var hasCheckedSubscription = false
     @FocusState private var isTextFieldFocused: Bool
+    @State private var isOnline = true
+    private let networkMonitor = NWPathMonitor()
 
     var initialMessage: String?
     var onBackButtonTapped: (() -> Void)?
@@ -70,6 +73,7 @@ struct ChatView: View {
         }
         .onAppear {
             handleInitialMessage()
+            startNetworkMonitoring()
         }
     }
 
@@ -83,10 +87,22 @@ struct ChatView: View {
         }
     }
 
+    // MARK: - Network Monitoring
+    private func startNetworkMonitoring() {
+        networkMonitor.pathUpdateHandler = { path in
+            DispatchQueue.main.async {
+                isOnline = path.status == .satisfied
+            }
+        }
+        networkMonitor.start(queue: DispatchQueue(label: "NetworkMonitor"))
+    }
+
     // MARK: - Actions
     private func sendMessage() {
         let text = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty || selectedImageData != nil else { return }
+
+        SoundHapticManager.shared.playSendWoosh()
 
         // Clear the input fields
         let imageData = selectedImageData
@@ -298,9 +314,9 @@ struct ChatView: View {
                         .font(Theme.Typography.chatHeader)
                         .foregroundColor(Theme.Colors.textChatPrimary)
 
-                    Text("Online")
+                    Text(isOnline ? "Online" : "Offline")
                         .font(Theme.Typography.statusText)
-                        .foregroundColor(Theme.Colors.online)
+                        .foregroundColor(isOnline ? Theme.Colors.online : Theme.Colors.textChatSecondary)
                 }
 
                 Spacer()
@@ -324,7 +340,7 @@ struct ChatView: View {
         .overlay(
             Rectangle()
                 .frame(height: 1)
-                .foregroundColor(Color.gray.opacity(0.2)),
+                .foregroundColor(Theme.Colors.iconCircleBackground),
             alignment: .bottom
         )
     }
@@ -374,7 +390,7 @@ struct ChatView: View {
             .foregroundColor(Theme.Colors.textChatSecondary)
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.xs)
-            .background(Color.gray.opacity(0.15))
+            .background(Theme.Colors.iconCircleBackground)
             .cornerRadius(Theme.CornerRadius.medium)
             .padding(.top, Theme.Spacing.lg)
     }
@@ -474,15 +490,15 @@ struct ChatView: View {
                 .cornerRadius(Theme.CornerRadius.xlarge)
                 .overlay(
                     RoundedRectangle(cornerRadius: Theme.CornerRadius.xlarge)
-                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                        .stroke(Theme.Colors.iconCircleBackground, lineWidth: 1)
                 )
 
                 Button(action: sendMessage) {
                     Image(systemName: "paperplane.fill")
                         .font(.system(size: 20))
-                        .foregroundColor(.black)
+                        .foregroundColor(.white)
                         .frame(width: 48, height: 48)
-                        .background((messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedImageData == nil) ? Color.gray.opacity(0.3) : Theme.Colors.primaryChat)
+                        .background((messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedImageData == nil) ? Theme.Colors.iconCircleBackground : Theme.Colors.primaryChat)
                         .clipShape(Circle())
                 }
                 .disabled((messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedImageData == nil) || viewModel.isLoading)
@@ -493,7 +509,7 @@ struct ChatView: View {
             .overlay(
                 Rectangle()
                     .frame(height: 1)
-                    .foregroundColor(Color.gray.opacity(0.2)),
+                    .foregroundColor(Theme.Colors.iconCircleBackground),
                 alignment: .top
             )
         }

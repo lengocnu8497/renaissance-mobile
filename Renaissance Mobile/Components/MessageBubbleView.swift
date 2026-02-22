@@ -43,7 +43,7 @@ struct MessageBubbleView: View {
                     if !message.text.isEmpty {
                         Text(message.text)
                             .font(Theme.Typography.messageText)
-                            .foregroundColor(.black)
+                            .foregroundColor(.white)
                             .padding(.horizontal, Theme.Spacing.lg)
                             .padding(.vertical, Theme.Spacing.md)
                             .background(Theme.Colors.primaryChat)
@@ -90,7 +90,7 @@ struct MessageBubbleView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
                         } placeholder: {
                             RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
-                                .fill(Color.gray.opacity(0.2))
+                                .fill(Theme.Colors.iconCircleBackground)
                                 .frame(width: 200, height: 200)
                                 .overlay(
                                     ProgressView()
@@ -114,14 +114,62 @@ struct MessageBubbleView: View {
     }
 
     private func avatarView(isUser: Bool) -> some View {
-        Circle()
-            .fill(isUser ? Color.gray.opacity(0.3) : Theme.Colors.primaryChat.opacity(0.3))
-            .frame(width: Theme.IconSize.avatar, height: Theme.IconSize.avatar)
-            .overlay(
-                Image(systemName: isUser ? "person.fill" : "person.crop.circle.fill")
-                    .font(.system(size: Theme.IconSize.small))
-                    .foregroundColor(isUser ? .white : Theme.Colors.primaryChat)
+        Group {
+            if isUser {
+                Circle()
+                    .fill(Theme.Colors.iconCircleBackground)
+                    .frame(width: Theme.IconSize.avatar, height: Theme.IconSize.avatar)
+                    .overlay(
+                        Image(systemName: "person.fill")
+                            .font(.system(size: Theme.IconSize.small))
+                            .foregroundColor(Theme.Colors.primaryChat)
+                    )
+            } else {
+                concentricCirclesAvatar
+                    .frame(width: Theme.IconSize.avatar, height: Theme.IconSize.avatar)
+            }
+        }
+    }
+
+    private var concentricCirclesAvatar: some View {
+        let dustyRose = Color(red: 196/255, green: 146/255, blue: 154/255)
+        let mauveberry = Color(red: 142/255, green: 76/255, blue: 92/255)
+
+        return Canvas { context, size in
+            let s = size.width / 80
+            let cx = size.width / 2
+            let cy = size.height / 2
+
+            var outer = Path()
+            outer.addEllipse(in: CGRect(x: cx - 38*s, y: cy - 38*s, width: 76*s, height: 76*s))
+            context.stroke(outer, with: .color(dustyRose), lineWidth: 1.5)
+
+            var middle = Path()
+            middle.addEllipse(in: CGRect(x: cx - 28*s, y: cy - 28*s, width: 56*s, height: 56*s))
+            context.stroke(middle, with: .color(dustyRose), lineWidth: 1.2)
+
+            var inner = Path()
+            inner.addEllipse(in: CGRect(x: cx - 18*s, y: cy - 18*s, width: 36*s, height: 36*s))
+            context.stroke(inner, with: .color(mauveberry), lineWidth: 1.5)
+
+            var arc = Path()
+            arc.move(to: CGPoint(x: 40*s, y: 26*s))
+            arc.addCurve(
+                to: CGPoint(x: 54*s, y: 40*s),
+                control1: CGPoint(x: 48*s, y: 26*s),
+                control2: CGPoint(x: 54*s, y: 32*s)
             )
+            arc.addCurve(
+                to: CGPoint(x: 40*s, y: 54*s),
+                control1: CGPoint(x: 54*s, y: 48*s),
+                control2: CGPoint(x: 48*s, y: 54*s)
+            )
+            context.stroke(arc, with: .color(dustyRose), style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+
+            var dot = Path()
+            dot.addEllipse(in: CGRect(x: cx - 4*s, y: cy - 4*s, width: 8*s, height: 8*s))
+            context.fill(dot, with: .color(dustyRose))
+        }
     }
 }
 

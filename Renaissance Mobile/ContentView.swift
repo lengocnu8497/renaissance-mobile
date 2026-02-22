@@ -27,14 +27,14 @@ struct ContentView: View {
                 }
             )
             .tabItem {
-                Image(systemName: "house.fill")
+                Image(systemName: "house")
                 Text("Home")
             }
             .tag(0)
 
             ChatTabView(selectedTab: $selectedTab, searchQuery: $searchQuery)
                 .tabItem {
-                    Image(systemName: "message.fill")
+                    Image(systemName: "message")
                     Text("Chats")
                 }
                 .tag(1)
@@ -63,11 +63,12 @@ struct ContentView: View {
 
             ProfileTabView(selectedTab: $selectedTab)
                 .tabItem {
-                    Image(systemName: "person.fill")
+                    Image(systemName: "person")
                     Text("Profile")
                 }
                 .tag(3)
         }
+        .buttonStyle(TickButtonStyle())
         .onChange(of: selectedTab) { oldValue, newValue in
             // Prevent switching to Procedures tab
             if newValue == 2 {
