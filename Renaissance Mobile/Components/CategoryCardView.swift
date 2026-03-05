@@ -8,17 +8,18 @@
 import SwiftUI
 
 struct CategoryCardView: View {
-    let icon: String
+    let stickerName: String
     let title: String
+    var stickerSize: CGFloat = 100
 
     var body: some View {
         VStack(spacing: Theme.Spacing.sm) {
-            iconCircle
+            stickerImage
             titleText
         }
         .frame(maxWidth: .infinity)
         .padding(Theme.Spacing.lg)
-        .background(Theme.Colors.cardBackground)
+        .background(Color(hex: "#C4929A"))
         .cornerRadius(Theme.CornerRadius.medium)
         .shadow(
             color: Theme.Shadow.card.color,
@@ -26,36 +27,43 @@ struct CategoryCardView: View {
             x: Theme.Shadow.card.x,
             y: Theme.Shadow.card.y
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
-                .stroke(Color.clear, lineWidth: 1)
-        )
     }
 
     // MARK: - Subviews
-    private var iconCircle: some View {
+    private var stickerImage: some View {
         ZStack {
-            Circle()
-                .fill(Theme.Colors.categoryCircleBackground)
-                .frame(width: 48, height: 48)
-
-            Image(systemName: icon)
-                .font(.system(size: 28))
-                .foregroundColor(Theme.Colors.primaryHome)
+            // White silhouette slightly larger — forms the solid outline
+            Image(stickerName)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 106, height: 106)
+                .overlay(Color.white)
+                .mask {
+                    Image(stickerName)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 106, height: 106)
+                }
+            // Actual sticker on top
+            Image(stickerName)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 100, height: 100)
         }
+        .scaleEffect(stickerSize / 100)
     }
 
     private var titleText: some View {
         Text(title)
             .font(Theme.Typography.categoryLabel)
-            .foregroundColor(Theme.Colors.textHomePrimary)
+            .foregroundColor(.white)
     }
 }
 
 #Preview {
     HStack(spacing: 16) {
-        CategoryCardView(icon: "face.smiling", title: "Facial")
-        CategoryCardView(icon: "figure.stand", title: "Body")
+        CategoryCardView(stickerName: "sticker_facial", title: "Facials")
+        CategoryCardView(stickerName: "sticker_body", title: "Body")
     }
     .padding()
     .background(Theme.Colors.backgroundHome)

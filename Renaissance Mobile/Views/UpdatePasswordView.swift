@@ -60,7 +60,7 @@ struct UpdatePasswordView: View {
                             Button(action: {
                                 isPasswordVisible.toggle()
                             }) {
-                                Image(systemName: isPasswordVisible ? "eye.slash" : "eye")
+                                Image(systemName: isPasswordVisible ? "eye" : "eye.slash")
                                     .font(.system(size: 20))
                                     .foregroundColor(Color(hex: "#2badee"))
                             }

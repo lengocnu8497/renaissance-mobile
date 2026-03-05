@@ -70,15 +70,19 @@ struct PostLoginHomeView: View {
                 .font(.system(size: 16, weight: .medium))
                 .foregroundColor(Color(hex: "#8E4C5C").opacity(0.6))
 
-            TextField("Enter name, tags, description...", text: $searchText)
-                .font(Theme.Typography.inputText)
-                .foregroundColor(Theme.Colors.textHomePrimary)
-                .focused($isSearchFocused)
-                .onSubmit {
-                    if !searchText.isEmpty {
-                        handleSearchInput(searchText)
-                    }
+            TextField("", text: $searchText, prompt:
+                Text("How can i help you today?")
+                    .font(.system(size: 16, weight: .light, design: .serif))
+                    .foregroundColor(Color(hex: "#8E4C5C").opacity(0.5))
+            )
+            .font(Theme.Typography.inputText)
+            .foregroundColor(Theme.Colors.textHomePrimary)
+            .focused($isSearchFocused)
+            .onSubmit {
+                if !searchText.isEmpty {
+                    handleSearchInput(searchText)
                 }
+            }
         }
         .padding(.horizontal, Theme.Spacing.lg)
         .padding(.vertical, 14)
@@ -123,10 +127,10 @@ struct PostLoginHomeView: View {
                 ],
                 spacing: Theme.Spacing.lg
             ) {
-                CategoryCardView(icon: "face.smiling", title: "Facial")
-                CategoryCardView(icon: "figure.stand", title: "Body")
-                CategoryCardView(icon: "cross.vial", title: "Injectables")
-                CategoryCardView(icon: "heart.text.square", title: "Wellness")
+                CategoryCardView(stickerName: "sticker_body", title: "Wellness")
+                CategoryCardView(stickerName: "sticker_water", title: "Injectables", stickerSize: 140)
+                CategoryCardView(stickerName: "sticker_facial", title: "Body")
+                CategoryCardView(stickerName: "sticker_glove_vial", title: "Facials")
             }
             .padding(.horizontal, Theme.Spacing.lg)
         }
