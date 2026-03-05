@@ -107,7 +107,7 @@ struct ChangePasswordView: View {
                 Button(action: {
                     showCurrentPassword.toggle()
                 }) {
-                    Image(systemName: showCurrentPassword ? "eye.fill" : "eye.slash.fill")
+                    Image(systemName: showCurrentPassword ? "eye.slash.fill" : "eye.fill")
                         .font(.system(size: 18))
                         .foregroundColor(Theme.Colors.textSecondary)
                 }
@@ -154,7 +154,7 @@ struct ChangePasswordView: View {
                 Button(action: {
                     showNewPassword.toggle()
                 }) {
-                    Image(systemName: showNewPassword ? "eye.fill" : "eye.slash.fill")
+                    Image(systemName: showNewPassword ? "eye.slash.fill" : "eye.fill")
                         .font(.system(size: 18))
                         .foregroundColor(Theme.Colors.textSecondary)
                 }
@@ -194,7 +194,7 @@ struct ChangePasswordView: View {
                 Button(action: {
                     showConfirmPassword.toggle()
                 }) {
-                    Image(systemName: showConfirmPassword ? "eye.fill" : "eye.slash.fill")
+                    Image(systemName: showConfirmPassword ? "eye.slash.fill" : "eye.fill")
                         .font(.system(size: 18))
                         .foregroundColor(Theme.Colors.textSecondary)
                 }

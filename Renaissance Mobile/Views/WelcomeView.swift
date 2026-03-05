@@ -25,13 +25,19 @@ struct WelcomeView: View {
 
     var body: some View {
         ZStack {
-            // Background
+            // Background — dusty rose during animation, cream after
             Theme.Colors.backgroundWelcome
                 .ignoresSafeArea()
 
+            if loadingPhase != .complete {
+                Color(red: 196/255, green: 146/255, blue: 154/255)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+            }
+
             // Centered loading logo — visible during animation phases
             if loadingPhase != .complete {
-                concentricCirclesLogo
+                concentricCirclesLogo(useWhite: true)
                     .opacity(logoOpacity)
                     .scaleEffect(logoScale)
                     .rotationEffect(.degrees(rotationDegrees))
@@ -111,10 +117,10 @@ struct WelcomeView: View {
             }
         }
 
-        // Phase 4: Full content fades in
+        // Phase 4: Full content fades in, background transitions to cream
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) {
-            loadingPhase = .complete
             withAnimation(.easeOut(duration: 0.45)) {
+                loadingPhase = .complete
                 contentOpacity = 1
             }
         }
@@ -123,7 +129,7 @@ struct WelcomeView: View {
     // MARK: - Main Content
     private var mainContent: some View {
         HStack(spacing: 24) {
-            concentricCirclesLogo
+            concentricCirclesLogo()
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Rena Aesthetic")
@@ -139,10 +145,9 @@ struct WelcomeView: View {
     }
 
     // MARK: - Logo
-    private var concentricCirclesLogo: some View {
-        // Brand colors
-        let dustyRose = Color(red: 196/255, green: 146/255, blue: 154/255)  // #C4929A
-        let mauveberry = Color(red: 142/255, green: 76/255, blue: 92/255)   // #8E4C5C
+    private func concentricCirclesLogo(useWhite: Bool = false) -> some View {
+        let dustyRose = useWhite ? Color.white : Color(red: 196/255, green: 146/255, blue: 154/255)
+        let mauveberry = useWhite ? Color.white : Color(red: 142/255, green: 76/255, blue: 92/255)
 
         return Canvas { context, size in
             // Scale all SVG coordinates (base viewBox: 80×80, center: 40,40)

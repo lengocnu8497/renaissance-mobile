@@ -35,7 +35,7 @@ struct SignInView: View {
 
                     // Email field
                     VStack(alignment: .leading, spacing: 8) {
-                        TextField("Email", text: $email)
+                        TextField("", text: $email, prompt: Text("Email").foregroundColor(.gray.opacity(0.7)))
                             .font(.system(size: 16))
                             .foregroundColor(Theme.Colors.textWelcomePrimary)
                             .padding(.horizontal, 20)
@@ -56,11 +56,11 @@ struct SignInView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             if isPasswordVisible {
-                                TextField("Password", text: $password)
+                                TextField("", text: $password, prompt: Text("Password").foregroundColor(.gray.opacity(0.7)))
                                     .font(.system(size: 16))
                                     .foregroundColor(Theme.Colors.textWelcomePrimary)
                             } else {
-                                SecureField("Password", text: $password)
+                                SecureField("", text: $password, prompt: Text("Password").foregroundColor(.gray.opacity(0.7)))
                                     .font(.system(size: 16))
                                     .foregroundColor(Theme.Colors.textWelcomePrimary)
                             }
@@ -68,7 +68,7 @@ struct SignInView: View {
                             Button(action: {
                                 isPasswordVisible.toggle()
                             }) {
-                                Image(systemName: isPasswordVisible ? "eye.slash" : "eye")
+                                Image(systemName: isPasswordVisible ? "eye" : "eye.slash")
                                     .font(.system(size: 20))
                                     .foregroundColor(Color(hex: "#2badee"))
                             }
@@ -170,9 +170,7 @@ struct SignInView: View {
                         }
                     }) {
                         HStack(spacing: 12) {
-                            Image(systemName: "globe")
-                                .font(.system(size: 20))
-                                .foregroundColor(Theme.Colors.textWelcomePrimary)
+                            googleColorIcon
 
                             Text("Continue With Google")
                                 .font(.system(size: 16, weight: .medium))
@@ -274,6 +272,44 @@ struct SignInView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Google Icon
+    private var googleColorIcon: some View {
+        Canvas { context, size in
+            let cx = size.width / 2
+            let cy = size.height / 2
+            let r = size.width * 0.36
+            let lw = size.width * 0.22
+
+            let blue   = Color(red: 0.259, green: 0.522, blue: 0.957)  // #4285F4
+            let red    = Color(red: 0.918, green: 0.263, blue: 0.208)  // #EA4335
+            let yellow = Color(red: 0.984, green: 0.737, blue: 0.020)  // #FBBC05
+            let green  = Color(red: 0.204, green: 0.659, blue: 0.325)  // #34A853
+
+            // Four arc segments (0° = right, increasing = clockwise on screen)
+            let segments: [(Color, Double, Double)] = [
+                (blue,   -15,  75),   // right side
+                (red,     75, 195),   // top + left
+                (yellow, 195, 255),   // lower-left
+                (green,  255, 345)    // bottom
+            ]
+            for (color, start, end) in segments {
+                var arc = Path()
+                arc.addArc(center: CGPoint(x: cx, y: cy), radius: r,
+                           startAngle: .degrees(start), endAngle: .degrees(end),
+                           clockwise: false)
+                context.stroke(arc, with: .color(color),
+                               style: StrokeStyle(lineWidth: lw, lineCap: .butt))
+            }
+
+            // Blue horizontal bar (right half, at midline)
+            let half = lw * 0.3
+            var bar = Path()
+            bar.addRect(CGRect(x: cx, y: cy - half, width: r + lw * 0.5, height: half * 2))
+            context.fill(bar, with: .color(blue))
+        }
+        .frame(width: 22, height: 22)
     }
 
     // Helper function to get the root view controller for presenting Google Sign-In

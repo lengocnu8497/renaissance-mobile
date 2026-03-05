@@ -95,7 +95,7 @@ struct SignUpView: View {
                             Button(action: {
                                 isPasswordVisible.toggle()
                             }) {
-                                Image(systemName: isPasswordVisible ? "eye.slash" : "eye")
+                                Image(systemName: isPasswordVisible ? "eye" : "eye.slash")
                                     .font(.system(size: 20))
                                     .foregroundColor(Color(hex: "#2badee"))
                             }
@@ -128,7 +128,7 @@ struct SignUpView: View {
                             Button(action: {
                                 isConfirmPasswordVisible.toggle()
                             }) {
-                                Image(systemName: isConfirmPasswordVisible ? "eye.slash" : "eye")
+                                Image(systemName: isConfirmPasswordVisible ? "eye" : "eye.slash")
                                     .font(.system(size: 20))
                                     .foregroundColor(Color(hex: "#2badee"))
                             }
@@ -236,9 +236,7 @@ struct SignUpView: View {
                         }
                     }) {
                         HStack(spacing: 12) {
-                            Image(systemName: "globe")
-                                .font(.system(size: 20))
-                                .foregroundColor(Theme.Colors.textWelcomePrimary)
+                            googleColorIcon
 
                             Text("Continue With Google")
                                 .font(.system(size: 16, weight: .medium))
@@ -322,6 +320,42 @@ struct SignUpView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Google Icon
+    private var googleColorIcon: some View {
+        Canvas { context, size in
+            let cx = size.width / 2
+            let cy = size.height / 2
+            let r = size.width * 0.36
+            let lw = size.width * 0.22
+
+            let blue   = Color(red: 0.259, green: 0.522, blue: 0.957)
+            let red    = Color(red: 0.918, green: 0.263, blue: 0.208)
+            let yellow = Color(red: 0.984, green: 0.737, blue: 0.020)
+            let green  = Color(red: 0.204, green: 0.659, blue: 0.325)
+
+            let segments: [(Color, Double, Double)] = [
+                (blue,   -15,  75),
+                (red,     75, 195),
+                (yellow, 195, 255),
+                (green,  255, 345)
+            ]
+            for (color, start, end) in segments {
+                var arc = Path()
+                arc.addArc(center: CGPoint(x: cx, y: cy), radius: r,
+                           startAngle: .degrees(start), endAngle: .degrees(end),
+                           clockwise: false)
+                context.stroke(arc, with: .color(color),
+                               style: StrokeStyle(lineWidth: lw, lineCap: .butt))
+            }
+
+            let half = lw * 0.3
+            var bar = Path()
+            bar.addRect(CGRect(x: cx, y: cy - half, width: r + lw * 0.5, height: half * 2))
+            context.fill(bar, with: .color(blue))
+        }
+        .frame(width: 22, height: 22)
     }
 
     // Helper function to get the root view controller for presenting Google Sign-In
