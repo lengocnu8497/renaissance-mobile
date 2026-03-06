@@ -2,7 +2,7 @@
 //  PhotoJournalView.swift
 //  Renaissance Mobile
 //
-//  Main journal tab: procedure-grouped timeline of recovery entries.
+//  Main journal tab: procedure-grouped hero card list.
 //
 
 import SwiftUI
@@ -13,11 +13,10 @@ struct PhotoJournalView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Theme.Brand.cream.ignoresSafeArea()
+                Color.white.ignoresSafeArea()
 
                 VStack(spacing: 0) {
                     header
-                    filterChips
 
                     if vm.isLoading && vm.entries.isEmpty {
                         Spacer()
@@ -26,7 +25,7 @@ struct PhotoJournalView: View {
                     } else if vm.entries.isEmpty {
                         emptyState
                     } else {
-                        timeline
+                        procedureList
                     }
                 }
 
@@ -66,6 +65,14 @@ struct PhotoJournalView: View {
                     )
                 }
             }
+            .alert("Couldn't Save Entry", isPresented: Binding(
+                get: { vm.error != nil },
+                set: { if !$0 { vm.error = nil } }
+            )) {
+                Button("OK", role: .cancel) { vm.error = nil }
+            } message: {
+                Text(vm.error ?? "")
+            }
             .overlay(alignment: .bottom) {
                 if vm.showConsentBanner {
                     PhotoConsentBannerView(
@@ -84,14 +91,9 @@ struct PhotoJournalView: View {
 
     private var header: some View {
         HStack(alignment: .bottom) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Recovery Journal")
-                    .font(Theme.Typography.homeHeader)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Text("Track your healing progress")
-                    .font(Theme.Typography.heroSubtitle)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-            }
+            Text("Recovery Journal")
+                .font(Theme.Typography.homeHeader)
+                .foregroundStyle(Theme.Colors.textPrimary)
             Spacer()
         }
         .padding(.horizontal, Theme.Spacing.xl)
@@ -99,67 +101,21 @@ struct PhotoJournalView: View {
         .padding(.bottom, Theme.Spacing.lg)
     }
 
-    private var filterChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.Spacing.sm) {
-                FilterChip(
-                    label: "All",
-                    isSelected: vm.selectedProcedureId == nil
-                ) {
-                    vm.selectedProcedureId = nil
-                    Task { await vm.load() }
-                }
-
-                ForEach(vm.proceduresWithEntries, id: \.id) { item in
-                    FilterChip(
-                        label: item.name,
-                        isSelected: vm.selectedProcedureId == item.id
-                    ) {
-                        vm.selectedProcedureId = item.id
-                        Task { await vm.load() }
-                    }
-                }
-            }
-            .padding(.horizontal, Theme.Spacing.xl)
-        }
-        .padding(.bottom, Theme.Spacing.md)
-    }
-
-    private var timeline: some View {
+    private var procedureList: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            LazyVStack(spacing: 12) {
                 ForEach(vm.groupedByProcedure, id: \.key) { group in
-                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                        // Procedure group header
-                        Text(group.key)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Theme.Colors.textPrimary)
-                            .padding(.horizontal, Theme.Spacing.xl)
-                            .padding(.top, Theme.Spacing.lg)
-
-                        // Timeline entries
-                        ForEach(group.entries) { entry in
-                            NavigationLink {
-                                JournalEntryDetailView(
-                                    entry: entry,
-                                    isAnalyzing: vm.analyzingEntryId == entry.id,
-                                    onAnalyze: { await vm.analyzeEntry(entry) },
-                                    onDelete:  { await vm.deleteEntry(entry) }
-                                )
-                            } label: {
-                                JournalTimelineCardView(
-                                    entry: entry,
-                                    isAnalyzing: vm.analyzingEntryId == entry.id
-                                )
-                                .padding(.horizontal, Theme.Spacing.xl)
-                            }
-                        }
+                    NavigationLink {
+                        ProcedureEntriesView(procedureName: group.key, vm: vm)
+                    } label: {
+                        ProcedureGroupCard(group: group)
                     }
+                    .buttonStyle(.plain)
                 }
-
-                // Bottom padding for FAB
                 Color.clear.frame(height: 100)
             }
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.top, Theme.Spacing.sm)
         }
     }
 
@@ -201,27 +157,88 @@ struct PhotoJournalView: View {
     }
 }
 
-// MARK: - Filter Chip
+// MARK: - Procedure Group Card
 
-private struct FilterChip: View {
-    let label: String
-    let isSelected: Bool
-    let action: () -> Void
+private struct ProcedureGroupCard: View {
+    let group: (key: String, entries: [JournalEntry])
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        return f
+    }()
+
+    // Show the most recent entry as the cover photo
+    private var coverEntry: JournalEntry? { group.entries.last }
 
     var body: some View {
-        Button(action: action) {
-            Text(label)
-                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? .white : Theme.Colors.textSecondary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(
-                    Capsule()
-                        .fill(isSelected ? Theme.Brand.mauveBerry : Color.white)
-                        .shadow(color: Theme.Shadow.card.color, radius: Theme.Shadow.card.radius,
-                                x: Theme.Shadow.card.x, y: Theme.Shadow.card.y)
-                )
+        ZStack(alignment: .bottomLeading) {
+            photoContent
+
+            LinearGradient(
+                colors: [.clear, .black.opacity(0.7)],
+                startPoint: .init(x: 0.5, y: 0.55),
+                endPoint: .bottom
+            )
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(group.key)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 1)
+
+                HStack(spacing: 6) {
+                    let count = group.entries.count
+                    Text("\(count) \(count == 1 ? "entry" : "entries")")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.9))
+
+                    if let first = group.entries.first {
+                        Text("·")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.6))
+                        Text("Started \(Self.dateFormatter.string(from: first.entryDateAsDate))")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.9))
+                    }
+                }
+                .shadow(color: .black.opacity(0.4), radius: 3, x: 0, y: 1)
+            }
+            .padding(16)
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: 400)
+        .clipShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var photoContent: some View {
+        if let entry = coverEntry,
+           let urlString = entry.photoUrl,
+           let url = URL(string: urlString) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable().scaledToFill()
+                default:
+                    placeholder
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            placeholder
+        }
+    }
+
+    private var placeholder: some View {
+        Rectangle()
+            .fill(Theme.Brand.softBlush)
+            .overlay(
+                Image(systemName: "photo")
+                    .font(.system(size: 40))
+                    .foregroundStyle(Theme.Brand.dustyRose)
+            )
     }
 }
 

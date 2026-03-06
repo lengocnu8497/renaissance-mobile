@@ -134,7 +134,7 @@ struct AddJournalEntryView: View {
                 }
                 .padding(Theme.Spacing.lg)
             }
-            .background(Theme.Brand.cream.ignoresSafeArea())
+            .background(Color.white.ignoresSafeArea())
             .navigationTitle("New Journal Entry")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

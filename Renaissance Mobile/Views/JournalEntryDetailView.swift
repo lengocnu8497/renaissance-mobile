@@ -48,7 +48,7 @@ struct JournalEntryDetailView: View {
                             .foregroundStyle(Theme.Brand.mauveBerry)
                     }
                     Spacer()
-                    Text(entry.entryDate, style: .date)
+                    Text(entry.entryDateAsDate, style: .date)
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }
@@ -87,7 +87,7 @@ struct JournalEntryDetailView: View {
             }
             .padding(Theme.Spacing.xl)
         }
-        .background(Theme.Brand.cream.ignoresSafeArea())
+        .background(Color.white.ignoresSafeArea())
         .navigationTitle("Entry Detail")
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Delete this journal entry?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {

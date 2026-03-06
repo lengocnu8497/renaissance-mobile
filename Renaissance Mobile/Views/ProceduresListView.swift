@@ -17,24 +17,22 @@ struct ProceduresListView: View {
     let procedures = ProceduresListView.mockProcedures
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.Colors.backgroundProcedures
-                    .ignoresSafeArea()
+        ZStack {
+            Theme.Colors.backgroundProcedures
+                .ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    header
-                    searchBar
-                    filterChips
-                    proceduresList
+            VStack(spacing: 0) {
+                header
+                searchBar
+                filterChips
+                proceduresList
 
-                    Spacer()
-                }
-
-                floatingButton
+                Spacer()
             }
-            .navigationBarHidden(true)
+
+            floatingButton
         }
+        .navigationBarHidden(true)
     }
 
     // MARK: - Subviews

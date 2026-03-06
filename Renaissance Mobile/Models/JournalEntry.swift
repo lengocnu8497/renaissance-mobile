@@ -13,7 +13,7 @@ struct JournalEntry: Identifiable, Codable {
     let procedureId: String
     let procedureName: String
     let dayNumber: Int          // 0 = day of procedure
-    let entryDate: Date
+    let entryDate: String       // "YYYY-MM-DD" — Supabase date columns return plain strings
     var notes: String?
     var photoPath: String?      // Supabase Storage path
     var photoUrl: String?       // cached URL
@@ -51,6 +51,13 @@ struct JournalEntry: Identifiable, Codable {
     // Convenience: human-readable day label
     var dayLabel: String {
         dayNumber == 0 ? "Day of Procedure" : "Day \(dayNumber)"
+    }
+
+    // Parsed date for display (entryDate is stored as "YYYY-MM-DD" string)
+    var entryDateAsDate: Date {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f.date(from: entryDate) ?? Date()
     }
 
     var hasAnalysis: Bool { overallScore != nil }

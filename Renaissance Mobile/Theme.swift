@@ -11,9 +11,9 @@
 //    Dusty Rose     #C4929A  — brand accent, buttons, labels
 //    Rose Gold      #B76E79  — hover states, gradient mid-stops
 //    Soft Blush     #F2D7DB  — card fills, icon backgrounds
-//    Cream          #FFF8F6  — page background
+//    Cream          #FFFFFF  — page background
 //    Warm Gray      #B8A9AB  — body copy, muted text
-//    Pale Pink      #FAF0F0  — alternate section background
+//    Pale Pink      #FFFFFF  — alternate section background
 //
 //  Typography:
 //    Serif   → Cormorant Garamond (.design(.serif) — loaded via Info.plist or system fallback)
@@ -31,9 +31,9 @@ struct Theme {
         static let dustyRose    = Color(hex: "#C4929A")
         static let roseGold     = Color(hex: "#B76E79")
         static let softBlush    = Color(hex: "#F2D7DB")
-        static let cream        = Color(hex: "#FFF8F6")
+        static let cream        = Color.white
         static let warmGray     = Color(hex: "#B8A9AB")
-        static let palePink     = Color(hex: "#FAF0F0")
+        static let palePink     = Color.white
         static let gold         = Color(hex: "#D0BB95")   // legacy accent
     }
 
@@ -52,11 +52,11 @@ struct Theme {
         static let gold               = Brand.gold
 
         // Backgrounds
-        static let backgroundLight       = Brand.cream
-        static let backgroundChat        = Brand.cream
-        static let backgroundHome        = Brand.cream
-        static let backgroundProcedures  = Brand.palePink
-        static let backgroundProfile     = Brand.palePink
+        static let backgroundLight       = Color.white
+        static let backgroundChat        = Color.white
+        static let backgroundHome        = Color.white
+        static let backgroundProcedures  = Color.white
+        static let backgroundProfile     = Color.white
         static let backgroundWelcome     = Brand.cream
         static let cardBackground        = Color.white
         static let iconCircleBackground  = Brand.softBlush

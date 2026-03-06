@@ -15,27 +15,25 @@ struct CostEstimatorView: View {
     private let categories = ["All"] + ProcedurePricingData.categories
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.Colors.backgroundProcedures.ignoresSafeArea()
+        ZStack {
+            Theme.Colors.backgroundProcedures.ignoresSafeArea()
 
-                ScrollView {
-                    VStack(spacing: Theme.Spacing.lg) {
-                        regionSection
-                        procedureSection
-                        if viewModel.selectedPricing != nil {
-                            sessionSection
-                            calculateButton
-                        }
-                        disclaimerBlock
+            ScrollView {
+                VStack(spacing: Theme.Spacing.lg) {
+                    regionSection
+                    procedureSection
+                    if viewModel.selectedPricing != nil {
+                        sessionSection
+                        calculateButton
                     }
-                    .padding(.horizontal, Theme.Spacing.lg)
-                    .padding(.bottom, 40)
+                    disclaimerBlock
                 }
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar { toolbarContent }
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.bottom, 40)
             }
         }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { toolbarContent }
         .sheet(isPresented: $viewModel.showResult) {
             if let result = viewModel.result {
                 CostEstimatorResultView(result: result)

@@ -19,30 +19,28 @@ struct ReadinessChecklistView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.Colors.backgroundProcedures.ignoresSafeArea()
+        ZStack {
+            Theme.Colors.backgroundProcedures.ignoresSafeArea()
 
-                if viewModel.checklist == nil {
-                    procedurePickerPrompt
-                } else {
-                    checklistContent
+            if viewModel.checklist == nil {
+                procedurePickerPrompt
+            } else {
+                checklistContent
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { toolbarContent }
+        .sheet(isPresented: $showProcedurePicker) {
+            ProcedurePickerSheet(
+                selectedId: viewModel.selectedProcedureId,
+                onSelect: { id in
+                    viewModel.selectedProcedureId = id
+                    showProcedurePicker = false
                 }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { toolbarContent }
-            .sheet(isPresented: $showProcedurePicker) {
-                ProcedurePickerSheet(
-                    selectedId: viewModel.selectedProcedureId,
-                    onSelect: { id in
-                        viewModel.selectedProcedureId = id
-                        showProcedurePicker = false
-                    }
-                )
-            }
-            .sheet(isPresented: $showShareSheet) {
-                ShareSheet(text: shareText)
-            }
+            )
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(text: shareText)
         }
         .task {
             await loadUserId()

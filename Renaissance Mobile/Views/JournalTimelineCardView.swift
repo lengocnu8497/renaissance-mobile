@@ -38,7 +38,7 @@ struct JournalTimelineCardView: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Theme.Colors.textPrimary)
                     Spacer()
-                    Text(entry.entryDate, style: .date)
+                    Text(entry.entryDateAsDate, style: .date)
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }

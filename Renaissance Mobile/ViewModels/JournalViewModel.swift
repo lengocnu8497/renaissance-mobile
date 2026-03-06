@@ -160,7 +160,9 @@ class JournalViewModel {
                 entries[idx] = updated
             }
         } catch {
-            analysisError = "Analysis unavailable: \(error.localizedDescription)"
+            let message = "Analysis unavailable: \(error.localizedDescription)"
+            analysisError = message
+            self.error = message
         }
     }
 
