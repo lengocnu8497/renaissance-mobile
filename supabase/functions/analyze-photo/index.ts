@@ -3,10 +3,29 @@
 // Called by the iOS app with a signed photo URL + procedure context.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const GOOGLE_AI_STUDIO_API_KEY = Deno.env.get("GOOGLE_AI_STUDIO_API_KEY")!;
 const GEMINI_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+
+// Cost per analysis: 1 image slot + 4 credits (mirrors chat image analysis cost)
+const ANALYSIS_IMAGE_COST  = 1
+const ANALYSIS_CREDIT_COST = 4
+
+/**
+ * Safely subtracts one calendar month, clamping to the last day of the target
+ * month when the source day doesn't exist there (e.g. Mar 31 → Feb 28).
+ */
+function subtractOneMonth(date: Date): Date {
+  const d = new Date(date)
+  const originalDay = d.getDate()
+  d.setMonth(d.getMonth() - 1)
+  if (d.getDate() !== originalDay) {
+    d.setDate(0)
+  }
+  return d
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -64,7 +83,9 @@ serve(async (req) => {
   }
 
   try {
-    // Verify JWT
+    // -------------------------------------------------------------------------
+    // AUTHENTICATION: Verify JWT and resolve user identity
+    // -------------------------------------------------------------------------
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -72,6 +93,100 @@ serve(async (req) => {
       });
     }
 
+    // User-scoped client — used only for reading user data under RLS
+    const userClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    )
+
+    // Service-role client — used only for quota operations (bypasses RLS)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    const adminClient = createClient(
+      supabaseUrl,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: authError } = await userClient.auth.getUser(token)
+
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized - Invalid or expired token" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // AUTHORIZATION: Verify active paid subscription
+    // -------------------------------------------------------------------------
+    const { data: userProfile, error: profileError } = await userClient
+      .from('user_profiles')
+      .select('subscription_tier, subscription_current_period_end, subscription_status')
+      .eq('id', user.id)
+      .single()
+
+    if (profileError || !userProfile) {
+      return new Response(JSON.stringify({ error: "Failed to fetch user profile" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { subscription_tier, subscription_current_period_end, subscription_status } = userProfile
+
+    const isActive = subscription_status === 'active'
+    const isCanceledButStillInPeriod = subscription_status === 'canceled'
+      && subscription_current_period_end
+      && new Date(subscription_current_period_end) > new Date()
+
+    if (!subscription_tier || (!isActive && !isCanceledButStillInPeriod)) {
+      return new Response(JSON.stringify({
+        error: 'No active subscription',
+        code: 'NO_SUBSCRIPTION',
+        message: 'Please upgrade to a Silver or Gold plan to use AI photo analysis.'
+      }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // -------------------------------------------------------------------------
+    // QUOTA ENFORCEMENT: Check usage limits before calling Gemini
+    // -------------------------------------------------------------------------
+    const periodEnd   = new Date(subscription_current_period_end)
+    const periodStart = subtractOneMonth(periodEnd)
+
+    const { data: usageRecord, error: usageError } = await adminClient
+      .rpc('get_or_create_usage_record', {
+        p_user_id:      user.id,
+        p_period_start: periodStart.toISOString(),
+        p_period_end:   periodEnd.toISOString(),
+        p_tier:         subscription_tier
+      })
+
+    if (usageError || !usageRecord) {
+      console.error('Failed to fetch usage record:', usageError)
+      return new Response(JSON.stringify({ error: "Failed to fetch usage data" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const wouldExceedImages  = (usageRecord.images_used  + ANALYSIS_IMAGE_COST)  > usageRecord.images_limit
+    const wouldExceedCredits = (usageRecord.credits_used + ANALYSIS_CREDIT_COST) > usageRecord.credits_limit
+
+    if (wouldExceedImages || wouldExceedCredits) {
+      const limitType = wouldExceedImages ? 'images' : 'credits'
+      return new Response(JSON.stringify({
+        error: 'Quota exceeded',
+        code: 'QUOTA_EXCEEDED',
+        limitType,
+        usage: {
+          images:  { used: usageRecord.images_used,  limit: usageRecord.images_limit },
+          credits: { used: usageRecord.credits_used, limit: usageRecord.credits_limit }
+        },
+        periodEnd: subscription_current_period_end
+      }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // -------------------------------------------------------------------------
+    // INPUT VALIDATION
+    // -------------------------------------------------------------------------
     const body: AnalysisRequest = await req.json();
     const { photoUrl, procedureName, dayNumber } = body;
 
@@ -81,7 +196,26 @@ serve(async (req) => {
       });
     }
 
-    // Fetch the image and base64-encode it for Gemini inline data
+    // Validate dayNumber is a finite non-negative number to prevent prompt injection
+    // via "day NaN/Infinity/undefined after the procedure"
+    if (typeof dayNumber !== 'number' || !Number.isFinite(dayNumber) || dayNumber < 0) {
+      return new Response(JSON.stringify({ error: "dayNumber must be a non-negative integer" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // SSRF guard: photoUrl must point to this project's Supabase Storage,
+    // preventing the function from fetching internal metadata or private services.
+    // Re-uses the URL already read for adminClient above.
+    if (!photoUrl.startsWith(`${supabaseUrl}/storage/`)) {
+      return new Response(JSON.stringify({ error: "photoUrl must be a Supabase Storage URL" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // ANALYSIS: Fetch image and call Gemini
+    // -------------------------------------------------------------------------
     const imgResponse = await fetch(photoUrl);
     if (!imgResponse.ok) {
       throw new Error(`Failed to fetch photo: ${imgResponse.status}`);
@@ -145,6 +279,26 @@ Respond ONLY with valid JSON matching the provided schema.`;
     if (!rawText) throw new Error("No content in Gemini response");
 
     const result: AnalysisResult = JSON.parse(rawText);
+
+    // -------------------------------------------------------------------------
+    // INCREMENT USAGE after successful analysis
+    // -------------------------------------------------------------------------
+    try {
+      const { error: incrementError } = await adminClient
+        .rpc('increment_usage', {
+          p_usage_id: usageRecord.id,
+          p_user_id:  user.id,
+          p_messages: 0,
+          p_images:   ANALYSIS_IMAGE_COST,
+          p_credits:  ANALYSIS_CREDIT_COST
+        })
+
+      if (incrementError) {
+        console.error('Failed to increment usage:', incrementError)
+      }
+    } catch (usageUpdateError) {
+      console.error('Exception incrementing usage:', usageUpdateError)
+    }
 
     return new Response(JSON.stringify(result), {
       status: 200,

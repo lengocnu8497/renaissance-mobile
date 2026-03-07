@@ -4,6 +4,25 @@ import prompts from './prompts.json' with { type: 'json' }
 
 const modelUsed = 'gpt-4o'
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Safely subtracts one calendar month, clamping to the last day of the target
+ * month when the source day doesn't exist there (e.g. Mar 31 → Feb 28).
+ * JS Date.setMonth() alone rolls over (Mar 31 → Mar 3) which produces a wrong
+ * period_start key and can silently reset quota mid-period.
+ */
+function subtractOneMonth(date: Date): Date {
+  const d = new Date(date)
+  const originalDay = d.getDate()
+  d.setMonth(d.getMonth() - 1)
+  // If the day overflowed (e.g. Jan 31 → Mar 3), back up to last day of target month
+  if (d.getDate() !== originalDay) {
+    d.setDate(0)
+  }
+  return d
+}
+
 // DALL-E image generation function
 async function generateImageWithDalle(openai: OpenAI, prompt: string): Promise<string> {
   const response = await openai.images.generate({
@@ -65,6 +84,13 @@ Deno.serve(async (req) => {
       }
     )
 
+    // SERVICE CLIENT: Bypasses RLS for quota operations (get_or_create_usage_record,
+    // increment_usage). Never used for user-data reads/writes.
+    const adminClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
     // AUTHORIZATION: Verify user is authenticated
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
@@ -85,6 +111,14 @@ Deno.serve(async (req) => {
     }
 
     const { message, conversationHistory, previousResponseId, imageBase64, conversationId } = await req.json()
+
+    // Validate conversationId is a UUID to prevent path traversal in storage uploads
+    if (!conversationId || !UUID_REGEX.test(conversationId)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid conversationId' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
 
     // QUOTA ENFORCEMENT: Check user's subscription and usage limits
     const { data: userProfile, error: profileError } = await supabaseClient
@@ -122,12 +156,11 @@ Deno.serve(async (req) => {
     }
 
     // Calculate billing period boundaries
-    const periodEnd = new Date(subscription_current_period_end)
-    const periodStart = new Date(periodEnd)
-    periodStart.setMonth(periodStart.getMonth() - 1)
+    const periodEnd   = new Date(subscription_current_period_end)
+    const periodStart = subtractOneMonth(periodEnd)
 
     // Get or create usage record for current period using RPC
-    const { data: usageRecord, error: usageError } = await supabaseClient
+    const { data: usageRecord, error: usageError } = await adminClient
       .rpc('get_or_create_usage_record', {
         p_user_id: user.id,
         p_period_start: periodStart.toISOString(),
@@ -323,15 +356,16 @@ Deno.serve(async (req) => {
     }
 
     // INCREMENT USAGE COUNTERS after successful response
+    // Uses SECURITY DEFINER RPC so the increment lands regardless of RLS policies.
     try {
-      const { error: updateError } = await supabaseClient
-        .from('usage_tracking')
-        .update({
-          messages_used: usageRecord.messages_used + messageCost,
-          images_used: usageRecord.images_used + imageCost + (generatedImageUrl ? 1 : 0),
-          credits_used: usageRecord.credits_used + creditCost + dalleCreditsUsed
+      const { error: updateError } = await adminClient
+        .rpc('increment_usage', {
+          p_usage_id: usageRecord.id,
+          p_user_id:  user.id,
+          p_messages: messageCost,
+          p_images:   imageCost + (generatedImageUrl ? 1 : 0),
+          p_credits:  creditCost + dalleCreditsUsed
         })
-        .eq('id', usageRecord.id)
 
       if (updateError) {
         console.error('Failed to update usage:', updateError)
@@ -356,8 +390,7 @@ Deno.serve(async (req) => {
     console.error('Edge function error:', error)
     return new Response(
       JSON.stringify({
-        reply: "I'm sorry, I'm having trouble processing your request right now. Please try again.",
-        debug_error: (error as Error)?.message || String(error)
+        reply: "I'm sorry, I'm having trouble processing your request right now. Please try again."
       }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     )
