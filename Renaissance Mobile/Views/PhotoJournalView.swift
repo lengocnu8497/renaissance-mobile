@@ -54,7 +54,7 @@ struct PhotoJournalView: View {
             }
             .navigationBarHidden(true)
             .sheet(isPresented: $vm.showAddEntry) {
-                AddJournalEntryView { procedureId, procedureName, dayNumber, entryDate, notes, photoData in
+                AddJournalEntryView(existingEntries: vm.entries) { procedureId, procedureName, dayNumber, entryDate, notes, photoData in
                     await vm.addEntry(
                         procedureId: procedureId,
                         procedureName: procedureName,
@@ -103,7 +103,13 @@ struct PhotoJournalView: View {
 
     private var procedureList: some View {
         ScrollView {
-            LazyVStack(spacing: 12) {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 2),
+                    GridItem(.flexible(), spacing: 2)
+                ],
+                spacing: 2
+            ) {
                 ForEach(vm.groupedByProcedure, id: \.key) { group in
                     NavigationLink {
                         ProcedureEntriesView(procedureName: group.key, vm: vm)
@@ -112,11 +118,10 @@ struct PhotoJournalView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                Color.clear.frame(height: 100)
             }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.top, Theme.Spacing.sm)
+            Color.clear.frame(height: 100)
         }
+        .padding(.top, Theme.Spacing.sm)
     }
 
     private var emptyState: some View {
@@ -162,81 +167,57 @@ struct PhotoJournalView: View {
 private struct ProcedureGroupCard: View {
     let group: (key: String, entries: [JournalEntry])
 
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        return f
-    }()
-
-    // Show the most recent entry as the cover photo
     private var coverEntry: JournalEntry? { group.entries.last }
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            photoContent
+        ZStack(alignment: .bottom) {
+            // Photo — fills and crops to the fixed frame
+            if let entry = coverEntry,
+               let urlString = entry.photoUrl,
+               let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        placeholderBg
+                    }
+                }
+            } else {
+                placeholderBg
+            }
 
+            // Gradient scrim
             LinearGradient(
                 colors: [.clear, .black.opacity(0.7)],
-                startPoint: .init(x: 0.5, y: 0.55),
+                startPoint: .init(x: 0.5, y: 0.5),
                 endPoint: .bottom
             )
 
-            VStack(alignment: .leading, spacing: 4) {
+            // Text at bottom
+            VStack(alignment: .leading, spacing: 2) {
+                let count = group.entries.count
                 Text(group.key)
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 1)
-
-                HStack(spacing: 6) {
-                    let count = group.entries.count
-                    Text("\(count) \(count == 1 ? "entry" : "entries")")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.9))
-
-                    if let first = group.entries.first {
-                        Text("·")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.6))
-                        Text("Started \(Self.dateFormatter.string(from: first.entryDateAsDate))")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.9))
-                    }
-                }
-                .shadow(color: .black.opacity(0.4), radius: 3, x: 0, y: 1)
+                    .lineLimit(2)
+                Text("\(count) \(count == 1 ? "entry" : "entries")")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
             }
-            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: 400)
-        .clipShape(Rectangle())
+        .frame(height: 260)
+        .clipped()
     }
 
-    @ViewBuilder
-    private var photoContent: some View {
-        if let entry = coverEntry,
-           let urlString = entry.photoUrl,
-           let url = URL(string: urlString) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().scaledToFill()
-                default:
-                    placeholder
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            placeholder
-        }
-    }
-
-    private var placeholder: some View {
+    private var placeholderBg: some View {
         Rectangle()
             .fill(Theme.Brand.softBlush)
             .overlay(
                 Image(systemName: "photo")
-                    .font(.system(size: 40))
+                    .font(.system(size: 32))
                     .foregroundStyle(Theme.Brand.dustyRose)
             )
     }

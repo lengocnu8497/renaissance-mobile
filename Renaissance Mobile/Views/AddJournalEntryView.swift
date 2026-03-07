@@ -8,6 +8,7 @@ import PhotosUI
 
 struct AddJournalEntryView: View {
     @Environment(\.dismiss) private var dismiss
+    var existingEntries: [JournalEntry] = []
     var onSave: (String, String, Int, Date, String?, Data?) async -> Void
 
     // Procedure selection
@@ -19,6 +20,7 @@ struct AddJournalEntryView: View {
     @State private var dayNumber = 0
     @State private var entryDate = Date()
     @State private var notes = ""
+    @State private var isDayAutoCalculated = false
 
     // Photo
     @State private var capturedImage: UIImage?
@@ -58,12 +60,21 @@ struct AddJournalEntryView: View {
                     sectionCard(title: "Recovery Day") {
                         VStack(spacing: Theme.Spacing.md) {
                             HStack {
-                                Text("Day number")
-                                    .font(.system(size: 15))
-                                    .foregroundStyle(Theme.Colors.textPrimary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Day number")
+                                        .font(.system(size: 15))
+                                        .foregroundStyle(Theme.Colors.textPrimary)
+                                    if isDayAutoCalculated {
+                                        Text("Auto-calculated from procedure date")
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(Theme.Brand.mauveBerry)
+                                    }
+                                }
                                 Spacer()
-                                Stepper("\(dayNumber)", value: $dayNumber, in: 0...365)
-                                    .labelsHidden()
+                                Stepper("\(dayNumber)", value: $dayNumber, in: 0...365) { _ in
+                                    isDayAutoCalculated = false
+                                }
+                                .labelsHidden()
                                 Text(dayNumber == 0 ? "Day of procedure" : "Day \(dayNumber)")
                                     .font(.system(size: 13))
                                     .foregroundStyle(Theme.Colors.textSecondary)
@@ -74,8 +85,10 @@ struct AddJournalEntryView: View {
 
                             DatePicker("Entry date", selection: $entryDate, displayedComponents: .date)
                                 .font(.system(size: 15))
+                                .onChange(of: entryDate) { _, _ in recalculateDayNumber() }
                         }
                     }
+                    .onChange(of: selectedProcedureId) { _, _ in recalculateDayNumber() }
 
                     // Photo
                     sectionCard(title: "Photo (optional)") {
@@ -185,6 +198,21 @@ struct AddJournalEntryView: View {
     }
 
     // MARK: - Helpers
+
+    /// Auto-calculates dayNumber from the D0 entry of the selected procedure.
+    /// If no D0 entry exists for this procedure, the day number stays as-is.
+    private func recalculateDayNumber() {
+        guard !selectedProcedureId.isEmpty else { return }
+        let procedureEntries = existingEntries.filter { $0.procedureId == selectedProcedureId }
+        guard let d0Entry = procedureEntries.first(where: { $0.dayNumber == 0 }) else { return }
+
+        let cal = Calendar.current
+        let d0 = cal.startOfDay(for: d0Entry.entryDateAsDate)
+        let selected = cal.startOfDay(for: entryDate)
+        let days = cal.dateComponents([.day], from: d0, to: selected).day ?? 0
+        dayNumber = max(0, days)
+        isDayAutoCalculated = true
+    }
 
     @ViewBuilder
     private func sectionCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
