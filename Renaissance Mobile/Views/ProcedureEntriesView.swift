@@ -20,7 +20,7 @@ struct ProcedureEntriesView: View {
     private var entries: [JournalEntry] {
         vm.entries
             .filter { $0.procedureName == procedureName }
-            .sorted { $0.dayNumber < $1.dayNumber }
+            .sorted { $0.dayNumber > $1.dayNumber }
     }
 
     var body: some View {
@@ -34,15 +34,33 @@ struct ProcedureEntriesView: View {
             Divider()
 
             if selectedTab == .timeline {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                            entryRow(entry: entry, isLast: index == entries.count - 1)
+                ZStack(alignment: .bottomTrailing) {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                                entryRow(entry: entry, isLast: index == entries.count - 1)
+                            }
+                            Color.clear.frame(height: 100)
                         }
-                        Color.clear.frame(height: 32)
+                        .padding(.horizontal, Theme.Spacing.lg)
+                        .padding(.top, Theme.Spacing.lg)
                     }
-                    .padding(.horizontal, Theme.Spacing.lg)
-                    .padding(.top, Theme.Spacing.lg)
+
+                    Button {
+                        vm.tapAddEntry()
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 58, height: 58)
+                            .background(Circle().fill(Theme.Brand.mauveBerry))
+                            .shadow(color: Theme.Shadow.glow.color,
+                                    radius: Theme.Shadow.glow.radius,
+                                    x: Theme.Shadow.glow.x,
+                                    y: Theme.Shadow.glow.y)
+                    }
+                    .padding(.trailing, 24)
+                    .padding(.bottom, 24)
                 }
             } else {
                 RecoveryProgressChart(entries: entries)
@@ -368,10 +386,9 @@ private struct ProcedureTabPicker: View {
     @Binding var selected: ProcedureEntriesView.ProcedureTab
 
     var body: some View {
-        HStack(spacing: Theme.Spacing.xl) {
+        HStack(spacing: 0) {
             tabButton("Timeline", tab: .timeline)
             tabButton("Progress", tab: .progress)
-            Spacer()
         }
     }
 
@@ -388,6 +405,7 @@ private struct ProcedureTabPicker: View {
                     .fill(isSelected ? Theme.Brand.mauveBerry : Color.clear)
                     .frame(height: 2)
             }
+            .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
     }
