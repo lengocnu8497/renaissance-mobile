@@ -130,6 +130,20 @@ class JournalViewModel {
         }
     }
 
+    @MainActor
+    func deleteProcedureGroup(procedureId: String) async {
+        let groupEntries = entries.filter { $0.procedureId == procedureId }
+        for entry in groupEntries {
+            do {
+                try await journalService.deleteEntry(id: entry.id)
+            } catch {
+                self.error = error.localizedDescription
+                return
+            }
+        }
+        entries.removeAll { $0.procedureId == procedureId }
+    }
+
     // MARK: - Analyze
 
     @MainActor

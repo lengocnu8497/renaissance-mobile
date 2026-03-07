@@ -9,6 +9,7 @@ import SwiftUI
 
 struct PhotoJournalView: View {
     @State private var vm = JournalViewModel()
+    @State private var groupToDelete: (key: String, entries: [JournalEntry])?
 
     var body: some View {
         NavigationStack {
@@ -85,6 +86,21 @@ struct PhotoJournalView: View {
             }
         }
         .task { await vm.load() }
+        .alert(
+            "Delete \"\(groupToDelete?.key ?? "")\"?",
+            isPresented: Binding(get: { groupToDelete != nil }, set: { if !$0 { groupToDelete = nil } })
+        ) {
+            Button("Delete All Entries", role: .destructive) {
+                guard let group = groupToDelete,
+                      let procedureId = group.entries.first?.procedureId else { return }
+                groupToDelete = nil
+                Task { await vm.deleteProcedureGroup(procedureId: procedureId) }
+            }
+            Button("Cancel", role: .cancel) { groupToDelete = nil }
+        } message: {
+            let count = groupToDelete?.entries.count ?? 0
+            Text("This will permanently delete all \(count) \(count == 1 ? "entry" : "entries") in this group.")
+        }
     }
 
     // MARK: - Subviews
@@ -117,6 +133,13 @@ struct PhotoJournalView: View {
                         ProcedureGroupCard(group: group)
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            groupToDelete = group
+                        } label: {
+                            Label("Delete Group", systemImage: "trash")
+                        }
+                    }
                 }
             }
             Color.clear.frame(height: 100)

@@ -11,10 +11,8 @@ struct AddJournalEntryView: View {
     var existingEntries: [JournalEntry] = []
     var onSave: (String, String, Int, Date, String?, Data?) async -> Void
 
-    // Procedure selection
-    @State private var selectedProcedureId = ""
-    @State private var selectedProcedureName = ""
-    @State private var showProcedurePicker = false
+    // Procedure
+    @State private var procedureName = ""
 
     // Entry fields
     @State private var dayNumber = 0
@@ -29,8 +27,16 @@ struct AddJournalEntryView: View {
 
     @State private var isSaving = false
 
+    /// Stable ID derived from the procedure name so entries for the same procedure group correctly.
+    private var procedureId: String {
+        procedureName
+            .trimmingCharacters(in: .whitespaces)
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+    }
+
     private var canSave: Bool {
-        !selectedProcedureId.isEmpty
+        !procedureName.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     var body: some View {
@@ -38,22 +44,11 @@ struct AddJournalEntryView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
 
-                    // Procedure selector
+                    // Procedure name
                     sectionCard(title: "Procedure") {
-                        Button {
-                            showProcedurePicker = true
-                        } label: {
-                            HStack {
-                                Text(selectedProcedureName.isEmpty ? "Select a procedure" : selectedProcedureName)
-                                    .foregroundStyle(selectedProcedureName.isEmpty
-                                        ? Theme.Colors.textSecondary
-                                        : Theme.Colors.textPrimary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(Theme.Colors.textSecondary)
-                            }
-                        }
+                        TextField("e.g. Rhinoplasty, Lip Filler, BBL…", text: $procedureName)
+                            .font(.system(size: 15))
+                            .onChange(of: procedureName) { _, _ in recalculateDayNumber() }
                     }
 
                     // Day + date
@@ -88,7 +83,6 @@ struct AddJournalEntryView: View {
                                 .onChange(of: entryDate) { _, _ in recalculateDayNumber() }
                         }
                     }
-                    .onChange(of: selectedProcedureId) { _, _ in recalculateDayNumber() }
 
                     // Photo
                     sectionCard(title: "Photo (optional)") {
@@ -163,8 +157,8 @@ struct AddJournalEntryView: View {
                                 $0.jpegData(compressionQuality: 0.75)
                             }
                             await onSave(
-                                selectedProcedureId,
-                                selectedProcedureName,
+                                procedureId,
+                                procedureName.trimmingCharacters(in: .whitespaces),
                                 dayNumber,
                                 entryDate,
                                 notes.isEmpty ? nil : notes,
@@ -184,13 +178,6 @@ struct AddJournalEntryView: View {
                     .disabled(!canSave || isSaving)
                 }
             }
-            .sheet(isPresented: $showProcedurePicker) {
-                JournalProcedurePickerSheet { id, name in
-                    selectedProcedureId = id
-                    selectedProcedureName = name
-                    showProcedurePicker = false
-                }
-            }
             .fullScreenCover(isPresented: $showCamera) {
                 PhotoCaptureView(capturedImage: $capturedImage)
             }
@@ -202,8 +189,8 @@ struct AddJournalEntryView: View {
     /// Auto-calculates dayNumber from the D0 entry of the selected procedure.
     /// If no D0 entry exists for this procedure, the day number stays as-is.
     private func recalculateDayNumber() {
-        guard !selectedProcedureId.isEmpty else { return }
-        let procedureEntries = existingEntries.filter { $0.procedureId == selectedProcedureId }
+        guard !procedureId.isEmpty else { return }
+        let procedureEntries = existingEntries.filter { $0.procedureId == procedureId }
         guard let d0Entry = procedureEntries.first(where: { $0.dayNumber == 0 }) else { return }
 
         let cal = Calendar.current
@@ -254,53 +241,5 @@ struct AddJournalEntryView: View {
             }
         }
         .frame(maxWidth: .infinity)
-    }
-}
-
-// MARK: - Procedure Picker Sheet
-
-struct JournalProcedurePickerSheet: View {
-    let onSelect: (String, String) -> Void
-    @State private var searchText = ""
-    @Environment(\.dismiss) private var dismiss
-
-    private var filtered: [ProcedurePricing] {
-        let all = ProcedurePricingData.all
-        guard !searchText.isEmpty else { return all }
-        return all.filter { $0.displayName.localizedCaseInsensitiveContains(searchText) }
-    }
-
-    var body: some View {
-        NavigationStack {
-            List(filtered) { pricing in
-                Button {
-                    onSelect(pricing.id, pricing.displayName)
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(pricing.displayName)
-                                .font(.system(size: 15))
-                                .foregroundStyle(Theme.Colors.textPrimary)
-                            Text(pricing.category)
-                                .font(.system(size: 12))
-                                .foregroundStyle(Theme.Colors.textSecondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 12))
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                    }
-                }
-            }
-            .listStyle(.insetGrouped)
-            .searchable(text: $searchText, prompt: "Search procedures")
-            .navigationTitle("Select Procedure")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-        }
     }
 }
