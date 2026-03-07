@@ -17,26 +17,22 @@ struct ProceduresListView: View {
     let procedures = ProceduresListView.mockProcedures
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.Colors.backgroundProcedures
-                    .ignoresSafeArea()
+        ZStack {
+            Theme.Colors.backgroundProcedures
+                .ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    header
-                    searchBar
-                    filterChips
-                    launchingSoonBanner
-                    proceduresList
+            VStack(spacing: 0) {
+                header
+                searchBar
+                filterChips
+                proceduresList
 
-                    Spacer()
-                }
-
-                // Floating button
-                floatingButton
+                Spacer()
             }
-            .navigationBarHidden(true)
+
+            floatingButton
         }
+        .navigationBarHidden(true)
     }
 
     // MARK: - Subviews
@@ -44,9 +40,9 @@ struct ProceduresListView: View {
         HStack {
             Button(action: {
                 if let onBackButtonTapped = onBackButtonTapped {
-                    onBackButtonTapped() // Switch to Home tab
+                    onBackButtonTapped()
                 } else {
-                    dismiss() // Standard navigation
+                    dismiss()
                 }
             }) {
                 Image(systemName: "arrow.left")
@@ -104,35 +100,39 @@ struct ProceduresListView: View {
         .padding(.bottom, Theme.Spacing.lg)
     }
 
-    private var launchingSoonBanner: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            Image(systemName: "info.circle.fill")
-                .font(.system(size: 20))
-                .foregroundColor(Theme.Colors.primaryProcedures)
-
-            Text("Launching soon! This feature is currently in progress with limited procedures.")
-                .font(.system(size: 14))
-                .foregroundColor(Theme.Colors.textProceduresPrimary)
-                .multilineTextAlignment(.leading)
-
-            Spacer()
-        }
-        .padding(Theme.Spacing.lg)
-        .background(Theme.Colors.primaryProcedures.opacity(0.1))
-        .cornerRadius(Theme.CornerRadius.medium)
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.bottom, Theme.Spacing.lg)
-    }
-
     private var proceduresList: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.lg) {
                 ForEach(procedures) { procedure in
-                    ProcedureListItemView(procedure: procedure)
+                    VStack(spacing: 0) {
+                        ProcedureListItemView(procedure: procedure)
+
+                        if ReadinessData.checklist(for: procedure.checklistId) != nil {
+                            NavigationLink(destination: ReadinessChecklistView(procedureId: procedure.checklistId)) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "checklist")
+                                        .font(.system(size: 12))
+                                    Text("Check Readiness")
+                                        .font(.system(size: 12, weight: .medium))
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 10))
+                                }
+                                .foregroundColor(Theme.Colors.primaryHome)
+                                .padding(.horizontal, Theme.Spacing.lg)
+                                .padding(.vertical, 10)
+                                .background(Theme.Colors.primaryHome.opacity(0.05))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .background(Theme.Colors.cardBackground)
+                    .cornerRadius(Theme.CornerRadius.medium)
+                    .shadow(color: Theme.Shadow.card.color, radius: Theme.Shadow.card.radius, x: Theme.Shadow.card.x, y: Theme.Shadow.card.y)
                 }
             }
             .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.bottom, 120) // Space for floating button
+            .padding(.bottom, 120)
         }
     }
 
@@ -155,48 +155,18 @@ struct ProceduresListView: View {
                 .cornerRadius(28)
                 .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
             }
-            .padding(.bottom, 24) // Closer to tab bar
+            .padding(.bottom, 24)
         }
     }
 
     // MARK: - Mock Data
     static let mockProcedures = [
-        Procedure(
-            name: "Microneedling",
-            description: "For skin rejuvenation and texture improvement",
-            category: "Non-Surgical",
-            imageName: nil
-        ),
-        Procedure(
-            name: "Lip Fillers",
-            description: "Enhance volume and define lip shape",
-            category: "Injectable",
-            imageName: nil
-        ),
-        Procedure(
-            name: "Laser Hair Removal",
-            description: "Permanent reduction of unwanted hair",
-            category: "Laser",
-            imageName: nil
-        ),
-        Procedure(
-            name: "Chemical Peel",
-            description: "Improves skin tone and reduces blemishes",
-            category: "Skin",
-            imageName: nil
-        ),
-        Procedure(
-            name: "Botox",
-            description: "Reduces fine lines and wrinkles",
-            category: "Injectable",
-            imageName: nil
-        ),
-        Procedure(
-            name: "Dermal Fillers",
-            description: "Restore volume and smooth wrinkles",
-            category: "Injectable",
-            imageName: nil
-        )
+        Procedure(name: "Microneedling", description: "For skin rejuvenation and texture improvement", category: "Non-Surgical", imageName: nil, checklistId: "microneedling"),
+        Procedure(name: "Lip Fillers", description: "Enhance volume and define lip shape", category: "Injectable", imageName: nil, checklistId: "lip_fillers"),
+        Procedure(name: "Laser Hair Removal", description: "Permanent reduction of unwanted hair", category: "Laser", imageName: nil, checklistId: "laser_hair_removal"),
+        Procedure(name: "Chemical Peel", description: "Improves skin tone and reduces blemishes", category: "Skin", imageName: nil, checklistId: "chemical_peel"),
+        Procedure(name: "Botox", description: "Reduces fine lines and wrinkles", category: "Injectable", imageName: nil, checklistId: "botox"),
+        Procedure(name: "Dermal Fillers", description: "Restore volume and smooth wrinkles", category: "Injectable", imageName: nil, checklistId: "lip_fillers")
     ]
 }
 

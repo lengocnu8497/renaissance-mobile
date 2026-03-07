@@ -23,7 +23,7 @@ struct ContentView: View {
                     selectedTab = 1
                 },
                 onNavigateToProcedures: {
-                    // Disabled - do nothing
+                    selectedTab = 2
                 }
             )
             .tabItem {
@@ -41,40 +41,25 @@ struct ContentView: View {
 
             ProceduresTabView(selectedTab: $selectedTab)
                 .tabItem {
-                    Label {
-                        Text("Procedures")
-                    } icon: {
-                        ZStack(alignment: .topTrailing) {
-                            Image(systemName: "magnifyingglass")
-
-                            Text("Soon")
-                                .font(.system(size: 8, weight: .semibold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
-                                .background(Theme.Colors.primaryProcedures)
-                                .cornerRadius(6)
-                                .offset(x: 12, y: -8)
-                        }
-                    }
+                    Label("Procedures", systemImage: "magnifyingglass")
                 }
                 .tag(2)
-                .disabled(true)
+
+            PhotoJournalView()
+                .tabItem {
+                    Image(systemName: "camera.macro")
+                    Text("Journal")
+                }
+                .tag(3)
 
             ProfileTabView(selectedTab: $selectedTab)
                 .tabItem {
                     Image(systemName: "person")
                     Text("Profile")
                 }
-                .tag(3)
+                .tag(4)
         }
         .buttonStyle(TickButtonStyle())
-        .onChange(of: selectedTab) { oldValue, newValue in
-            // Prevent switching to Procedures tab
-            if newValue == 2 {
-                selectedTab = oldValue
-            }
-        }
     }
 
     // MARK: - Tab Bar Configuration
@@ -125,8 +110,8 @@ struct ProceduresTabView: View {
     @Binding var selectedTab: Int
 
     var body: some View {
-        ProceduresListView(onBackButtonTapped: {
-            selectedTab = 0 // Switch to Home tab
+        ProceduresHubView(onBackButtonTapped: {
+            selectedTab = 0
         })
     }
 }

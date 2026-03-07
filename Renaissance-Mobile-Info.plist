@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Renaissance uses your camera to capture recovery photos for your personal journal.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Renaissance accesses your photo library so you can add existing photos to your recovery journal.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

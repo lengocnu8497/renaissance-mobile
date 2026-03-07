@@ -242,6 +242,15 @@ struct Procedure: Identifiable {
     let description: String
     let category: String
     let imageName: String?
+    let checklistId: String // maps to ReadinessData procedure id
+
+    init(name: String, description: String, category: String, imageName: String?, checklistId: String = "") {
+        self.name = name
+        self.description = description
+        self.category = category
+        self.imageName = imageName
+        self.checklistId = checklistId
+    }
 }
 
 // MARK: - Subscription Models
