@@ -92,6 +92,9 @@ GRANT EXECUTE ON FUNCTION public.get_or_create_usage_record TO service_role;
 -- Fix: add p_user_id ownership check in the WHERE clause and reject negatives.
 -- -----------------------------------------------------------------------------
 
+-- Drop the 4-parameter version created in 000000 to avoid an ambiguous overload
+DROP FUNCTION IF EXISTS public.increment_usage(UUID, INTEGER, INTEGER, INTEGER);
+
 CREATE OR REPLACE FUNCTION public.increment_usage(
     p_usage_id UUID,
     p_user_id  UUID,
@@ -116,4 +119,4 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-GRANT EXECUTE ON FUNCTION public.increment_usage TO authenticated;
+GRANT EXECUTE ON FUNCTION public.increment_usage(UUID, UUID, INTEGER, INTEGER, INTEGER) TO authenticated;
