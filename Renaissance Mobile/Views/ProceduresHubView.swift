@@ -168,7 +168,7 @@ struct FeatureToolCard: View {
                     }
 
                     Text(subtitle)
-                        .font(.system(size: 13))
+                        .font(Theme.Typography.cardSubtitle)
                         .foregroundColor(Theme.Colors.textProceduresSubtle)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)

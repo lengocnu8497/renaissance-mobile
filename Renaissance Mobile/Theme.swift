@@ -54,7 +54,7 @@ struct Theme {
         // Backgrounds
         static let backgroundLight       = Color.white
         static let backgroundChat        = Color.white
-        static let backgroundHome        = Color.white
+        static let backgroundHome        = Color(hex: "#FFF8F6")   // warm cream — home screen bg
         static let backgroundProcedures  = Color.white
         static let backgroundProfile     = Color.white
         static let backgroundWelcome     = Brand.cream
@@ -91,14 +91,24 @@ struct Theme {
         static let error    = Color(hex: "#EF4444")
     }
 
+    // MARK: - Outfit Font Helpers
+    // Bundled via Fonts/Outfit-*.ttf + UIAppFonts in Info.plist.
+    // Use these instead of .custom("Outfit-*") inline to keep names DRY.
+    struct Outfit {
+        static func light(_ size: CGFloat)    -> Font { .custom("Outfit-Light",    size: size) }
+        static func regular(_ size: CGFloat)  -> Font { .custom("Outfit-Regular",  size: size) }
+        static func semiBold(_ size: CGFloat) -> Font { .custom("Outfit-SemiBold", size: size) }
+        static func bold(_ size: CGFloat)     -> Font { .custom("Outfit-Bold",     size: size) }
+    }
+
     // MARK: - Typography
-    // Headings use .design(.serif) → Cormorant Garamond if registered, system serif fallback.
-    // Body/UI uses .custom("Outfit-Regular") if available, system sans fallback.
+    // Headings: Cormorant Garamond via .design(.serif) (system serif fallback).
+    // Body/UI:  Outfit via Theme.Outfit helpers (bundled TTFs).
     struct Typography {
         // Headers
         static let welcomeHeader       = Font.system(size: 28, weight: .semibold)
         static let welcomeTitle        = Font.system(size: 32, weight: .bold)
-        static let welcomeSubtitle     = Font.system(size: 16)
+        static let welcomeSubtitle     = Font.system(size: 15, weight: .light)
         static let homeHeader          = Font.system(size: 32, weight: .light, design: .serif)
         static let chatHeader          = Font.system(size: 18, weight: .light, design: .serif)
         static let sectionTitle        = Font.system(size: 18, weight: .regular)
@@ -107,10 +117,12 @@ struct Theme {
 
         // Card Text
         static let cardTitle    = Font.system(size: 18, weight: .regular)
-        static let cardSubtitle = Font.system(size: 14, weight: .light)
+        static let cardSubtitle = Font.system(size: 15, weight: .light)   // same as heroSubtitle — canonical subtext style
         static let heroTitle    = Font.system(size: 24, weight: .light, design: .serif)
-        static let heroSubtitle = Font.system(size: 15, weight: .light)
+        static let heroSubtitle = Font.system(size: 15, weight: .light)   // alias of cardSubtitle
         static let categoryLabel = Font.system(size: 14, weight: .regular)
+        static let cardLabel    = Font.system(size: 14, weight: .semibold) // inline card titles, CTA labels (e.g. "Ask Rena", "Log")
+        static let serifPrompt  = Font.system(size: 13, weight: .light, design: .serif) // soft serif cues, placeholder/muted prompts
 
         // Chat
         static let messageText = Font.system(size: 16)
@@ -177,6 +189,11 @@ struct Theme {
         /// Dark header: charcoal rose → deeper charcoal
         static let dark = LinearGradient(
             colors: [Brand.charcoalRose, Color(hex: "#2A1E20")],
+            startPoint: .topLeading, endPoint: .bottomTrailing
+        )
+        /// Insights card: white → dusty rose tint (home screen recovery/journal cards)
+        static let insightsCard = LinearGradient(
+            colors: [Color.white, Brand.dustyRose.opacity(0.18)],
             startPoint: .topLeading, endPoint: .bottomTrailing
         )
     }

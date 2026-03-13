@@ -14,62 +14,53 @@ struct HeroCardView: View {
     var showLaunchingBadge: Bool = false
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            // Background — Mauve Berry
-            Theme.Colors.primaryHome
-                .frame(height: 200)
-                .cornerRadius(Theme.CornerRadius.medium)
+        HStack(alignment: .center, spacing: Theme.Spacing.lg) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
 
-            // Launching Soon Badge
-            if showLaunchingBadge {
-                Text("Launching Soon")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.25))
-                    .cornerRadius(16)
-                    .padding(Theme.Spacing.lg)
-            }
+                // Category label row
+                HStack(spacing: Theme.Spacing.sm) {
 
-            // Content overlay
-            VStack {
-                Spacer()
-                HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text(title)
-                        .font(Theme.Typography.heroTitle)
-                        .foregroundColor(.white)
-                        .lineLimit(2)
-
-                    Text(subtitle)
-                        .font(Theme.Typography.heroSubtitle)
-                        .foregroundColor(.white.opacity(0.95))
-                        .lineLimit(1)
+                    if showLaunchingBadge {
+                        Text("Launching Soon")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Theme.Colors.primaryHome)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Theme.Colors.iconCircleBackground)
+                            .cornerRadius(Theme.CornerRadius.pill)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
 
-                Spacer()
+                Text(title)
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(Theme.Colors.textHomePrimary)
+                    .lineLimit(2)
 
-                // Arrow button
-                Circle()
-                    .fill(Color.white.opacity(0.2))
-                    .frame(width: 32, height: 32)
-                    .overlay(
-                        Image(systemName: "arrow.forward")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white)
-                    )
+                Text(subtitle)
+                    .font(Theme.Typography.heroSubtitle)
+                    .foregroundColor(Theme.Colors.textHomeMuted)
+                    .lineLimit(2)
             }
-            .padding(Theme.Spacing.lg)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Arrow button
+            Circle()
+                .fill(Theme.Colors.textHomePrimary)
+                .frame(width: 36, height: 36)
+                .overlay(
+                    Image(systemName: "arrow.forward")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                )
         }
-        .frame(height: 200)
+        .padding(Theme.Spacing.lg)
+        .background(Color.white)
+        .cornerRadius(Theme.CornerRadius.medium)
         .shadow(
-            color: Theme.Shadow.card.color,
-            radius: Theme.Shadow.card.radius,
-            x: Theme.Shadow.card.x,
-            y: Theme.Shadow.card.y
+            color: Theme.Shadow.elevated.color,
+            radius: Theme.Shadow.elevated.radius,
+            x: Theme.Shadow.elevated.x,
+            y: Theme.Shadow.elevated.y
         )
     }
 }
@@ -78,8 +69,9 @@ struct HeroCardView: View {
     HeroCardView(
         title: "Explore Procedures",
         subtitle: "Find the perfect treatment for you.",
-        imageName: nil
+        imageName: nil,
+        showLaunchingBadge: true
     )
     .padding()
-    .background(Theme.Colors.backgroundHome)
+    .background(Color(hex: "#FFF8F6"))
 }

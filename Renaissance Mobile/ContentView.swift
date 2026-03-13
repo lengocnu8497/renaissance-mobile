@@ -24,6 +24,9 @@ struct ContentView: View {
                 },
                 onNavigateToProcedures: {
                     selectedTab = 2
+                },
+                onNavigateToJournal: {
+                    selectedTab = 3
                 }
             )
             .tabItem {

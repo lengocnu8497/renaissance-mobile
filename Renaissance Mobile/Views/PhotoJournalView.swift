@@ -17,8 +17,6 @@ struct PhotoJournalView: View {
                 Color.white.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    header
-
                     if vm.isLoading && vm.entries.isEmpty {
                         Spacer()
                         ProgressView()
@@ -29,29 +27,8 @@ struct PhotoJournalView: View {
                         procedureList
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-                // FAB
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        Button {
-                            vm.tapAddEntry()
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 22, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 58, height: 58)
-                                .background(Circle().fill(Theme.Brand.mauveBerry))
-                                .shadow(color: Theme.Shadow.glow.color,
-                                        radius: Theme.Shadow.glow.radius,
-                                        x: Theme.Shadow.glow.x,
-                                        y: Theme.Shadow.glow.y)
-                        }
-                        .padding(.trailing, 24)
-                        .padding(.bottom, 24)
-                    }
-                }
             }
             .navigationBarHidden(true)
             .sheet(isPresented: $vm.showAddEntry) {
@@ -105,17 +82,6 @@ struct PhotoJournalView: View {
 
     // MARK: - Subviews
 
-    private var header: some View {
-        HStack(alignment: .bottom) {
-            Text("Recovery Journal")
-                .font(Theme.Typography.homeHeader)
-                .foregroundStyle(Theme.Colors.textPrimary)
-            Spacer()
-        }
-        .padding(.horizontal, Theme.Spacing.xl)
-        .padding(.top, 56)
-        .padding(.bottom, Theme.Spacing.lg)
-    }
 
     private var procedureList: some View {
         ScrollView {
@@ -148,40 +114,53 @@ struct PhotoJournalView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: Theme.Spacing.xl) {
-            Spacer()
-            ZStack {
-                Circle()
-                    .fill(Theme.Brand.softBlush)
-                    .frame(width: 96, height: 96)
-                Image(systemName: "camera.macro")
-                    .font(.system(size: 40))
-                    .foregroundStyle(Theme.Brand.dustyRose)
+        ZStack(alignment: .bottom) {
+            // Background photo
+            GeometryReader { geo in
+                Image("journal_empty_bg")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geo.size.width, height: geo.size.width * 16 / 9)
+                    .clipped()
             }
+            .aspectRatio(9/16, contentMode: .fit)
 
-            VStack(spacing: Theme.Spacing.sm) {
+            // Gradient scrim
+            LinearGradient(
+                colors: [.clear, Color(hex: "#3D2B2E").opacity(0.65)],
+                startPoint: .center,
+                endPoint: .bottom
+            )
+
+            // Text + CTA overlay
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 Text("Start Your Journal")
-                    .font(.system(size: 22, weight: .semibold, design: .serif))
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Text("Track your recovery with daily photos and AI-powered analysis of swelling, bruising, and redness.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            }
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
 
-            Button {
-                vm.tapAddEntry()
-            } label: {
-                Text("Add First Entry")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 40)
-                    .padding(.vertical, 16)
-                    .background(Capsule().fill(Theme.Brand.mauveBerry))
+                Text("Track your recovery")
+                    .font(Theme.Typography.cardSubtitle)
+                    .foregroundStyle(.white.opacity(0.55))
+
+                Button {
+                    vm.tapAddEntry()
+                } label: {
+                    Text("Add First Entry")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#3D2B2E"))
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 10)
+                        .background(Capsule().fill(Color.white.opacity(0.9)))
+                }
+                .padding(.top, Theme.Spacing.xs)
             }
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Theme.Spacing.xl)
+            .padding(.bottom, Theme.Spacing.xl)
         }
+        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
+        .padding(.horizontal, Theme.Spacing.xl)
+        .padding(.top, Theme.Spacing.lg)
     }
 }
 
