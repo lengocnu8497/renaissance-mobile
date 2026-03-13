@@ -11,41 +11,25 @@ struct HeroCardView: View {
     let title: String
     let subtitle: String
     let imageName: String?
-    var showLaunchingBadge: Bool = false
 
     var body: some View {
         HStack(alignment: .center, spacing: Theme.Spacing.lg) {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-
-                // Category label row
-                HStack(spacing: Theme.Spacing.sm) {
-
-                    if showLaunchingBadge {
-                        Text("Launching Soon")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Theme.Colors.primaryHome)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Theme.Colors.iconCircleBackground)
-                            .cornerRadius(Theme.CornerRadius.pill)
-                    }
-                }
-
                 Text(title)
                     .font(.system(size: 24, weight: .semibold))
-                    .foregroundColor(Theme.Colors.textHomePrimary)
+                    .foregroundColor(.white)
                     .lineLimit(2)
 
                 Text(subtitle)
                     .font(Theme.Typography.heroSubtitle)
-                    .foregroundColor(Theme.Colors.textHomeMuted)
+                    .foregroundColor(Color.white.opacity(0.6))
                     .lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             // Arrow button
             Circle()
-                .fill(Theme.Colors.textHomePrimary)
+                .fill(Color.white.opacity(0.15))
                 .frame(width: 36, height: 36)
                 .overlay(
                     Image(systemName: "arrow.forward")
@@ -53,14 +37,15 @@ struct HeroCardView: View {
                         .foregroundColor(.white)
                 )
         }
-        .padding(Theme.Spacing.lg)
-        .background(Color.white)
+        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.vertical, 28)
+        .background(Theme.Brand.charcoalRose)
         .cornerRadius(Theme.CornerRadius.medium)
         .shadow(
-            color: Theme.Shadow.elevated.color,
-            radius: Theme.Shadow.elevated.radius,
-            x: Theme.Shadow.elevated.x,
-            y: Theme.Shadow.elevated.y
+            color: Theme.Brand.charcoalRose.opacity(0.3),
+            radius: 16,
+            x: 0,
+            y: 6
         )
     }
 }
@@ -69,8 +54,7 @@ struct HeroCardView: View {
     HeroCardView(
         title: "Explore Procedures",
         subtitle: "Find the perfect treatment for you.",
-        imageName: nil,
-        showLaunchingBadge: true
+        imageName: nil
     )
     .padding()
     .background(Color(hex: "#FFF8F6"))

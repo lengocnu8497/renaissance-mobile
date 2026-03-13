@@ -10,6 +10,7 @@ import SwiftUI
 struct ContentView: View {
     @State private var selectedTab = 0
     @State private var searchQuery: String = ""
+    @State private var journalAddTrigger = false
 
     init() {
         configureTabBarAppearance()
@@ -22,47 +23,76 @@ struct ContentView: View {
                     searchQuery = query
                     selectedTab = 1
                 },
-                onNavigateToProcedures: {
-                    selectedTab = 2
-                },
                 onNavigateToJournal: {
                     selectedTab = 3
                 }
             )
             .tabItem {
-                Image(systemName: "house")
+                Image(systemName: "house.fill")
                 Text("Home")
             }
             .tag(0)
 
             ChatTabView(selectedTab: $selectedTab, searchQuery: $searchQuery)
                 .tabItem {
-                    Image(systemName: "message")
+                    Image(systemName: "message.fill")
                     Text("Chats")
                 }
                 .tag(1)
 
-            ProceduresTabView(selectedTab: $selectedTab)
+            // Center "+" tab — covered by overlay button, intercepted by onChange
+            Color.clear
                 .tabItem {
-                    Label("Procedures", systemImage: "magnifyingglass")
+                    Image(systemName: "plus")
+                    Text("")
                 }
                 .tag(2)
 
-            PhotoJournalView()
+            PhotoJournalView(addEntryTrigger: $journalAddTrigger)
                 .tabItem {
-                    Image(systemName: "camera.macro")
+                    Image(systemName: "book.closed.fill")
                     Text("Journal")
                 }
                 .tag(3)
 
             ProfileTabView(selectedTab: $selectedTab)
                 .tabItem {
-                    Image(systemName: "person")
+                    Image(systemName: "person.fill")
                     Text("Profile")
                 }
                 .tag(4)
         }
         .buttonStyle(TickButtonStyle())
+        .onChange(of: selectedTab) { _, newTab in
+            if newTab == 2 {
+                selectedTab = 3
+                journalAddTrigger = true
+            }
+        }
+        .overlay {
+            VStack {
+                Spacer()
+                Button {
+                    selectedTab = 3
+                    journalAddTrigger = true
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Theme.Brand.charcoalRose)
+                            .frame(width: 62, height: 62)
+                            .shadow(
+                                color: Theme.Brand.charcoalRose.opacity(0.4),
+                                radius: 10, x: 0, y: 4
+                            )
+                        Image(systemName: "plus")
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                }
+                .padding(.bottom, 28)
+            }
+            .ignoresSafeArea(edges: .bottom)
+        }
     }
 
     // MARK: - Tab Bar Configuration
@@ -71,10 +101,11 @@ struct ContentView: View {
         appearance.configureWithDefaultBackground()
         appearance.backgroundColor = UIColor(Theme.Colors.cardBackground.opacity(0.95))
 
-        // Unselected item color
-        appearance.stackedLayoutAppearance.normal.iconColor = UIColor(Theme.Colors.textHomeMuted)
+        // Unselected item color — solid grey fill
+        let unselectedGrey = UIColor.systemGray3
+        appearance.stackedLayoutAppearance.normal.iconColor = unselectedGrey
         appearance.stackedLayoutAppearance.normal.titleTextAttributes = [
-            .foregroundColor: UIColor(Theme.Colors.textHomeMuted)
+            .foregroundColor: unselectedGrey
         ]
 
         // Selected item color
@@ -108,17 +139,6 @@ struct ChatTabView: View {
     }
 }
 
-// MARK: - Procedures Tab View
-struct ProceduresTabView: View {
-    @Binding var selectedTab: Int
-
-    var body: some View {
-        ProceduresHubView(onBackButtonTapped: {
-            selectedTab = 0
-        })
-    }
-}
-
 // MARK: - Profile Tab View
 struct ProfileTabView: View {
     @Binding var selectedTab: Int
@@ -127,13 +147,6 @@ struct ProfileTabView: View {
         ProfileView(onBackButtonTapped: {
             selectedTab = 0 // Switch to Home tab
         })
-    }
-}
-
-// MARK: - Placeholder Views
-struct ProceduresView: View {
-    var body: some View {
-        ProceduresListView()
     }
 }
 

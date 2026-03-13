@@ -104,31 +104,10 @@ struct ProceduresListView: View {
         ScrollView {
             VStack(spacing: Theme.Spacing.lg) {
                 ForEach(procedures) { procedure in
-                    VStack(spacing: 0) {
-                        ProcedureListItemView(procedure: procedure)
-
-                        if ReadinessData.checklist(for: procedure.checklistId) != nil {
-                            NavigationLink(destination: ReadinessChecklistView(procedureId: procedure.checklistId)) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "checklist")
-                                        .font(.system(size: 12))
-                                    Text("Check Readiness")
-                                        .font(.system(size: 12, weight: .medium))
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 10))
-                                }
-                                .foregroundColor(Theme.Colors.primaryHome)
-                                .padding(.horizontal, Theme.Spacing.lg)
-                                .padding(.vertical, 10)
-                                .background(Theme.Colors.primaryHome.opacity(0.05))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .background(Theme.Colors.cardBackground)
-                    .cornerRadius(Theme.CornerRadius.medium)
-                    .shadow(color: Theme.Shadow.card.color, radius: Theme.Shadow.card.radius, x: Theme.Shadow.card.x, y: Theme.Shadow.card.y)
+                    ProcedureListItemView(procedure: procedure)
+                        .background(Theme.Colors.cardBackground)
+                        .cornerRadius(Theme.CornerRadius.medium)
+                        .shadow(color: Theme.Shadow.card.color, radius: Theme.Shadow.card.radius, x: Theme.Shadow.card.x, y: Theme.Shadow.card.y)
                 }
             }
             .padding(.horizontal, Theme.Spacing.lg)
@@ -161,12 +140,12 @@ struct ProceduresListView: View {
 
     // MARK: - Mock Data
     static let mockProcedures = [
-        Procedure(name: "Microneedling", description: "For skin rejuvenation and texture improvement", category: "Non-Surgical", imageName: nil, checklistId: "microneedling"),
-        Procedure(name: "Lip Fillers", description: "Enhance volume and define lip shape", category: "Injectable", imageName: nil, checklistId: "lip_fillers"),
-        Procedure(name: "Laser Hair Removal", description: "Permanent reduction of unwanted hair", category: "Laser", imageName: nil, checklistId: "laser_hair_removal"),
-        Procedure(name: "Chemical Peel", description: "Improves skin tone and reduces blemishes", category: "Skin", imageName: nil, checklistId: "chemical_peel"),
-        Procedure(name: "Botox", description: "Reduces fine lines and wrinkles", category: "Injectable", imageName: nil, checklistId: "botox"),
-        Procedure(name: "Dermal Fillers", description: "Restore volume and smooth wrinkles", category: "Injectable", imageName: nil, checklistId: "lip_fillers")
+        Procedure(name: "Microneedling", description: "For skin rejuvenation and texture improvement", category: "Non-Surgical", imageName: nil),
+        Procedure(name: "Lip Fillers", description: "Enhance volume and define lip shape", category: "Injectable", imageName: nil),
+        Procedure(name: "Laser Hair Removal", description: "Permanent reduction of unwanted hair", category: "Laser", imageName: nil),
+        Procedure(name: "Chemical Peel", description: "Improves skin tone and reduces blemishes", category: "Skin", imageName: nil),
+        Procedure(name: "Botox", description: "Reduces fine lines and wrinkles", category: "Injectable", imageName: nil),
+        Procedure(name: "Dermal Fillers", description: "Restore volume and smooth wrinkles", category: "Injectable", imageName: nil)
     ]
 }
 

@@ -54,7 +54,7 @@ struct Theme {
         // Backgrounds
         static let backgroundLight       = Color.white
         static let backgroundChat        = Color.white
-        static let backgroundHome        = Color(hex: "#FFF8F6")   // warm cream — home screen bg
+        static let backgroundHome        = Color(hex: "#F0E8E5")   // dusty blush — home screen bg
         static let backgroundProcedures  = Color.white
         static let backgroundProfile     = Color.white
         static let backgroundWelcome     = Brand.cream

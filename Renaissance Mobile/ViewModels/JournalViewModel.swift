@@ -45,6 +45,8 @@ class JournalViewModel {
 
     var showAddEntry = false
     var showConsentBanner = false
+    /// Pre-filled procedure name when adding from inside a specific journal
+    var pendingProcedureName: String?
     var hasGivenConsent: Bool {
         get { UserDefaults.standard.bool(forKey: "journal_photo_consent") }
         set { UserDefaults.standard.set(newValue, forKey: "journal_photo_consent") }
@@ -55,17 +57,28 @@ class JournalViewModel {
     var analyzingEntryId: UUID?
     var analysisError: String?
 
+    // MARK: - Insights State
+
+    /// Cross-entry AI insights, keyed by procedureId
+    var insights: [String: RecoveryInsights] = [:]
+
+    /// ProcedureIds currently generating insights in the background
+    var insightsGenerating: Set<String> = []
+
     // MARK: - Services
 
     private let journalService: JournalService
     private let analysisService: SkinAnalysisService
+    private let insightsService: RecoveryInsightsService
 
     init(
         journalService: JournalService = JournalService(),
-        analysisService: SkinAnalysisService = SkinAnalysisService()
+        analysisService: SkinAnalysisService = SkinAnalysisService(),
+        insightsService: RecoveryInsightsService = RecoveryInsightsService()
     ) {
         self.journalService = journalService
         self.analysisService = analysisService
+        self.insightsService = insightsService
     }
 
     // MARK: - Load
@@ -78,8 +91,23 @@ class JournalViewModel {
 
         do {
             entries = try await journalService.fetchEntries(for: selectedProcedureId)
+            loadCachedInsights()
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    /// Restores insights from local cache for all procedures that have >= 2 entries.
+    /// Cache is keyed by procedureId + entryCount — if entries changed, cache is stale.
+    private func loadCachedInsights() {
+        for group in groupedByProcedure where group.entries.count >= 2 {
+            guard let procedureId = group.entries.first?.procedureId else { continue }
+            if let cached = insightsService.fetchCached(
+                procedureId: procedureId,
+                currentEntryCount: group.entries.count
+            ) {
+                insights[procedureId] = cached
+            }
         }
     }
 
@@ -108,10 +136,19 @@ class JournalViewModel {
             )
             entries.insert(entry, at: 0)
             showAddEntry = false
+            pendingProcedureName = nil
 
-            // Auto-analyze if photo was attached
+            // Auto-analyze photo if attached
             if photoData != nil {
                 await analyzeEntry(entry)
+            }
+
+            // Regenerate cross-entry insights in background if procedure has enough entries
+            let procedureEntries = entries.filter { $0.procedureId == procedureId }
+            if procedureEntries.count >= 2 {
+                Task {
+                    await refreshInsights(for: procedureId, procedureName: procedureName)
+                }
             }
         } catch {
             self.error = error.localizedDescription
@@ -125,6 +162,8 @@ class JournalViewModel {
         do {
             try await journalService.deleteEntry(id: entry.id)
             entries.removeAll { $0.id == entry.id }
+            // Clear insights for this procedure since entry count changed
+            insights.removeValue(forKey: entry.procedureId)
         } catch {
             self.error = error.localizedDescription
         }
@@ -142,9 +181,10 @@ class JournalViewModel {
             }
         }
         entries.removeAll { $0.procedureId == procedureId }
+        insights.removeValue(forKey: procedureId)
     }
 
-    // MARK: - Analyze
+    // MARK: - Analyze (per-entry photo)
 
     @MainActor
     func analyzeEntry(_ entry: JournalEntry) async {
@@ -180,12 +220,36 @@ class JournalViewModel {
         }
     }
 
+    // MARK: - Cross-Entry Insights
+
+    /// Generates cross-entry insights for a procedure and stores the result.
+    /// Safe to call from background tasks — updates @Observable state on MainActor.
+    @MainActor
+    func refreshInsights(for procedureId: String, procedureName: String) async {
+        let procedureEntries = entries.filter { $0.procedureId == procedureId }
+        guard procedureEntries.count >= 2 else { return }
+        guard !insightsGenerating.contains(procedureId) else { return }
+
+        insightsGenerating.insert(procedureId)
+        defer { insightsGenerating.remove(procedureId) }
+
+        do {
+            let result = try await insightsService.generateInsights(
+                entries: procedureEntries,
+                procedureName: procedureName,
+                procedureId: procedureId
+            )
+            insights[procedureId] = result
+        } catch {
+            // Non-fatal: insights are supplementary, not blocking
+            print("RecoveryInsights generation failed for \(procedureName): \(error)")
+        }
+    }
+
     // MARK: - Consent
 
     func requestConsent() {
-        if !hasGivenConsent {
-            showConsentBanner = true
-        }
+        if !hasGivenConsent { showConsentBanner = true }
     }
 
     func grantConsent() {
@@ -198,7 +262,8 @@ class JournalViewModel {
         showConsentBanner = false
     }
 
-    func tapAddEntry() {
+    func tapAddEntry(for procedureName: String? = nil) {
+        pendingProcedureName = procedureName
         if hasGivenConsent {
             showAddEntry = true
         } else {

@@ -10,13 +10,13 @@ import Combine
 
 struct PostLoginHomeView: View {
     @State private var navigateToChat = false
+    @State private var navigateToProcedures = false
     @State private var firstName: String = ""
     @State private var journalViewModel = JournalViewModel()
     @State private var selectedDay: Date = Calendar.current.startOfDay(for: Date())
     @State private var carouselIndex = 0
 
     var onNavigateToChat: ((String) -> Void)?
-    var onNavigateToProcedures: (() -> Void)?
     var onNavigateToJournal: (() -> Void)?
 
     private let userProfileService = UserProfileService(supabase: supabase)
@@ -36,6 +36,9 @@ struct PostLoginHomeView: View {
             }
             .background(Theme.Colors.backgroundHome)
             .navigationBarHidden(true)
+            .navigationDestination(isPresented: $navigateToProcedures) {
+                ProceduresListView()
+            }
             .task {
                 await loadUserProfile()
                 await journalViewModel.load()
@@ -61,7 +64,7 @@ struct PostLoginHomeView: View {
     private var headerSection: some View {
         HStack(alignment: .top) {
             Text("Hello, \(firstName.isEmpty ? "there" : firstName)")
-                .font(.system(size: 28, weight: .semibold))
+                .font(.system(size: 34, weight: .bold))
                 .foregroundColor(Theme.Colors.textHomePrimary)
 
             Spacer()
@@ -122,7 +125,7 @@ struct PostLoginHomeView: View {
 
                 Image(systemName: "arrow.forward")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Theme.Colors.primaryHome)
+                    .foregroundColor(Theme.Colors.textHomePrimary)
             }
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.vertical, Theme.Spacing.md)
@@ -143,12 +146,11 @@ struct PostLoginHomeView: View {
         HeroCardView(
             title: "Explore Procedures",
             subtitle: "Find the perfect treatment for you.",
-            imageName: nil,
-            showLaunchingBadge: true
+            imageName: nil
         )
         .padding(.horizontal, Theme.Spacing.lg)
         .onTapGesture {
-            onNavigateToProcedures?()
+            navigateToProcedures = true
         }
     }
 
@@ -157,7 +159,7 @@ struct PostLoginHomeView: View {
     private var recoverySection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             Text("Daily Reflection")
-                .font(.system(size: 28, weight: .semibold))
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundColor(Color(hex: "#3D2B2E"))
                 .padding(.horizontal, Theme.Spacing.lg)
                 .padding(.top, Theme.Spacing.xl)
@@ -207,7 +209,7 @@ struct PostLoginHomeView: View {
 
                     // Entry indicator dot inside cell (non-selected days only)
                     Circle()
-                        .fill(hasEntry && !isSelected ? Theme.Colors.primaryHome : Color.clear)
+                        .fill(hasEntry && !isSelected ? Theme.Brand.dustyRose : Color.clear)
                         .frame(width: 5, height: 5)
                 }
                 .frame(width: 52, height: 72)
@@ -238,15 +240,15 @@ struct PostLoginHomeView: View {
                 logEntryCard.tag(2)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 180)
+            .frame(height: 220)
 
             // Page dots
             HStack(spacing: 6) {
                 ForEach(0..<3, id: \.self) { i in
                     Circle()
                         .fill(i == carouselIndex
-                              ? Theme.Colors.primaryHome
-                              : Color(hex: "#C4929A").opacity(0.3))
+                              ? Theme.Colors.textHomePrimary
+                              : Theme.Colors.textHomeMuted.opacity(0.3))
                         .frame(width: 5, height: 5)
                 }
             }
@@ -286,13 +288,25 @@ struct PostLoginHomeView: View {
     }
 
     private var photoPlaceholder: some View {
-        VStack(spacing: Theme.Spacing.sm) {
-            Image(systemName: "camera")
-                .font(.system(size: 28, weight: .light))
-                .foregroundColor(Color(hex: "#C4929A").opacity(0.6))
-            Text("No photo for this day")
-                .font(Theme.Typography.cardSubtitle)
-                .foregroundColor(Theme.Colors.textHomeMuted)
+        ZStack {
+            RoundedRectangle(cornerRadius: Theme.CornerRadius.small)
+                .strokeBorder(
+                    style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
+                )
+                .foregroundColor(Theme.Brand.dustyRose.opacity(0.35))
+                .padding(Theme.Spacing.lg)
+
+            VStack(spacing: Theme.Spacing.sm) {
+                Image(systemName: "camera")
+                    .font(.system(size: 28, weight: .light))
+                    .foregroundColor(Theme.Brand.dustyRose.opacity(0.6))
+                Text("No photo for this day")
+                    .font(Theme.Typography.cardSubtitle)
+                    .foregroundColor(Theme.Colors.textHomeMuted)
+                Text("Capture today's progress")
+                    .font(.system(size: 12, weight: .light))
+                    .foregroundColor(Theme.Colors.textHomeMuted.opacity(0.7))
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.white)
@@ -314,15 +328,27 @@ struct PostLoginHomeView: View {
                 Text(summary)
                     .font(Theme.Typography.cardSubtitle)
                     .foregroundColor(Theme.Colors.textHomePrimary)
-                    .lineLimit(5)
+                    .lineLimit(8)
             } else {
                 Text("Start an entry so we can help you track your progress, flag any concerns, and give you important reminders.")
                     .font(Theme.Typography.cardSubtitle)
                     .foregroundColor(Theme.Colors.textHomeMuted)
-                    .lineLimit(5)
+                    .lineLimit(8)
             }
 
             Spacer()
+
+            Divider()
+                .background(Theme.Brand.dustyRose.opacity(0.3))
+
+            HStack(spacing: 5) {
+                Image(systemName: "flame")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(Theme.Brand.dustyRose)
+                Text(currentStreak > 0 ? "\(currentStreak) day streak" : "Start your streak today")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Theme.Colors.textHomeMuted)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.Spacing.lg)
@@ -331,33 +357,55 @@ struct PostLoginHomeView: View {
     }
 
     private var logEntryCard: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            Spacer()
-
-            Text("Create an entry to reflect")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(Theme.Colors.textHomePrimary)
-
-            Text("Document your recovery journey, one day at a time.")
-                .font(Theme.Typography.cardSubtitle)
-                .foregroundColor(Theme.Colors.textHomeMuted)
-
-            Spacer()
-
-            Button {
-                onNavigateToJournal?()
-            } label: {
-                Text("Log")
-                    .font(Theme.Typography.cardLabel)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Theme.Brand.charcoalRose)
-                    .cornerRadius(Theme.CornerRadius.pill)
+        ZStack(alignment: .topTrailing) {
+            // Decorative brand mark
+            Canvas { context, size in
+                let cx = size.width / 2
+                let cy = size.height / 2
+                var p = Path()
+                p.addEllipse(in: CGRect(x: cx - 28, y: cy - 28, width: 56, height: 56))
+                context.stroke(p, with: .color(Color(hex: "#8E4C5C").opacity(0.08)), lineWidth: 1.2)
+                p = Path()
+                p.addEllipse(in: CGRect(x: cx - 18, y: cy - 18, width: 36, height: 36))
+                context.stroke(p, with: .color(Color(hex: "#8E4C5C").opacity(0.06)), lineWidth: 1)
+                p = Path()
+                p.addEllipse(in: CGRect(x: cx - 10, y: cy - 10, width: 20, height: 20))
+                context.stroke(p, with: .color(Color(hex: "#3D2B2E").opacity(0.06)), lineWidth: 1)
+                p = Path()
+                p.addEllipse(in: CGRect(x: cx - 3, y: cy - 3, width: 6, height: 6))
+                context.fill(p, with: .color(Color(hex: "#8E4C5C").opacity(0.08)))
             }
+            .frame(width: 64, height: 64)
+            .offset(x: -Theme.Spacing.md, y: Theme.Spacing.sm)
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Spacer()
+
+                Text("Create an entry to reflect")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Theme.Colors.textHomePrimary)
+
+                Text("Document your recovery journey, one day at a time.")
+                    .font(Theme.Typography.cardSubtitle)
+                    .foregroundColor(Theme.Colors.textHomeMuted)
+
+                Spacer()
+
+                Button {
+                    onNavigateToJournal?()
+                } label: {
+                    Text("Log")
+                        .font(Theme.Typography.cardLabel)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Theme.Brand.charcoalRose)
+                        .cornerRadius(Theme.CornerRadius.pill)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Theme.Spacing.lg)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Theme.Spacing.lg)
         .background(Color.white)
         .cornerRadius(Theme.CornerRadius.medium)
     }
@@ -424,6 +472,24 @@ struct PostLoginHomeView: View {
     }
 
     // MARK: - Calendar Helpers
+
+    private var currentStreak: Int {
+        let cal = Calendar.current
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        var streak = 0
+        var checkDate = cal.startOfDay(for: Date())
+        while true {
+            let dateString = formatter.string(from: checkDate)
+            if journalViewModel.entries.contains(where: { $0.entryDate == dateString }) {
+                streak += 1
+                checkDate = cal.date(byAdding: .day, value: -1, to: checkDate)!
+            } else {
+                break
+            }
+        }
+        return streak
+    }
 
     private func weekDays() -> [Date] {
         let cal = Calendar.current
