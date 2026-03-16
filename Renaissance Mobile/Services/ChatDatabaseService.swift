@@ -20,7 +20,7 @@ class ChatDatabaseService {
 
     /// Create a new conversation for the current user
     func createConversation(title: String? = nil) async throws -> ChatConversation {
-        guard let userId = try? await supabase.auth.session.user.id else {
+        guard let userId = supabase.auth.currentUser?.id else {
             throw ChatDatabaseError.notAuthenticated
         }
 
@@ -162,7 +162,7 @@ class ChatDatabaseService {
 
     /// Upload image to Supabase Storage and return URL
     func uploadImage(_ imageData: Data, conversationId: UUID, messageId: UUID) async throws -> String {
-        guard let userId = try? await supabase.auth.session.user.id else {
+        guard let userId = supabase.auth.currentUser?.id else {
             throw ChatDatabaseError.notAuthenticated
         }
 

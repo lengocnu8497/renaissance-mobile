@@ -123,7 +123,7 @@ struct ChatView: View {
 
         // Check if user has silver or gold subscription
         do {
-            guard let userId = try? await supabase.auth.session.user.id else {
+            guard let userId = supabase.auth.currentUser?.id else {
                 return
             }
 
@@ -262,7 +262,7 @@ struct ChatView: View {
     /// This is the primary update path - webhook serves as backup/redundancy.
     private func updateSubscriptionInProfile(tier: SubscriptionTier, subscriptionId: String) async {
         do {
-            guard let userId = try? await supabase.auth.session.user.id else {
+            guard let userId = supabase.auth.currentUser?.id else {
                 print("❌ Failed to get user ID for subscription update")
                 return
             }

@@ -9,7 +9,7 @@ import PhotosUI
 struct AddJournalEntryView: View {
     @Environment(\.dismiss) private var dismiss
     var existingEntries: [JournalEntry] = []
-    var onSave: (String, String, Int, Date, String?, Data?) async -> Void
+    var onSave: (String, String, Int, Date, String?, Data?) async -> Bool
 
     // Navigation
     @State private var currentStep: Int
@@ -23,7 +23,7 @@ struct AddJournalEntryView: View {
     init(
         existingEntries: [JournalEntry] = [],
         prefilledProcedureName: String? = nil,
-        onSave: @escaping (String, String, Int, Date, String?, Data?) async -> Void
+        onSave: @escaping (String, String, Int, Date, String?, Data?) async -> Bool
     ) {
         self.existingEntries = existingEntries
         self.onSave = onSave
@@ -349,7 +349,7 @@ struct AddJournalEntryView: View {
                             let imageData = capturedImage.flatMap {
                                 $0.jpegData(compressionQuality: 0.75)
                             }
-                            await onSave(
+                            let saved = await onSave(
                                 procedureId,
                                 procedureName.trimmingCharacters(in: .whitespaces),
                                 dayNumber,
@@ -357,7 +357,15 @@ struct AddJournalEntryView: View {
                                 notes.isEmpty ? nil : notes,
                                 imageData
                             )
-                            isSaving = false
+                            if saved {
+                                // Dismiss without resetting isSaving — writing to @State
+                                // and dismissing in the same run loop tick causes
+                                // EXC_BAD_ACCESS (code=2) as SwiftUI re-renders the view
+                                // while simultaneously tearing it down.
+                                dismiss()
+                            } else {
+                                isSaving = false
+                            }
                         }
                     }
                 } label: {

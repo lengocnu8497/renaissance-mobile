@@ -23,10 +23,6 @@ private struct InsightsRequest: Encodable {
         let date: String
         let dayNumber: Int
         let notes: String?
-        let swellingIndex: Double?
-        let bruisingIndex: Double?
-        let rednessIndex: Double?
-        let overallScore: Double?
     }
 }
 
@@ -68,11 +64,7 @@ class RecoveryInsightsService {
                 InsightsRequest.EntryPayload(
                     date: $0.entryDate,
                     dayNumber: $0.dayNumber,
-                    notes: $0.notes,
-                    swellingIndex: $0.swellingIndex,
-                    bruisingIndex: $0.bruisingIndex,
-                    rednessIndex: $0.rednessIndex,
-                    overallScore: $0.overallScore
+                    notes: $0.notes
                 )
             }
         )
@@ -121,3 +113,5 @@ class RecoveryInsightsService {
         "\(cachePrefix)\(procedureId)"
     }
 }
+
+extension RecoveryInsightsService: RecoveryInsightsServiceProtocol {}

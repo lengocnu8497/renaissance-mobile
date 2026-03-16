@@ -18,20 +18,11 @@ struct JournalEntry: Identifiable, Codable {
     var photoPath: String?      // Supabase Storage path
     var photoUrl: String?       // cached URL
 
-    // Gemini Vision analysis (nil if not yet analyzed)
-    var analysisJson: [String: AnyCodableValue]?
-    var swellingIndex: Double?
-    var bruisingIndex: Double?
-    var rednessIndex: Double?
-    var overallScore: Double?
-    var summary: String?
-    var zones: [ZoneAnalysis]?
-
     let createdAt: Date
     var updatedAt: Date
 
     enum CodingKeys: String, CodingKey {
-        case id, notes, summary, zones
+        case id, notes
         case userId         = "user_id"
         case procedureId    = "procedure_id"
         case procedureName  = "procedure_name"
@@ -39,11 +30,6 @@ struct JournalEntry: Identifiable, Codable {
         case entryDate      = "entry_date"
         case photoPath      = "photo_path"
         case photoUrl       = "photo_url"
-        case analysisJson   = "analysis_json"
-        case swellingIndex  = "swelling_index"
-        case bruisingIndex  = "bruising_index"
-        case rednessIndex   = "redness_index"
-        case overallScore   = "overall_score"
         case createdAt      = "created_at"
         case updatedAt      = "updated_at"
     }
@@ -60,54 +46,6 @@ struct JournalEntry: Identifiable, Codable {
         return f.date(from: entryDate) ?? Date()
     }
 
-    var hasAnalysis: Bool { overallScore != nil }
-}
-
-// MARK: - Zone Analysis
-
-struct ZoneAnalysis: Codable, Identifiable {
-    let zone: String
-    let score: Double       // 0–10
-    let notes: String?
-
-    var id: String { zone }
-}
-
-// MARK: - AnyCodableValue (for analysis_json JSONB field)
-
-enum AnyCodableValue: Codable {
-    case string(String)
-    case int(Int)
-    case double(Double)
-    case bool(Bool)
-    case array([AnyCodableValue])
-    case object([String: AnyCodableValue])
-    case null
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if container.decodeNil()                                  { self = .null }
-        else if let v = try? container.decode(Bool.self)          { self = .bool(v) }
-        else if let v = try? container.decode(Int.self)           { self = .int(v) }
-        else if let v = try? container.decode(Double.self)        { self = .double(v) }
-        else if let v = try? container.decode(String.self)        { self = .string(v) }
-        else if let v = try? container.decode([AnyCodableValue].self) { self = .array(v) }
-        else if let v = try? container.decode([String: AnyCodableValue].self) { self = .object(v) }
-        else { self = .null }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .null:          try container.encodeNil()
-        case .bool(let v):   try container.encode(v)
-        case .int(let v):    try container.encode(v)
-        case .double(let v): try container.encode(v)
-        case .string(let v): try container.encode(v)
-        case .array(let v):  try container.encode(v)
-        case .object(let v): try container.encode(v)
-        }
-    }
 }
 
 // MARK: - Insert Payload (no id/created_at — server generates them)
@@ -134,21 +72,3 @@ struct JournalEntryInsert: Encodable {
     }
 }
 
-// MARK: - Analysis Update Payload
-
-struct JournalAnalysisUpdate: Encodable {
-    let swellingIndex: Double?
-    let bruisingIndex: Double?
-    let rednessIndex: Double?
-    let overallScore: Double?
-    let summary: String?
-    let zones: [ZoneAnalysis]?
-
-    enum CodingKeys: String, CodingKey {
-        case summary, zones
-        case swellingIndex = "swelling_index"
-        case bruisingIndex = "bruising_index"
-        case rednessIndex  = "redness_index"
-        case overallScore  = "overall_score"
-    }
-}

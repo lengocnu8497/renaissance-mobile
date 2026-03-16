@@ -2,19 +2,14 @@
 //  PostLoginHomeView.swift
 //  Renaissance Mobile
 //
-//  Created by Nu Le on 12/1/25.
-//
 
 import SwiftUI
-import Combine
 
 struct PostLoginHomeView: View {
-    @State private var navigateToChat = false
     @State private var navigateToProcedures = false
     @State private var firstName: String = ""
     @State private var journalViewModel = JournalViewModel()
     @State private var selectedDay: Date = Calendar.current.startOfDay(for: Date())
-    @State private var carouselIndex = 0
 
     var onNavigateToChat: ((String) -> Void)?
     var onNavigateToJournal: (() -> Void)?
@@ -27,14 +22,13 @@ struct PostLoginHomeView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     headerSection
                     askRenaCard
-                    spacer(height: Theme.Spacing.sm)
                     heroSection
                     recoverySection
                     brandLogoSection
                 }
-                .padding(.bottom, 100) // Space for bottom tab bar
+                .padding(.bottom, 100)
             }
-            .background(Theme.Colors.backgroundHome)
+            .background(Color(hex: "#FFF8F6"))
             .navigationBarHidden(true)
             .navigationDestination(isPresented: $navigateToProcedures) {
                 ProceduresListView()
@@ -59,382 +53,260 @@ struct PostLoginHomeView: View {
         }
     }
 
-    // MARK: - Subviews
+    // MARK: - Header
 
     private var headerSection: some View {
         HStack(alignment: .top) {
-            Text("Hello, \(firstName.isEmpty ? "there" : firstName)")
-                .font(.system(size: 34, weight: .bold))
-                .foregroundColor(Theme.Colors.textHomePrimary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Good morning,")
+                    .font(.custom("Outfit-Light", size: 11.5))
+                    .foregroundColor(Color(hex: "#B8A9AB"))
+                    .tracking(0.3)
+                Text("Hello, \(firstName.isEmpty ? "there" : firstName)")
+                    .font(.system(size: 30, weight: .regular, design: .serif))
+                    .foregroundColor(Color(hex: "#3D2B2E"))
+            }
 
             Spacer()
 
-            // Profile avatar
             Circle()
                 .fill(Color.white)
                 .frame(width: 44, height: 44)
                 .overlay(
                     Image(systemName: "person.fill")
                         .font(.system(size: 18, weight: .medium))
-                        .foregroundColor(Theme.Colors.primaryHome)
+                        .foregroundColor(Color(hex: "#C4929A"))
                 )
+                .overlay(Circle().stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 1.5))
+                .shadow(color: Color(hex: "#8E4C5C").opacity(0.07), radius: 7, x: 0, y: 2)
         }
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.top, Theme.Spacing.xxl)
-        .padding(.bottom, Theme.Spacing.lg)
+        .padding(.horizontal, 18)
+        .padding(.top, 60)
+        .padding(.bottom, 18)
     }
+
+    // MARK: - Ask Rena
 
     private var askRenaCard: some View {
         Button {
             onNavigateToChat?("")
         } label: {
-            HStack(spacing: Theme.Spacing.md) {
-                Canvas { context, size in
-                    let cx = size.width / 2
-                    let cy = size.height / 2
-                    var p = Path()
-                    p.addEllipse(in: CGRect(x: cx - 10, y: cy - 10, width: 20, height: 20))
-                    context.stroke(p, with: .color(Color(hex: "#8E4C5C").opacity(0.55)), lineWidth: 0.8)
-                    p = Path()
-                    p.addEllipse(in: CGRect(x: cx - 7, y: cy - 7, width: 14, height: 14))
-                    context.stroke(p, with: .color(Color(hex: "#8E4C5C").opacity(0.45)), lineWidth: 0.7)
-                    p = Path()
-                    p.addEllipse(in: CGRect(x: cx - 4, y: cy - 4, width: 8, height: 8))
-                    context.stroke(p, with: .color(Color(hex: "#3D2B2E").opacity(0.4)), lineWidth: 0.8)
-                    p = Path()
-                    p.move(to: CGPoint(x: cx, y: cy - 3.5))
-                    p.addCurve(to: CGPoint(x: cx + 3.5, y: cy), control1: CGPoint(x: cx + 2.5, y: cy - 3.5), control2: CGPoint(x: cx + 3.5, y: cy - 1.5))
-                    p.addCurve(to: CGPoint(x: cx, y: cy + 3.5), control1: CGPoint(x: cx + 3.5, y: cy + 1.5), control2: CGPoint(x: cx + 2.5, y: cy + 3.5))
-                    context.stroke(p, with: .color(Color(hex: "#8E4C5C").opacity(0.45)), lineWidth: 0.7)
-                    p = Path()
-                    p.addEllipse(in: CGRect(x: cx - 1.2, y: cy - 1.2, width: 2.4, height: 2.4))
-                    context.fill(p, with: .color(Color(hex: "#8E4C5C").opacity(0.55)))
-                }
-                .frame(width: 24, height: 24)
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(hex: "#8E4C5C").opacity(0.10))
+                    .frame(width: 40, height: 40)
+                    .overlay(
+                        Canvas { context, size in
+                            let cx = size.width / 2
+                            let cy = size.height / 2
+                            var p = Path()
+                            p.addEllipse(in: CGRect(x: cx-9.5, y: cy-9.5, width: 19, height: 19))
+                            context.stroke(p, with: .color(Color(hex: "#8E4C5C")), lineWidth: 1.2)
+                            p = Path()
+                            p.addEllipse(in: CGRect(x: cx-6.5, y: cy-6.5, width: 13, height: 13))
+                            context.stroke(p, with: .color(Color(hex: "#8E4C5C")), lineWidth: 1.0)
+                            p = Path()
+                            p.addEllipse(in: CGRect(x: cx-3.5, y: cy-3.5, width: 7, height: 7))
+                            context.stroke(p, with: .color(Color(hex: "#8E4C5C")), lineWidth: 1.2)
+                            p = Path()
+                            p.addEllipse(in: CGRect(x: cx-1.5, y: cy-1.5, width: 3, height: 3))
+                            context.fill(p, with: .color(Color(hex: "#8E4C5C")))
+                        }
+                    )
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Ask Rena")
-                        .font(Theme.Typography.cardLabel)
-                        .foregroundColor(Theme.Colors.textHomePrimary)
+                        .font(.custom("Outfit-SemiBold", size: 13))
+                        .foregroundColor(Color(hex: "#3D2B2E"))
                     Text("How can I help you today?")
-                        .font(Theme.Typography.cardSubtitle)
-                        .foregroundColor(Theme.Colors.textHomeMuted)
+                        .font(.custom("Outfit-Light", size: 11))
+                        .foregroundColor(Color(hex: "#B8A9AB"))
                 }
 
                 Spacer()
 
-                Image(systemName: "arrow.forward")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Theme.Colors.textHomePrimary)
+                Circle()
+                    .fill(Color(hex: "#8E4C5C").opacity(0.10))
+                    .frame(width: 30, height: 30)
+                    .overlay(
+                        Image(systemName: "arrow.forward")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(Color(hex: "#8E4C5C"))
+                    )
             }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.vertical, Theme.Spacing.md)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
             .background(Color.white)
-            .cornerRadius(Theme.CornerRadius.medium)
-            .shadow(
-                color: Theme.Shadow.card.color,
-                radius: Theme.Shadow.card.radius,
-                x: Theme.Shadow.card.x,
-                y: Theme.Shadow.card.y
-            )
+            .cornerRadius(16)
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 1))
+            .shadow(color: Color(hex: "#8E4C5C").opacity(0.07), radius: 7, x: 0, y: 2)
         }
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.vertical, Theme.Spacing.sm)
+        .buttonStyle(.plain)
+        .padding(.horizontal, 18)
+        .padding(.bottom, 12)
     }
+
+    // MARK: - Hero
 
     private var heroSection: some View {
         HeroCardView(
-            title: "Explore Procedures",
+            title: "Explore\nProcedures",
             subtitle: "Find the perfect treatment for you.",
             imageName: nil
         )
-        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.horizontal, 18)
+        .padding(.bottom, 20)
         .onTapGesture {
             navigateToProcedures = true
         }
     }
 
-    // MARK: - Daily Reflection Section
+    // MARK: - Daily Reflection
 
     private var recoverySection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            Text("Daily Reflection")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(Color(hex: "#3D2B2E"))
-                .padding(.horizontal, Theme.Spacing.lg)
-                .padding(.top, Theme.Spacing.xl)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Daily Reflection")
+                    .font(.custom("Outfit-SemiBold", size: 15))
+                    .foregroundColor(Color(hex: "#3D2B2E"))
+                Spacer()
+                Text("View all")
+                    .font(.custom("Outfit-SemiBold", size: 11))
+                    .foregroundColor(Color(hex: "#C4929A"))
+            }
+            .padding(.horizontal, 18)
 
-            weekStrip
-            entryCarousel
+            calendarCard
+            journalCardArea
         }
     }
 
-    private var weekStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 0) {
-                ForEach(weekDays(), id: \.self) { day in
-                    dayCellView(day)
-                }
+    // MARK: - Calendar
+
+    private var calendarCard: some View {
+        HStack(spacing: 0) {
+            ForEach(weekDays(), id: \.self) { day in
+                dayCellView(day)
             }
-            .padding(.horizontal, Theme.Spacing.sm)
-            .padding(.vertical, Theme.Spacing.sm)
         }
-        .background(Color.white.opacity(0.55))
-        .cornerRadius(Theme.CornerRadius.large)
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .stroke(Color.gray.opacity(0.12), lineWidth: 1)
-        )
-        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 13)
+        .background(Color.white)
+        .cornerRadius(16)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 1))
+        .shadow(color: Color(hex: "#8E4C5C").opacity(0.07), radius: 7, x: 0, y: 2)
+        .padding(.horizontal, 18)
     }
 
     private func dayCellView(_ date: Date) -> some View {
         let cal = Calendar.current
         let isSelected = cal.isDate(date, inSameDayAs: selectedDay)
         let dayNum = cal.component(.day, from: date)
-        let hasEntry = entryForDay(date) != nil
 
         return Button {
             selectedDay = date
         } label: {
             VStack(spacing: 6) {
-                VStack(spacing: Theme.Spacing.xs) {
-                    Text(date, format: .dateTime.weekday(.abbreviated))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(isSelected ? Theme.Colors.textHomePrimary : Color(hex: "#C4929A"))
+                Text(date, format: .dateTime.weekday(.abbreviated))
+                    .font(.custom("Outfit-Regular", size: 9.5))
+                    .fontWeight(isSelected ? .semibold : .regular)
+                    .foregroundColor(isSelected ? Color(hex: "#8E4C5C") : Color(hex: "#B8A9AB"))
 
-                    Text("\(dayNum)")
-                        .font(.system(size: 20, weight: isSelected ? .semibold : .regular))
-                        .foregroundColor(isSelected ? Theme.Colors.textHomePrimary : Color(hex: "#C4929A"))
-
-                    // Entry indicator dot inside cell (non-selected days only)
-                    Circle()
-                        .fill(hasEntry && !isSelected ? Theme.Brand.dustyRose : Color.clear)
-                        .frame(width: 5, height: 5)
-                }
-                .frame(width: 52, height: 72)
-                .background(isSelected ? Color(hex: "#F2D7DB") : Color.clear)
-                .cornerRadius(Theme.CornerRadius.medium)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
-                        .stroke(Color(hex: "#C4929A").opacity(isSelected ? 0.25 : 0), lineWidth: 1)
-                )
-
-                // Selection dot below the cell
-                Circle()
-                    .fill(isSelected ? Theme.Colors.primaryHome : Color.clear)
-                    .frame(width: 5, height: 5)
+                Text("\(dayNum)")
+                    .font(.custom("Outfit-Regular", size: 14))
+                    .fontWeight(isSelected ? .bold : .regular)
+                    .foregroundColor(isSelected ? .white : Color(hex: "#B8A9AB"))
+                    .frame(width: 32, height: 32)
+                    .background(isSelected ? Color(hex: "#C4929A") : Color.clear)
+                    .cornerRadius(10)
+                    .shadow(
+                        color: isSelected ? Color(hex: "#C4929A").opacity(0.42) : Color.clear,
+                        radius: 6, x: 0, y: 3
+                    )
             }
+            .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - Entry Carousel
+    // MARK: - Journal Cards
 
-    private var entryCarousel: some View {
-        let entry = entryForDay(selectedDay)
-        return VStack(spacing: Theme.Spacing.sm) {
-            TabView(selection: $carouselIndex) {
-                photoCard(entry: entry).tag(0)
-                insightsCard(entry: entry).tag(1)
-                logEntryCard.tag(2)
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 220)
-
-            // Page dots
-            HStack(spacing: 6) {
-                ForEach(0..<3, id: \.self) { i in
-                    Circle()
-                        .fill(i == carouselIndex
-                              ? Theme.Colors.textHomePrimary
-                              : Theme.Colors.textHomeMuted.opacity(0.3))
-                        .frame(width: 5, height: 5)
-                }
-            }
-        }
-        .padding(.horizontal, Theme.Spacing.lg)
-        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
-            withAnimation(.easeInOut) {
-                carouselIndex = (carouselIndex + 1) % 3
-            }
-        }
-        .onChange(of: selectedDay) {
-            carouselIndex = 0
-        }
-    }
-
-    private func photoCard(entry: JournalEntry?) -> some View {
-        Group {
-            if let urlString = entry?.photoUrl, let url = URL(string: urlString) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    default:
-                        photoPlaceholder
-                    }
-                }
-            } else {
-                photoPlaceholder
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.white)
-        .cornerRadius(Theme.CornerRadius.medium)
-        .clipped()
-    }
-
-    private var photoPlaceholder: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.small)
-                .strokeBorder(
-                    style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
-                )
-                .foregroundColor(Theme.Brand.dustyRose.opacity(0.35))
-                .padding(Theme.Spacing.lg)
-
-            VStack(spacing: Theme.Spacing.sm) {
-                Image(systemName: "camera")
-                    .font(.system(size: 28, weight: .light))
-                    .foregroundColor(Theme.Brand.dustyRose.opacity(0.6))
-                Text("No photo for this day")
-                    .font(Theme.Typography.cardSubtitle)
-                    .foregroundColor(Theme.Colors.textHomeMuted)
-                Text("Capture today's progress")
-                    .font(.system(size: 12, weight: .light))
-                    .foregroundColor(Theme.Colors.textHomeMuted.opacity(0.7))
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.white)
-    }
-
-    private func insightsCard(entry: JournalEntry?) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+    private var journalCardArea: some View {
+        VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 5) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(Theme.Colors.primaryHome)
-                Text("Rena Insights")
-                    .font(.system(size: 11, weight: .semibold))
-                    .tracking(0.4)
-                    .foregroundColor(Theme.Colors.primaryHome)
+                Circle()
+                    .fill(Color(hex: "#8E4C5C"))
+                    .frame(width: 5, height: 5)
+                Text("Today")
+                    .font(.custom("Outfit-SemiBold", size: 9.5))
+                    .foregroundColor(Color(hex: "#8E4C5C"))
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(Color(hex: "#8E4C5C").opacity(0.12))
+            .clipShape(Capsule())
+            .padding(.bottom, 9)
 
-            if let summary = entry?.summary, !summary.isEmpty {
-                Text(summary)
-                    .font(Theme.Typography.cardSubtitle)
-                    .foregroundColor(Theme.Colors.textHomePrimary)
-                    .lineLimit(8)
-            } else {
-                Text("Start an entry so we can help you track your progress, flag any concerns, and give you important reminders.")
-                    .font(Theme.Typography.cardSubtitle)
-                    .foregroundColor(Theme.Colors.textHomeMuted)
-                    .lineLimit(8)
-            }
+            Text("Create an entry to reflect")
+                .font(.custom("Outfit-SemiBold", size: 13))
+                .foregroundColor(Color(hex: "#3D2B2E"))
+                .padding(.bottom, 4)
+
+            Text("Document your recovery journey, one day at a time.")
+                .font(.custom("Outfit-Light", size: 10.5))
+                .foregroundColor(Color(hex: "#B8A9AB"))
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
 
             Spacer()
 
-            Divider()
-                .background(Theme.Brand.dustyRose.opacity(0.3))
-
-            HStack(spacing: 5) {
-                Image(systemName: "flame")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(Theme.Brand.dustyRose)
-                Text(currentStreak > 0 ? "\(currentStreak) day streak" : "Start your streak today")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(Theme.Colors.textHomeMuted)
+            Button {
+                onNavigateToJournal?()
+            } label: {
+                Text("Log Entry")
+                    .font(.custom("Outfit-SemiBold", size: 12.5))
+                    .tracking(0.4)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color(hex: "#8E4C5C"))
+                    .cornerRadius(11)
+                    .shadow(color: Color(hex: "#8E4C5C").opacity(0.28), radius: 7, x: 0, y: 4)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(Theme.Spacing.lg)
-        .background(Theme.Gradients.insightsCard)
-        .cornerRadius(Theme.CornerRadius.medium)
-    }
-
-    private var logEntryCard: some View {
-        ZStack(alignment: .topTrailing) {
-            // Decorative brand mark
-            Canvas { context, size in
-                let cx = size.width / 2
-                let cy = size.height / 2
-                var p = Path()
-                p.addEllipse(in: CGRect(x: cx - 28, y: cy - 28, width: 56, height: 56))
-                context.stroke(p, with: .color(Color(hex: "#8E4C5C").opacity(0.08)), lineWidth: 1.2)
-                p = Path()
-                p.addEllipse(in: CGRect(x: cx - 18, y: cy - 18, width: 36, height: 36))
-                context.stroke(p, with: .color(Color(hex: "#8E4C5C").opacity(0.06)), lineWidth: 1)
-                p = Path()
-                p.addEllipse(in: CGRect(x: cx - 10, y: cy - 10, width: 20, height: 20))
-                context.stroke(p, with: .color(Color(hex: "#3D2B2E").opacity(0.06)), lineWidth: 1)
-                p = Path()
-                p.addEllipse(in: CGRect(x: cx - 3, y: cy - 3, width: 6, height: 6))
-                context.fill(p, with: .color(Color(hex: "#8E4C5C").opacity(0.08)))
-            }
-            .frame(width: 64, height: 64)
-            .offset(x: -Theme.Spacing.md, y: Theme.Spacing.sm)
-
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Spacer()
-
-                Text("Create an entry to reflect")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Theme.Colors.textHomePrimary)
-
-                Text("Document your recovery journey, one day at a time.")
-                    .font(Theme.Typography.cardSubtitle)
-                    .foregroundColor(Theme.Colors.textHomeMuted)
-
-                Spacer()
-
-                Button {
-                    onNavigateToJournal?()
-                } label: {
-                    Text("Log")
-                        .font(Theme.Typography.cardLabel)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Theme.Brand.charcoalRose)
-                        .cornerRadius(Theme.CornerRadius.pill)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Theme.Spacing.lg)
-        }
-        .background(Color.white)
-        .cornerRadius(Theme.CornerRadius.medium)
+        .padding(.horizontal, 14)
+        .padding(.top, 13)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity)
+        .frame(height: 172)
+        .background(
+            LinearGradient(
+                colors: [Color(hex: "#f8e9ef"), Color(hex: "#f0d4dc")],
+                startPoint: UnitPoint(x: 0, y: 0.15),
+                endPoint: .bottomTrailing
+            )
+        )
+        .cornerRadius(16)
+        .shadow(color: Color(hex: "#8E4C5C").opacity(0.12), radius: 12, x: 0, y: 5)
+        .padding(.horizontal, 18)
     }
 
     // MARK: - Brand Logo
 
     private var brandLogoSection: some View {
-        VStack(spacing: Theme.Spacing.sm) {
-            // Stacked logo mark — matches brand kit: 3 concentric circles + arc + center dot
+        VStack(spacing: 8) {
             Canvas { context, size in
                 let cx = size.width / 2
                 let cy = size.height / 2
-
-                // Outer circle — Mauve Berry
                 var p = Path()
                 p.addEllipse(in: CGRect(x: cx - 32, y: cy - 32, width: 64, height: 64))
                 context.stroke(p, with: .color(Color(hex: "#8E4C5C").opacity(0.55)), lineWidth: 1.2)
-
-                // Middle circle — Mauve Berry
                 p = Path()
                 p.addEllipse(in: CGRect(x: cx - 23, y: cy - 23, width: 46, height: 46))
                 context.stroke(p, with: .color(Color(hex: "#8E4C5C").opacity(0.45)), lineWidth: 1)
-
-                // Inner circle — Charcoal Rose
                 p = Path()
                 p.addEllipse(in: CGRect(x: cx - 14, y: cy - 14, width: 28, height: 28))
                 context.stroke(p, with: .color(Color(hex: "#3D2B2E").opacity(0.4)), lineWidth: 1.2)
-
-                // Arc — right half of inner circle (matches brand kit SVG path)
                 p = Path()
                 p.move(to: CGPoint(x: cx, y: cy - 12))
                 p.addCurve(
@@ -448,15 +320,12 @@ struct PostLoginHomeView: View {
                     control2: CGPoint(x: cx + 8, y: cy + 12)
                 )
                 context.stroke(p, with: .color(Color(hex: "#8E4C5C").opacity(0.45)), lineWidth: 1)
-
-                // Center dot — Mauve Berry
                 p = Path()
                 p.addEllipse(in: CGRect(x: cx - 3.5, y: cy - 3.5, width: 7, height: 7))
                 context.fill(p, with: .color(Color(hex: "#8E4C5C").opacity(0.55)))
             }
             .frame(width: 68, height: 68)
 
-            // Wordmark — colors match brand kit stacked variant
             VStack(spacing: 3) {
                 Text("Rena Aesthetic")
                     .font(.system(size: 14, weight: .light, design: .serif))
@@ -468,28 +337,10 @@ struct PostLoginHomeView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, Theme.Spacing.xl)
+        .padding(.top, 24)
     }
 
-    // MARK: - Calendar Helpers
-
-    private var currentStreak: Int {
-        let cal = Calendar.current
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        var streak = 0
-        var checkDate = cal.startOfDay(for: Date())
-        while true {
-            let dateString = formatter.string(from: checkDate)
-            if journalViewModel.entries.contains(where: { $0.entryDate == dateString }) {
-                streak += 1
-                checkDate = cal.date(byAdding: .day, value: -1, to: checkDate)!
-            } else {
-                break
-            }
-        }
-        return streak
-    }
+    // MARK: - Helpers
 
     private func weekDays() -> [Date] {
         let cal = Calendar.current
@@ -504,12 +355,6 @@ struct PostLoginHomeView: View {
         formatter.dateFormat = "yyyy-MM-dd"
         let dateString = formatter.string(from: date)
         return journalViewModel.entries.first { $0.entryDate == dateString }
-    }
-
-    // MARK: - Helper
-
-    private func spacer(height: CGFloat) -> some View {
-        Color.clear.frame(height: height)
     }
 }
 

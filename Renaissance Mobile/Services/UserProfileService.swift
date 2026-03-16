@@ -20,7 +20,7 @@ class UserProfileService {
 
     /// Get the current user's profile
     func getUserProfile() async throws -> UserProfile {
-        guard let userId = try? await supabase.auth.session.user.id else {
+        guard let userId = supabase.auth.currentUser?.id else {
             throw UserProfileError.notAuthenticated
         }
 
@@ -43,12 +43,11 @@ class UserProfileService {
 
     /// Create a new user profile (typically called after sign up)
     func createUserProfile(email: String? = nil) async throws -> UserProfile {
-        guard let userId = try? await supabase.auth.session.user.id else {
+        guard let userId = supabase.auth.currentUser?.id else {
             throw UserProfileError.notAuthenticated
         }
 
-        let session = try await supabase.auth.session
-        let userEmail = email ?? session.user.email
+        let userEmail = email ?? supabase.auth.currentUser?.email
 
         let profile = UserProfile(
             id: userId,
@@ -75,7 +74,7 @@ class UserProfileService {
         billingPlan: BillingPlan? = nil,
         profileImageData: Data? = nil
     ) async throws -> UserProfile {
-        guard let userId = try? await supabase.auth.session.user.id else {
+        guard let userId = supabase.auth.currentUser?.id else {
             throw UserProfileError.notAuthenticated
         }
 
@@ -122,9 +121,8 @@ class UserProfileService {
             print("❌ Error details: \(error.localizedDescription)")
             print("⚠️ Update failed, attempting to create profile instead")
 
-            // Get email from session if not provided
-            let session = try await supabase.auth.session
-            let userEmail = email ?? session.user.email
+            // Get email from cached user if not provided
+            let userEmail = email ?? supabase.auth.currentUser?.email
 
             let newProfile = UserProfile(
                 id: userId,
@@ -150,7 +148,7 @@ class UserProfileService {
 
     /// Update user profile with a complete UserProfile object
     func updateUserProfile(_ profile: UserProfile) async throws -> UserProfile {
-        guard let userId = try? await supabase.auth.session.user.id else {
+        guard let userId = supabase.auth.currentUser?.id else {
             throw UserProfileError.notAuthenticated
         }
 
@@ -233,7 +231,7 @@ class UserProfileService {
 
     /// Delete profile image from Supabase Storage
     func deleteProfileImage() async throws {
-        guard let userId = try? await supabase.auth.session.user.id else {
+        guard let userId = supabase.auth.currentUser?.id else {
             throw UserProfileError.notAuthenticated
         }
 
