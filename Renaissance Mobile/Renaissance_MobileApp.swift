@@ -8,6 +8,8 @@
 import SwiftUI
 import GoogleSignIn
 import StripePaymentSheet
+import Auth
+import Supabase
 
 @main
 struct Renaissance_MobileApp: App {
@@ -52,6 +54,14 @@ struct Renaissance_MobileApp: App {
                 Task {
                     await authViewModel.handleDeepLink(url)
                 }
+            }
+            .task {
+                // Warm up Supabase's internal swift-dependencies type metadata
+                // on the main actor at launch. Without this, the first access
+                // from a concurrent thread triggers a CODESIGNING fault on iOS 26
+                // beta (type metadata for Dependencies lives in dyld __DATA_DIRTY
+                // which iOS 26 restricts from concurrent lazy initialization).
+                _ = try? await supabase.auth.session
             }
         }
     }

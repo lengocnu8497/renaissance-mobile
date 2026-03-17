@@ -94,7 +94,7 @@ class ChatViewModel {
         }
 
         // Get user ID
-        guard let userId = try? await supabase.auth.session.user.id else {
+        guard let userId = supabase.auth.currentUser?.id else {
             errorMessage = "User not authenticated"
             return
         }
@@ -309,7 +309,7 @@ class ChatViewModel {
 
     private func addInitialGreeting() async {
         guard let conversation = currentConversation,
-              let userId = try? await supabase.auth.session.user.id else {
+              let userId = supabase.auth.currentUser?.id else {
             return
         }
 

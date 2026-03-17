@@ -20,7 +20,7 @@ class UsageTrackingService {
 
     /// Get current usage quota for the authenticated user
     func getCurrentUsage() async throws -> UsageQuota {
-        guard let userId = try? await supabase.auth.session.user.id else {
+        guard let userId = supabase.auth.currentUser?.id else {
             throw UsageTrackingError.notAuthenticated
         }
 
