@@ -33,23 +33,15 @@
 		AC41F7A1A2FCEFF5B98648A2 /* Renaissance MobileTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Renaissance MobileTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXTargetDependency section */
-		A53F3C9DBB05CE09E0E8A4DD /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = A14F67AF2EDE95650066D405 /* Renaissance Mobile */;
-			targetProxy = 0C4E1EB3E9FE1AFAB1FFAC9F /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		A14F67B22EDE95650066D405 /* Renaissance Mobile */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "Renaissance Mobile";
-			sourceTree = "<group>";
-		};
 		61B8F0C79F4E25FDB36CE491 /* Renaissance MobileTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Renaissance MobileTests";
+			sourceTree = "<group>";
+		};
+		A14F67B22EDE95650066D405 /* Renaissance Mobile */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Renaissance Mobile";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -86,6 +78,7 @@
 			children = (
 				A14F67B22EDE95650066D405 /* Renaissance Mobile */,
 				A14F67B12EDE95650066D405 /* Products */,
+				A18918032F68E61B0059DF52 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -98,9 +91,38 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		A18918032F68E61B0059DF52 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				61B8F0C79F4E25FDB36CE491 /* Renaissance MobileTests */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		65D289808C7748BA8DC3842B /* Renaissance MobileTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3FE22C46622F8C928490C7F1 /* Build configuration list for PBXNativeTarget "Renaissance MobileTests" */;
+			buildPhases = (
+				9CDF1538AA9CA9E067698708 /* Sources */,
+				D8CE8D5556C0E64322173F81 /* Frameworks */,
+				E4B50C7A1C5CD6512345C78A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A53F3C9DBB05CE09E0E8A4DD /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				61B8F0C79F4E25FDB36CE491 /* Renaissance MobileTests */,
+			);
+			name = "Renaissance MobileTests";
+			productName = "Renaissance MobileTests";
+			productReference = AC41F7A1A2FCEFF5B98648A2 /* Renaissance MobileTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		A14F67AF2EDE95650066D405 /* Renaissance Mobile */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A14F67BB2EDE95670066D405 /* Build configuration list for PBXNativeTarget "Renaissance Mobile" */;
@@ -132,27 +154,6 @@
 			productReference = A14F67B02EDE95650066D405 /* Renaissance Mobile.app */;
 			productType = "com.apple.product-type.application";
 		};
-		65D289808C7748BA8DC3842B /* Renaissance MobileTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 3FE22C46622F8C928490C7F1 /* Build configuration list for PBXNativeTarget "Renaissance MobileTests" */;
-			buildPhases = (
-				9CDF1538AA9CA9E067698708 /* Sources */,
-				D8CE8D5556C0E64322173F81 /* Frameworks */,
-				E4B50C7A1C5CD6512345C78A /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				A53F3C9DBB05CE09E0E8A4DD /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				61B8F0C79F4E25FDB36CE491 /* Renaissance MobileTests */,
-			);
-			name = "Renaissance MobileTests";
-			productName = "Renaissance MobileTests";
-			productReference = AC41F7A1A2FCEFF5B98648A2 /* Renaissance MobileTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -163,12 +164,12 @@
 				LastSwiftUpdateCheck = 2610;
 				LastUpgradeCheck = 2610;
 				TargetAttributes = {
-					A14F67AF2EDE95650066D405 = {
-						CreatedOnToolsVersion = 26.1.1;
-					};
 					65D289808C7748BA8DC3842B = {
 						CreatedOnToolsVersion = 26.1.1;
 						TestTargetID = A14F67AF2EDE95650066D405;
+					};
+					A14F67AF2EDE95650066D405 = {
+						CreatedOnToolsVersion = 26.1.1;
 					};
 				};
 			};
@@ -215,14 +216,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A14F67AC2EDE95650066D405 /* Sources */ = {
+		9CDF1538AA9CA9E067698708 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		9CDF1538AA9CA9E067698708 /* Sources */ = {
+		A14F67AC2EDE95650066D405 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -231,7 +232,35 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		A53F3C9DBB05CE09E0E8A4DD /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A14F67AF2EDE95650066D405 /* Renaissance Mobile */;
+			targetProxy = 0C4E1EB3E9FE1AFAB1FFAC9F /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		85B9FCF1617A4A95F3E794C7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = CDWQYPD23H;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "renaesthetic.com.Renaissance-MobileTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Renaissance Mobile.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Renaissance Mobile";
+			};
+			name = Release;
+		};
 		A14F67B92EDE95670066D405 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -445,29 +474,18 @@
 			};
 			name = Debug;
 		};
-		85B9FCF1617A4A95F3E794C7 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = CDWQYPD23H;
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
-				PRODUCT_BUNDLE_IDENTIFIER = "renaesthetic.com.Renaissance-MobileTests";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Renaissance Mobile.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Renaissance Mobile";
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		3FE22C46622F8C928490C7F1 /* Build configuration list for PBXNativeTarget "Renaissance MobileTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FC47D20E55CDDF9D088CB793 /* Debug */,
+				85B9FCF1617A4A95F3E794C7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		A14F67AB2EDE95650066D405 /* Build configuration list for PBXProject "Renaissance Mobile" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -482,15 +500,6 @@
 			buildConfigurations = (
 				A14F67BC2EDE95670066D405 /* Debug */,
 				A14F67BD2EDE95670066D405 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		3FE22C46622F8C928490C7F1 /* Build configuration list for PBXNativeTarget "Renaissance MobileTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				FC47D20E55CDDF9D088CB793 /* Debug */,
-				85B9FCF1617A4A95F3E794C7 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

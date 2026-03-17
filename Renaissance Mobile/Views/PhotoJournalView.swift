@@ -4,6 +4,9 @@
 //
 
 import SwiftUI
+import UserNotifications
+import StripePaymentSheet
+import Supabase
 
 // MARK: - Design tokens — sourced directly from rena-journal-ai-insights.html
 
@@ -31,12 +34,29 @@ private enum J {
 
 private struct AllEntriesRoute: Hashable {}
 
+/// Pairs insights with the section to scroll to on open.
+/// Including the anchor in `id` ensures sheet(item:) re-presents
+/// even when the same insights are shown with a different anchor.
+private struct InsightsPresentation: Identifiable {
+    let insights: RecoveryInsights
+    let scrollAnchor: String?
+    var id: String { insights.id + (scrollAnchor ?? "") }
+}
+
 struct PhotoJournalView: View {
     var addEntryTrigger: Binding<Bool> = .constant(false)
     var onBackButtonTapped: (() -> Void)? = nil
 
     @State private var vm = JournalViewModel()
     @State private var groupToDelete: (key: String, entries: [JournalEntry])?
+    @State private var insightPresentation: InsightsPresentation? = nil
+    @State private var showChat = false
+    @State private var showReminderSet = false
+    @State private var subscriptionViewModel = SubscriptionViewModel()
+    @State private var showPaywall = false
+    @State private var isSubscribed = false
+    @State private var paymentErrorMessage = ""
+    @State private var showPaymentError = false
 
     var body: some View {
         NavigationStack {
@@ -90,11 +110,29 @@ struct PhotoJournalView: View {
                 }
             }
         }
-        .task { await vm.load() }
+        .task {
+            await vm.load()
+            await checkSubscription()
+        }
         .onChange(of: addEntryTrigger.wrappedValue) { _, triggered in
             if triggered {
                 vm.tapAddEntry()
                 addEntryTrigger.wrappedValue = false
+            }
+        }
+        .onChange(of: vm.entries.count) { oldCount, newCount in
+            // Trigger insights for every eligible procedure when entries are added.
+            // Fires after the sheet has fully dismissed — safer than a fire-and-forget
+            // inside addEntry() which races with sheet dismissal.
+            // Checking all procedures (not just vm.entries.first) handles bulk adds
+            // and entries added for a non-primary procedure.
+            guard isSubscribed, newCount > oldCount else { return }
+            Task {
+                for group in vm.groupedByProcedure where group.entries.count >= 2 {
+                    guard let procedureId = group.entries.first?.procedureId,
+                          vm.insights[procedureId] == nil else { continue }
+                    await vm.refreshInsights(for: procedureId, procedureName: group.key)
+                }
             }
         }
         .alert(
@@ -111,6 +149,30 @@ struct PhotoJournalView: View {
         } message: {
             let count = groupToDelete?.entries.count ?? 0
             Text("This will permanently delete all \(count) \(count == 1 ? "entry" : "entries") in this group.")
+        }
+        .sheet(item: $insightPresentation) { pres in
+            AllInsightsView(insights: pres.insights, scrollAnchor: pres.scrollAnchor)
+        }
+        .sheet(isPresented: $showChat) {
+            ChatView()
+        }
+        .sheet(isPresented: $showPaywall) {
+            QuotaExceededView(
+                reason: "Subscribe to unlock AI-powered recovery insights personalized to your healing journey.",
+                onUpgrade: { tier in await handleUpgrade(tier: tier) },
+                onDismiss: { showPaywall = false }
+            )
+            .interactiveDismissDisabled()
+        }
+        .alert("Payment Error", isPresented: $showPaymentError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(paymentErrorMessage)
+        }
+        .alert("Reminder Set", isPresented: $showReminderSet) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("We'll remind you to check in on your recovery tomorrow morning.")
         }
     }
 
@@ -166,7 +228,15 @@ struct PhotoJournalView: View {
                 JournalInsightsSection(
                     insights: vm.primaryInsights,
                     isGenerating: vm.isPrimaryGenerating,
-                    isEmpty: vm.entries.isEmpty
+                    isEmpty: vm.entries.isEmpty,
+                    isSubscribed: isSubscribed,
+                    onShowInsights: { anchor in
+                        guard let ins = vm.primaryInsights else { return }
+                        insightPresentation = InsightsPresentation(insights: ins, scrollAnchor: anchor)
+                    },
+                    onUnlock: { showPaywall = true },
+                    onTalkToRena: { showChat = true },
+                    onSetReminder: { scheduleReminder(); showReminderSet = true }
                 )
 
                 // 3. Calendar Strip
@@ -301,6 +371,172 @@ struct PhotoJournalView: View {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         return f.string(from: date)
+    }
+
+    // MARK: - Subscription
+
+    private func checkSubscription() async {
+        do {
+            guard let userId = supabase.auth.currentUser?.id.uuidString else { return }
+            let profile: UserProfile = try await supabase.database
+                .from("user_profiles")
+                .select()
+                .eq("id", value: userId)
+                .single()
+                .execute()
+                .value
+            let subscribed = profile.billingPlan == .silver || profile.billingPlan == .gold
+            isSubscribed = subscribed
+            vm.insightsEnabled = subscribed
+
+            // Load the cache only now that insightsEnabled is set, so free users never
+            // briefly see stale cached insights from a lapsed subscription.
+            vm.loadCachedInsights()
+
+            // Generate insights for every eligible procedure that has no cached result.
+            // Handles entries that pre-date the insights feature, a cleared cache, or
+            // procedures other than the one with the most entries.
+            guard subscribed else { return }
+            for group in vm.groupedByProcedure where group.entries.count >= 2 {
+                guard let procedureId = group.entries.first?.procedureId,
+                      vm.insights[procedureId] == nil else { continue }
+                await vm.refreshInsights(for: procedureId, procedureName: group.key)
+            }
+        } catch {
+            print("Journal subscription check failed: \(error)")
+        }
+    }
+
+    private func handleUpgrade(tier: SubscriptionTier) async {
+        let priceId: String
+        switch tier {
+        case .silver: priceId = EnvironmentConfig.stripeSilverPriceId
+        case .gold:   priceId = EnvironmentConfig.stripeGoldPriceId
+        }
+
+        guard !priceId.contains("REPLACE_WITH_YOUR") else {
+            paymentErrorMessage = "Subscription plan not configured."
+            showPaymentError = true
+            return
+        }
+
+        guard let subscriptionResult = await subscriptionViewModel.createSubscription(
+            priceId: priceId,
+            tier: tier
+        ) else {
+            paymentErrorMessage = subscriptionViewModel.errorMessage ?? "Failed to create subscription"
+            showPaymentError = true
+            return
+        }
+
+        let clientSecret = subscriptionResult.clientSecret
+        let subscriptionId = subscriptionResult.subscriptionId
+
+        var configuration = PaymentSheet.Configuration()
+        configuration.merchantDisplayName = "Renaissance"
+        configuration.allowsDelayedPaymentMethods = true
+        configuration.returnURL = "renaissance://payment-complete"
+
+        var appearance = PaymentSheet.Appearance()
+        appearance.colors.primary = UIColor(red: 208/255, green: 187/255, blue: 149/255, alpha: 1.0)
+        appearance.colors.background = UIColor(red: 247/255, green: 247/255, blue: 246/255, alpha: 1.0)
+        appearance.colors.componentBackground = UIColor.white
+        appearance.colors.componentBorder = UIColor(red: 230/255, green: 230/255, blue: 230/255, alpha: 1.0)
+        appearance.colors.componentDivider = UIColor(red: 230/255, green: 230/255, blue: 230/255, alpha: 1.0)
+        appearance.colors.text = UIColor(red: 51/255, green: 51/255, blue: 51/255, alpha: 1.0)
+        appearance.colors.textSecondary = UIColor(red: 130/255, green: 130/255, blue: 130/255, alpha: 1.0)
+        appearance.cornerRadius = 16
+        configuration.appearance = appearance
+
+        configuration.billingDetailsCollectionConfiguration.name = .always
+        configuration.billingDetailsCollectionConfiguration.email = .always
+        configuration.billingDetailsCollectionConfiguration.phone = .always
+        configuration.billingDetailsCollectionConfiguration.address = .full
+        configuration.applePay = PaymentSheet.ApplePayConfiguration(
+            merchantId: EnvironmentConfig.appleMerchantId,
+            merchantCountryCode: "US"
+        )
+
+        let paymentSheet = PaymentSheet(
+            paymentIntentClientSecret: clientSecret,
+            configuration: configuration
+        )
+
+        guard let topViewController = UIApplication.shared.topViewController else {
+            paymentErrorMessage = "Unable to present payment screen"
+            showPaymentError = true
+            return
+        }
+
+        let result = await withCheckedContinuation { continuation in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                paymentSheet.present(from: topViewController) { result in
+                    continuation.resume(returning: result)
+                }
+            }
+        }
+
+        switch result {
+        case .completed:
+            await updateSubscriptionInProfile(tier: tier, subscriptionId: subscriptionId)
+            showPaywall = false
+            isSubscribed = true
+            vm.insightsEnabled = true
+            vm.loadCachedInsights()
+            // Generate insights for every eligible procedure now that user is subscribed
+            for group in vm.groupedByProcedure where group.entries.count >= 2 {
+                guard let procedureId = group.entries.first?.procedureId,
+                      vm.insights[procedureId] == nil else { continue }
+                await vm.refreshInsights(for: procedureId, procedureName: group.key)
+            }
+        case .failed(let error):
+            paymentErrorMessage = error.localizedDescription
+            showPaymentError = true
+        case .canceled:
+            break
+        }
+    }
+
+    private func updateSubscriptionInProfile(tier: SubscriptionTier, subscriptionId: String) async {
+        do {
+            guard let userId = supabase.auth.currentUser?.id else { return }
+            try await supabase.database
+                .from("user_profiles")
+                .update([
+                    "billing_plan": tier.rawValue,
+                    "stripe_subscription_id": subscriptionId,
+                    "subscription_status": "active",
+                    "subscription_tier": tier.rawValue
+                ])
+                .eq("id", value: userId.uuidString.lowercased())
+                .execute()
+        } catch {
+            print("Subscription profile update failed: \(error)")
+        }
+    }
+
+    private func scheduleReminder() {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "Recovery Check-in"
+            content.body = "How are you feeling today? Log your recovery progress with Rena."
+            content.sound = .default
+            let cal = Calendar.current
+            if let tomorrow = cal.date(byAdding: .day, value: 1, to: Date()) {
+                var components = cal.dateComponents([.year, .month, .day], from: tomorrow)
+                components.hour = 9
+                components.minute = 0
+                let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+                let request = UNNotificationRequest(
+                    identifier: "recovery-reminder-\(UUID())",
+                    content: content,
+                    trigger: trigger
+                )
+                center.add(request, withCompletionHandler: nil)
+            }
+        }
     }
 }
 
@@ -440,6 +676,22 @@ private struct JournalInsightsSection: View {
     let insights: RecoveryInsights?
     let isGenerating: Bool
     let isEmpty: Bool
+    var isSubscribed: Bool = true
+    /// Called with the scroll anchor for the section to jump to ("nextSteps", "flags",
+    /// "encouragements", or nil for the top). Replaces the old onSeeAll/onViewTrends pair.
+    var onShowInsights: ((String?) -> Void)? = nil
+    var onUnlock: (() -> Void)? = nil
+    var onTalkToRena: (() -> Void)? = nil
+    var onSetReminder: (() -> Void)? = nil
+
+    private var insightCardCount: Int {
+        guard let insights else { return 0 }
+        var count = 1
+        count += min(2, insights.flags.count)
+        if !insights.encouragements.isEmpty { count += 1 }
+        if insights.nextSteps != nil { count += 1 }
+        return count
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -462,7 +714,7 @@ private struct JournalInsightsSection: View {
                     .foregroundColor(J.textHi)
 
                 if !isEmpty, insights != nil {
-                    Text("3 new")
+                    Text("\(insightCardCount)")
                         .font(.custom("Outfit-Bold", size: 9.5))
                         .foregroundColor(J.primary)
                         .padding(.horizontal, 7)
@@ -473,10 +725,15 @@ private struct JournalInsightsSection: View {
 
                 Spacer()
 
-                if !isEmpty {
-                    Text("See all")
-                        .font(.custom("Outfit-Regular", size: 11))
-                        .foregroundColor(J.accent)
+                if isSubscribed, insights != nil {
+                    Button { onShowInsights?(nil) } label: {
+                        Text("See all")
+                            .font(.custom("Outfit-Regular", size: 11))
+                            .foregroundColor(J.accent)
+                            .padding(.vertical, 8)
+                            .padding(.leading, 8)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 18)
@@ -486,18 +743,31 @@ private struct JournalInsightsSection: View {
                 HStack(spacing: 9) {
                     if isEmpty {
                         InsightCard(type: .placeholder, message: "Log your first entry to unlock AI-powered recovery insights.")
+                    } else if !isSubscribed {
+                        InsightCard(
+                            type: .locked,
+                            message: "Upgrade to unlock AI-powered recovery insights personalized to your healing journey.",
+                            onCTA: onUnlock
+                        )
                     } else if isGenerating && insights == nil {
                         InsightCard(type: .generating, message: "Analyzing your recovery journey…")
                     } else if let insights {
-                        InsightCard(type: .progress, message: insights.summary)
+                        InsightCard(type: .progress, message: insights.summary,
+                                    onCTA: { onShowInsights?(nil) })
                         ForEach(Array(insights.flags.prefix(2).enumerated()), id: \.offset) { _, flag in
                             InsightCard(
                                 type: flag.severity == .urgent ? .concern : .reminder,
-                                message: flag.message
+                                message: flag.message,
+                                onCTA: flag.severity == .urgent ? onTalkToRena : onSetReminder
                             )
                         }
                         if let encouragement = insights.encouragements.first {
-                            InsightCard(type: .progress, message: encouragement)
+                            InsightCard(type: .progress, message: encouragement,
+                                        onCTA: { onShowInsights?("encouragements") })
+                        }
+                        if let nextSteps = insights.nextSteps {
+                            InsightCard(type: .nextSteps, message: nextSteps,
+                                        onCTA: { onShowInsights?("nextSteps") })
                         }
                     } else {
                         InsightCard(type: .placeholder, message: "Keep logging entries to unlock AI-powered recovery insights.")
@@ -508,17 +778,19 @@ private struct JournalInsightsSection: View {
             }
 
             // Scroll position dots
-            HStack(spacing: 5) {
-                Capsule()
-                    .fill(J.primary)
-                    .frame(width: 14, height: 5)
-                ForEach(0..<2, id: \.self) { _ in
-                    Circle()
-                        .fill(J.border)
-                        .frame(width: 5, height: 5)
+            if insightCardCount > 1 {
+                HStack(spacing: 5) {
+                    Capsule()
+                        .fill(J.primary)
+                        .frame(width: 14, height: 5)
+                    ForEach(0..<(insightCardCount - 1), id: \.self) { _ in
+                        Circle()
+                            .fill(J.border)
+                            .frame(width: 5, height: 5)
+                    }
                 }
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
         }
     }
 
@@ -543,13 +815,15 @@ private struct JournalInsightsSection: View {
 // MARK: - Insight Card
 
 private enum InsightCardType {
-    case concern, reminder, progress, placeholder, generating
+    case concern, reminder, progress, placeholder, generating, nextSteps, locked
 
     var accentColor: Color {
         switch self {
         case .concern:              return J.gradB     // Rose Gold #B76E79
         case .reminder:             return J.accent    // Dusty Rose #C4929A
         case .progress:             return J.primary   // Mauve Berry #8E4C5C
+        case .nextSteps:            return J.primary
+        case .locked:               return J.gradB
         case .placeholder, .generating: return J.accent
         }
     }
@@ -558,6 +832,8 @@ private enum InsightCardType {
         case .concern:              return J.concernTint   // #FEF0F2
         case .reminder:             return J.reminderTint  // #FDF5F6
         case .progress:             return J.positiveTint  // #F8EDF0
+        case .nextSteps:            return J.positiveTint
+        case .locked:               return J.concernTint
         case .placeholder, .generating: return Color(hex: "#FDF5F6")
         }
     }
@@ -566,6 +842,8 @@ private enum InsightCardType {
         case .concern:              return J.gradB.opacity(0.22)
         case .reminder:             return J.accent.opacity(0.22)
         case .progress:             return J.primary.opacity(0.18)
+        case .nextSteps:            return J.primary.opacity(0.18)
+        case .locked:               return J.gradB.opacity(0.22)
         case .placeholder, .generating: return J.accent.opacity(0.18)
         }
     }
@@ -574,23 +852,29 @@ private enum InsightCardType {
         case .concern:   return "exclamationmark.triangle.fill"
         case .reminder:  return "bell.fill"
         case .progress:  return "star.fill"
+        case .nextSteps: return "list.bullet"
+        case .locked:    return "lock.fill"
         case .placeholder, .generating: return "sparkles"
         }
     }
     var typeLabel: String {
         switch self {
-        case .concern:   return "CONCERN"
-        case .reminder:  return "REMINDER"
-        case .progress:  return "PROGRESS"
+        case .concern:    return "CONCERN"
+        case .reminder:   return "REMINDER"
+        case .progress:   return "PROGRESS"
+        case .nextSteps:  return "NEXT STEPS"
+        case .locked:     return "PREMIUM"
         case .placeholder: return "INSIGHTS"
         case .generating: return "ANALYZING"
         }
     }
     var ctaLabel: String {
         switch self {
-        case .concern:   return "Talk to Rena"
-        case .reminder:  return "Set reminder"
-        case .progress:  return "View trends"
+        case .concern:    return "Talk to Rena"
+        case .reminder:   return "Set reminder"
+        case .progress:   return "View trends"
+        case .nextSteps:  return "See all"
+        case .locked:     return "Unlock Insights"
         case .placeholder, .generating: return ""
         }
     }
@@ -599,6 +883,7 @@ private enum InsightCardType {
 private struct InsightCard: View {
     let type: InsightCardType
     let message: String
+    var onCTA: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 0) {
@@ -637,14 +922,17 @@ private struct InsightCard: View {
 
                 // CTA (hidden for placeholder/generating)
                 if !type.ctaLabel.isEmpty {
-                    HStack(spacing: 4) {
-                        Text(type.ctaLabel)
-                            .font(.custom("Outfit-SemiBold", size: 10.5))
-                            .foregroundColor(type.accentColor)
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundColor(type.accentColor)
+                    Button(action: { onCTA?() }) {
+                        HStack(spacing: 4) {
+                            Text(type.ctaLabel)
+                                .font(.custom("Outfit-SemiBold", size: 10.5))
+                                .foregroundColor(type.accentColor)
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundColor(type.accentColor)
+                        }
                     }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(12)
