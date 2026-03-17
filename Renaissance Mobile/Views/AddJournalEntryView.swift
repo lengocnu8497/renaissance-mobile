@@ -82,8 +82,8 @@ struct AddJournalEntryView: View {
                     switch currentStep {
                     case 0: procedureStep
                     case 1: dayStep
-                    case 2: photoStep
-                    case 3: metricsStep
+                    case 2: metricsStep
+                    case 3: photoStep
                     default: notesStep
                     }
                 }
@@ -309,7 +309,7 @@ struct AddJournalEntryView: View {
                     label: "Redness",
                     icon: "flame.fill",
                     value: $rednessLevel,
-                    color: Color(hex: "#C4929A")
+                    color: Color(hex: "#E8635A")
                 )
             }
             .padding(.horizontal, Theme.Spacing.xl)

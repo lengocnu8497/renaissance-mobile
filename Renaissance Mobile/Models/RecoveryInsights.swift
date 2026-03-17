@@ -10,7 +10,8 @@ import Foundation
 
 // MARK: - Recovery Insights
 
-struct RecoveryInsights: Codable {
+struct RecoveryInsights: Codable, Identifiable {
+    var id: String { procedureId + generatedAt.description }
     // AI-generated content
     let summary: String
     let trend: TrendDirection

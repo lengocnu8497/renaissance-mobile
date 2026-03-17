@@ -60,6 +60,11 @@ class JournalViewModel {
     /// ProcedureIds currently generating insights in the background
     var insightsGenerating: Set<String> = []
 
+    /// Set to false for free-tier users to prevent edge function calls.
+    /// Defaults to false — set to true only after subscription is confirmed,
+    /// so the cache is never loaded before we know the user's tier.
+    var insightsEnabled = false
+
     // MARK: - Services
 
     private let journalService: any JournalServiceProtocol
@@ -83,7 +88,8 @@ class JournalViewModel {
 
         do {
             entries = try await journalService.fetchEntries(for: selectedProcedureId)
-            loadCachedInsights()
+            // Cache is loaded separately in loadCachedInsights(), called only after
+            // insightsEnabled is set to true by the subscription check.
         } catch {
             self.error = error.localizedDescription
         }
@@ -91,7 +97,9 @@ class JournalViewModel {
 
     /// Restores insights from local cache for all procedures that have >= 2 entries.
     /// Cache is keyed by procedureId + entryCount — if entries changed, cache is stale.
-    private func loadCachedInsights() {
+    /// Must be called only after insightsEnabled has been set (i.e. after subscription check).
+    func loadCachedInsights() {
+        guard insightsEnabled else { return }
         for group in groupedByProcedure where group.entries.count >= 2 {
             guard let procedureId = group.entries.first?.procedureId else { continue }
             if let cached = insightsService.fetchCached(
@@ -107,10 +115,11 @@ class JournalViewModel {
 
     /// Returns `true` on success so the caller (the sheet view) can dismiss itself
     /// before the fire-and-forget analysis/insights work begins — preventing
-    /// EXC_BAD_ACCESS from writing to deallocated `@State` storage after dismiss.
     /// Note: do NOT set isLoading here; AddJournalEntryView owns its own isSaving
     /// state, and touching isLoading triggers @Observable re-renders of the parent
     /// view while the sheet's Task is still in-flight, which can corrupt @State.
+    /// Insights are NOT triggered here — PhotoJournalView observes vm.entries.count
+    /// and drives refreshInsights reactively after the sheet has fully dismissed.
     @MainActor
     func addEntry(
         procedureId: String,
@@ -137,18 +146,6 @@ class JournalViewModel {
             )
             entries.insert(entry, at: 0)
             if !hasEverLoggedEntry { hasEverLoggedEntry = true }
-
-            // Fire-and-forget: refresh insights after the sheet is gone.
-            let capturedId = procedureId
-            let capturedName = procedureName
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                let count = self.entries.filter { $0.procedureId == capturedId }.count
-                if count >= 2 {
-                    await self.refreshInsights(for: capturedId, procedureName: capturedName)
-                }
-            }
-
             return true
         } catch {
             self.error = error.localizedDescription
@@ -191,6 +188,7 @@ class JournalViewModel {
     /// Safe to call from background tasks — updates @Observable state on MainActor.
     @MainActor
     func refreshInsights(for procedureId: String, procedureName: String) async {
+        guard insightsEnabled else { return }
         let procedureEntries = entries.filter { $0.procedureId == procedureId }
         guard procedureEntries.count >= 2 else { return }
         guard !insightsGenerating.contains(procedureId) else { return }

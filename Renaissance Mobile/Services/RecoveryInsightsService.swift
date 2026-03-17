@@ -23,6 +23,9 @@ private struct InsightsRequest: Encodable {
         let date: String
         let dayNumber: Int
         let notes: String?
+        let bruisingLevel: Double?
+        let swellingLevel: Double?
+        let rednessLevel: Double?
     }
 }
 
@@ -64,7 +67,10 @@ class RecoveryInsightsService {
                 InsightsRequest.EntryPayload(
                     date: $0.entryDate,
                     dayNumber: $0.dayNumber,
-                    notes: $0.notes
+                    notes: $0.notes,
+                    bruisingLevel: $0.bruisingLevel,
+                    swellingLevel: $0.swellingLevel,
+                    rednessLevel: $0.rednessLevel
                 )
             }
         )

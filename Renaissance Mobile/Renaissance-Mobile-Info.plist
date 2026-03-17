@@ -13,6 +13,12 @@
 		<string>Fonts/Outfit-SemiBold.ttf</string>
 		<string>Fonts/Outfit-Bold.ttf</string>
 	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>instagram-stories</string>
+		<string>fb</string>
+		<string>tiktok</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
