@@ -18,6 +18,11 @@ struct JournalEntry: Identifiable, Codable {
     var photoPath: String?      // Supabase Storage path
     var photoUrl: String?       // cached URL
 
+    // Recovery metrics (0–10 scale stored as NUMERIC in DB)
+    var bruisingLevel: Double?  // maps to bruising_index
+    var swellingLevel: Double?  // maps to swelling_index
+    var rednessLevel: Double?   // maps to redness_index
+
     let createdAt: Date
     var updatedAt: Date
 
@@ -30,6 +35,9 @@ struct JournalEntry: Identifiable, Codable {
         case entryDate      = "entry_date"
         case photoPath      = "photo_path"
         case photoUrl       = "photo_url"
+        case bruisingLevel  = "bruising_index"
+        case swellingLevel  = "swelling_index"
+        case rednessLevel   = "redness_index"
         case createdAt      = "created_at"
         case updatedAt      = "updated_at"
     }
@@ -46,6 +54,14 @@ struct JournalEntry: Identifiable, Codable {
         return f.date(from: entryDate) ?? Date()
     }
 
+    // Integer accessors for UI display
+    var bruisingInt: Int { Int(bruisingLevel ?? 0) }
+    var swellingInt: Int { Int(swellingLevel ?? 0) }
+    var rednessInt:  Int { Int(rednessLevel  ?? 0) }
+
+    var hasRecoveryMetrics: Bool {
+        bruisingLevel != nil || swellingLevel != nil || rednessLevel != nil
+    }
 }
 
 // MARK: - Insert Payload (no id/created_at — server generates them)
@@ -59,6 +75,9 @@ struct JournalEntryInsert: Encodable {
     var notes: String?
     var photoPath: String?
     var photoUrl: String?
+    var bruisingLevel: Int?     // maps to bruising_index
+    var swellingLevel: Int?     // maps to swelling_index
+    var rednessLevel: Int?      // maps to redness_index
 
     enum CodingKeys: String, CodingKey {
         case notes
@@ -69,6 +88,8 @@ struct JournalEntryInsert: Encodable {
         case entryDate     = "entry_date"
         case photoPath     = "photo_path"
         case photoUrl      = "photo_url"
+        case bruisingLevel = "bruising_index"
+        case swellingLevel = "swelling_index"
+        case rednessLevel  = "redness_index"
     }
 }
-

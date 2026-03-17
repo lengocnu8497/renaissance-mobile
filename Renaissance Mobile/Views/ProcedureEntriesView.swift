@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct ProcedureEntriesView: View {
-    let procedureName: String
+    let procedureName: String?
     let vm: JournalViewModel
 
     @Environment(\.dismiss) private var dismiss
@@ -19,7 +19,7 @@ struct ProcedureEntriesView: View {
 
     private var entries: [JournalEntry] {
         vm.entries
-            .filter { $0.procedureName == procedureName }
+            .filter { procedureName == nil || $0.procedureName == procedureName }
             .sorted { $0.entryDateAsDate > $1.entryDateAsDate }
     }
 
@@ -49,14 +49,6 @@ struct ProcedureEntriesView: View {
         }
         .background(Color(hex: "#FFF8F6").ignoresSafeArea())
         .navigationBarHidden(true)
-        .navigationDestination(for: UUID.self) { entryId in
-            if let entry = vm.entries.first(where: { $0.id == entryId }) {
-                JournalEntryDetailView(
-                    entry: entry,
-                    onDelete: { await vm.deleteEntry(entry) }
-                )
-            }
-        }
         .sheet(isPresented: Binding(
             get: { shareItems != nil },
             set: { if !$0 { shareItems = nil } }
@@ -107,18 +99,20 @@ struct ProcedureEntriesView: View {
             Spacer()
 
             HStack(spacing: 8) {
-                Button { vm.tapAddEntry(for: procedureName) } label: {
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: 38, height: 38)
-                        .overlay(
-                            Image(systemName: "plus")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(Color(hex: "#3D2B2E"))
-                        )
-                        .shadow(color: Color(hex: "#8E4C5C").opacity(0.08), radius: 6, x: 0, y: 2)
+                if let name = procedureName {
+                    Button { vm.tapAddEntry(for: name) } label: {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 38, height: 38)
+                            .overlay(
+                                Image(systemName: "plus")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(Color(hex: "#3D2B2E"))
+                            )
+                            .shadow(color: Color(hex: "#8E4C5C").opacity(0.08), radius: 6, x: 0, y: 2)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -254,7 +248,7 @@ struct ProcedureEntriesView: View {
                         .background(Color(hex: "#8E4C5C").opacity(0.12))
                         .clipShape(Capsule())
 
-                    Text(procedureName)
+                    Text(procedureName ?? entry.procedureName)
                         .font(.custom("Outfit-SemiBold", size: 11))
                         .foregroundColor(Color(hex: "#8E4C5C"))
                         .padding(.horizontal, 10)

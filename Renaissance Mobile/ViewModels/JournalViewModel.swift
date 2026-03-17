@@ -118,7 +118,10 @@ class JournalViewModel {
         dayNumber: Int,
         entryDate: Date,
         notes: String?,
-        photoData: Data?
+        photoData: Data?,
+        bruisingLevel: Int? = nil,
+        swellingLevel: Int? = nil,
+        rednessLevel: Int? = nil
     ) async -> Bool {
         do {
             let entry = try await journalService.createEntry(
@@ -127,7 +130,10 @@ class JournalViewModel {
                 dayNumber: dayNumber,
                 entryDate: entryDate,
                 notes: notes,
-                photoData: photoData
+                photoData: photoData,
+                bruisingLevel: bruisingLevel,
+                swellingLevel: swellingLevel,
+                rednessLevel: rednessLevel
             )
             entries.insert(entry, at: 0)
             if !hasEverLoggedEntry { hasEverLoggedEntry = true }
@@ -239,11 +245,22 @@ class JournalViewModel {
         return count
     }
 
-    /// Data for the recovery hero card: most recently logged procedure.
+    /// Data for the recovery hero card: procedure with the most entries, day count live-calculated from today.
     var heroData: (procedureName: String, dayNumber: Int, progress: Double)? {
-        guard let mostRecent = entries.max(by: { $0.entryDateAsDate < $1.entryDateAsDate }) else { return nil }
-        let progress = min(Double(mostRecent.dayNumber) / 30.0, 1.0)
-        return (mostRecent.procedureName, mostRecent.dayNumber, progress)
+        // Use the procedure with the most entries as the "primary" procedure
+        guard let primaryGroup = groupedByProcedure.max(by: { $0.entries.count < $1.entries.count }),
+              let earliest = primaryGroup.entries.min(by: { $0.entryDateAsDate < $1.entryDateAsDate })
+        else { return nil }
+
+        let cal = Calendar.current
+        let dayNumber = max(0, cal.dateComponents(
+            [.day],
+            from: cal.startOfDay(for: earliest.entryDateAsDate),
+            to: cal.startOfDay(for: Date())
+        ).day ?? 0)
+
+        let progress = min(Double(dayNumber) / 30.0, 1.0)
+        return (earliest.procedureName, dayNumber, progress)
     }
 
     /// The 7 days of the current calendar week (locale-respecting first weekday).

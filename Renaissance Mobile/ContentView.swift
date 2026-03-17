@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var selectedTab = 0
     @State private var searchQuery: String = ""
     @State private var journalAddTrigger = false
+    @State private var isKeyboardVisible = false
 
     init() {
         UITabBar.appearance().isHidden = true
@@ -33,8 +34,10 @@ struct ContentView: View {
             Color.clear
                 .tag(2)
 
-            PhotoJournalView(addEntryTrigger: $journalAddTrigger)
-                .tag(3)
+            PhotoJournalView(addEntryTrigger: $journalAddTrigger, onBackButtonTapped: {
+                selectedTab = 0
+            })
+            .tag(3)
 
             ProfileTabView(selectedTab: $selectedTab)
                 .tag(4)
@@ -47,10 +50,20 @@ struct ContentView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            customTabBar
-                .padding(.horizontal, 14)
-                .padding(.bottom, 16)
-                .padding(.top, 8)
+            if selectedTab != 1 {
+                customTabBar
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 6)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.easeOut(duration: 0.25), value: isKeyboardVisible)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            isKeyboardVisible = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            isKeyboardVisible = false
         }
     }
 

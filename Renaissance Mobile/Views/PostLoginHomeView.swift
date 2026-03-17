@@ -170,15 +170,50 @@ struct PostLoginHomeView: View {
                     .font(.custom("Outfit-SemiBold", size: 15))
                     .foregroundColor(Color(hex: "#3D2B2E"))
                 Spacer()
-                Text("View all")
-                    .font(.custom("Outfit-SemiBold", size: 11))
-                    .foregroundColor(Color(hex: "#C4929A"))
+                Button {
+                    onNavigateToJournal?()
+                } label: {
+                    Text("View all")
+                        .font(.custom("Outfit-SemiBold", size: 11))
+                        .foregroundColor(Color(hex: "#C4929A"))
+                }
             }
             .padding(.horizontal, 18)
+
+            if let snapshot = recoverySnapshotData {
+                RecoverySnapshotCard(
+                    averages: (snapshot.bruising, snapshot.swelling, snapshot.redness),
+                    isThisWeek: snapshot.isThisWeek
+                )
+                .padding(.horizontal, 18)
+            }
 
             calendarCard
             journalCardArea
         }
+    }
+
+    private var recoverySnapshotData: (bruising: Double, swelling: Double, redness: Double, isThisWeek: Bool)? {
+        let entries = journalViewModel.entries
+        guard !entries.isEmpty else { return nil }
+
+        let cal = Calendar.current
+        let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())) ?? Date()
+        let weekEntries = entries.filter { $0.entryDateAsDate >= weekStart }
+        let source = weekEntries.isEmpty ? entries : weekEntries
+        let isThisWeek = !weekEntries.isEmpty
+
+        func avg(_ values: [Double]) -> Double {
+            let nonZero = values.filter { $0 > 0 }
+            return nonZero.isEmpty ? 0 : nonZero.reduce(0, +) / Double(nonZero.count)
+        }
+
+        return (
+            avg(source.compactMap { $0.bruisingLevel }),
+            avg(source.compactMap { $0.swellingLevel }),
+            avg(source.compactMap { $0.rednessLevel }),
+            isThisWeek
+        )
     }
 
     // MARK: - Calendar
@@ -355,6 +390,90 @@ struct PostLoginHomeView: View {
         formatter.dateFormat = "yyyy-MM-dd"
         let dateString = formatter.string(from: date)
         return journalViewModel.entries.first { $0.entryDate == dateString }
+    }
+}
+
+// MARK: - Recovery Snapshot Card
+
+private struct RecoverySnapshotCard: View {
+    let averages: (bruising: Double, swelling: Double, redness: Double)
+    let isThisWeek: Bool
+
+    private let metrics: [(label: String, color: Color, value: Double)]
+
+    init(averages: (bruising: Double, swelling: Double, redness: Double), isThisWeek: Bool) {
+        self.averages = averages
+        self.isThisWeek = isThisWeek
+        self.metrics = [
+            ("Bruising", Color(hex: "#7B4B6A"), averages.bruising),
+            ("Swelling", Color(hex: "#B76E79"), averages.swelling),
+            ("Redness",  Color(hex: "#C4929A"), averages.redness),
+        ]
+    }
+
+    private var hasAnyData: Bool {
+        averages.bruising > 0 || averages.swelling > 0 || averages.redness > 0
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Recovery Snapshot")
+                    .font(.custom("Outfit-SemiBold", size: 13))
+                    .foregroundColor(Color(hex: "#3D2B2E"))
+                Spacer()
+                Text(isThisWeek ? "This Week" : "Recent")
+                    .font(.custom("Outfit-SemiBold", size: 10))
+                    .foregroundColor(Color(hex: "#8E4C5C"))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(hex: "#8E4C5C").opacity(0.10))
+                    .clipShape(Capsule())
+            }
+            .padding(.bottom, 10)
+
+            if hasAnyData {
+                VStack(spacing: 7) {
+                    ForEach(metrics, id: \.label) { metric in
+                        HStack(spacing: 10) {
+                            Text(metric.label)
+                                .font(.custom("Outfit-Light", size: 10))
+                                .foregroundColor(Color(hex: "#B8A9AB"))
+                                .frame(width: 52, alignment: .leading)
+
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Capsule()
+                                        .fill(Color(hex: "#C4929A").opacity(0.12))
+                                        .frame(height: 5)
+                                    Capsule()
+                                        .fill(metric.color)
+                                        .frame(width: geo.size.width * CGFloat(metric.value / 10.0), height: 5)
+                                        .animation(.easeOut(duration: 0.7), value: metric.value)
+                                }
+                            }
+                            .frame(height: 5)
+
+                            Text("\(Int((metric.value / 10.0) * 100))%")
+                                .font(.custom("Outfit-Regular", size: 10))
+                                .foregroundColor(Color(hex: "#B8A9AB"))
+                                .frame(width: 28, alignment: .trailing)
+                        }
+                    }
+                }
+            } else {
+                Text("Log bruising, swelling & redness levels in your next entry to see trends here.")
+                    .font(.custom("Outfit-Light", size: 11))
+                    .foregroundColor(Color(hex: "#B8A9AB"))
+                    .lineSpacing(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(14)
+        .background(Color.white)
+        .cornerRadius(16)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 1))
+        .shadow(color: Color(hex: "#8E4C5C").opacity(0.07), radius: 7, x: 0, y: 2)
     }
 }
 

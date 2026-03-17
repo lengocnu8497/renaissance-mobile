@@ -27,7 +27,10 @@ final class MockJournalService: JournalServiceProtocol {
         dayNumber: Int,
         entryDate: Date,
         notes: String?,
-        photoData: Data?
+        photoData: Data?,
+        bruisingLevel: Int? = nil,
+        swellingLevel: Int? = nil,
+        rednessLevel: Int? = nil
     ) async throws -> JournalEntry {
         createCallCount += 1
         isLoadingSnapshotDuringCreate = isLoadingProvider?()
@@ -82,6 +85,9 @@ extension JournalEntry {
             notes: notes,
             photoPath: nil,
             photoUrl: nil,
+            bruisingLevel: nil,
+            swellingLevel: nil,
+            rednessLevel: nil,
             createdAt: Date(),
             updatedAt: Date()
         )

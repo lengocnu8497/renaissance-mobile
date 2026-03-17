@@ -64,6 +64,24 @@ struct JournalEntryDetailView: View {
                     }
                 }
 
+                // Recovery Metrics
+                if entry.hasRecoveryMetrics {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                        sectionLabel("Recovery Metrics")
+                        VStack(spacing: 10) {
+                            if let level = entry.bruisingLevel, level > 0 {
+                                MetricDisplayRow(label: "Bruising", value: Int(level), color: Color(hex: "#7B4B6A"))
+                            }
+                            if let level = entry.swellingLevel, level > 0 {
+                                MetricDisplayRow(label: "Swelling", value: Int(level), color: Color(hex: "#B76E79"))
+                            }
+                            if let level = entry.rednessLevel, level > 0 {
+                                MetricDisplayRow(label: "Redness", value: Int(level), color: Color(hex: "#C4929A"))
+                            }
+                        }
+                    }
+                }
+
                 // Share button
                 Button {
                     Task { await prepareShare() }
@@ -166,5 +184,53 @@ struct JournalEntryDetailView: View {
             .foregroundStyle(Theme.Colors.textSecondary)
             .textCase(.uppercase)
             .tracking(0.8)
+    }
+}
+
+// MARK: - Metric Display Row
+
+private struct MetricDisplayRow: View {
+    let label: String
+    let value: Int
+    let color: Color
+
+    private var levelLabel: String {
+        switch value {
+        case 1...3: return "Mild"
+        case 4...6: return "Moderate"
+        case 7...9: return "Severe"
+        case 10:    return "Extreme"
+        default:    return "None"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(label)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.Colors.textPrimary)
+                Spacer()
+                Text("\(value)/10 · \(levelLabel)")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(color)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(color.opacity(0.12))
+                        .frame(height: 6)
+                    Capsule()
+                        .fill(color)
+                        .frame(width: geo.size.width * CGFloat(value) / 10.0, height: 6)
+                        .animation(.easeOut(duration: 0.6), value: value)
+                }
+            }
+            .frame(height: 6)
+        }
+        .padding(12)
+        .background(Color(hex: "#FAF7F5"))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(color.opacity(0.15), lineWidth: 1))
     }
 }

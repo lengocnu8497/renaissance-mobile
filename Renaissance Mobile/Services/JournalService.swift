@@ -125,7 +125,10 @@ class JournalService {
         dayNumber: Int,
         entryDate: Date = Date(),
         notes: String?,
-        photoData: Data?
+        photoData: Data?,
+        bruisingLevel: Int? = nil,
+        swellingLevel: Int? = nil,
+        rednessLevel: Int? = nil
     ) async throws -> JournalEntry {
         guard let userId = supabase.auth.currentUser?.id else {
             throw JournalError.notAuthenticated
@@ -150,7 +153,10 @@ class JournalService {
             entryDate: formatter.string(from: entryDate),
             notes: notes,
             photoPath: photoPath,
-            photoUrl: photoUrl
+            photoUrl: photoUrl,
+            bruisingLevel: bruisingLevel,
+            swellingLevel: swellingLevel,
+            rednessLevel: rednessLevel
         )
 
         let body = try Self.encoder.encode(payload)
@@ -202,15 +208,29 @@ class JournalService {
         let ext = imageExtension(from: data)
         let path = "\(userId.uuidString.lowercased())/\(entryId.uuidString).\(ext)"
 
-        // Upload binary
+        // Upload binary — both URLRequest.httpBody setter and URLSession.upload(for:from:) async
+        // crash on iOS 26 beta (broken CheckedContinuation / NSMutableURLRequest bridge).
+        // Use the callback-based uploadTask wrapped in a continuation instead.
         var uploadReq = URLRequest(url: URL(string: "\(storageBase)/object/journals/\(path)")!)
         uploadReq.httpMethod = "POST"
         uploadReq.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         uploadReq.setValue(key, forHTTPHeaderField: "apikey")
         uploadReq.setValue("image/\(ext)", forHTTPHeaderField: "Content-Type")
         uploadReq.setValue("true", forHTTPHeaderField: "x-upsert")
-        uploadReq.httpBody = data
-        _ = try await execute(uploadReq)
+        let uploadResponse: URLResponse = try await withCheckedThrowingContinuation { continuation in
+            URLSession.shared.uploadTask(with: uploadReq, from: data) { _, response, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let response {
+                    continuation.resume(returning: response)
+                } else {
+                    continuation.resume(throwing: JournalError.uploadFailed)
+                }
+            }.resume()
+        }
+        if let http = uploadResponse as? HTTPURLResponse, http.statusCode >= 400 {
+            throw JournalError.uploadFailed
+        }
 
         // Request signed URL (1 year)
         var signReq = URLRequest(url: URL(string: "\(storageBase)/object/sign/journals/\(path)")!)

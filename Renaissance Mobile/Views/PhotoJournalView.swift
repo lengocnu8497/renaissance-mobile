@@ -29,10 +29,12 @@ private enum J {
     static let shadowHero    = (color: Color(hex: "#6B3346").opacity(0.30), radius: CGFloat(14), x: CGFloat(0), y: CGFloat(8))
 }
 
+private struct AllEntriesRoute: Hashable {}
+
 struct PhotoJournalView: View {
     var addEntryTrigger: Binding<Bool> = .constant(false)
+    var onBackButtonTapped: (() -> Void)? = nil
 
-    @Environment(\.dismiss) private var dismiss
     @State private var vm = JournalViewModel()
     @State private var groupToDelete: (key: String, entries: [JournalEntry])?
 
@@ -55,20 +57,19 @@ struct PhotoJournalView: View {
             .navigationDestination(for: String.self) { procedureName in
                 ProcedureEntriesView(procedureName: procedureName, vm: vm)
             }
-            .sheet(isPresented: $vm.showAddEntry, onDismiss: { vm.pendingProcedureName = nil }) {
-                AddJournalEntryView(
-                    existingEntries: vm.entries,
-                    prefilledProcedureName: vm.pendingProcedureName
-                ) { procedureId, procedureName, dayNumber, entryDate, notes, photoData in
-                    return await vm.addEntry(
-                        procedureId: procedureId,
-                        procedureName: procedureName,
-                        dayNumber: dayNumber,
-                        entryDate: entryDate,
-                        notes: notes,
-                        photoData: photoData
+            .navigationDestination(for: AllEntriesRoute.self) { _ in
+                ProcedureEntriesView(procedureName: nil, vm: vm)
+            }
+            .navigationDestination(for: UUID.self) { entryId in
+                if let entry = vm.entries.first(where: { $0.id == entryId }) {
+                    JournalEntryDetailView(
+                        entry: entry,
+                        onDelete: { await vm.deleteEntry(entry) }
                     )
                 }
+            }
+            .sheet(isPresented: $vm.showAddEntry, onDismiss: { vm.pendingProcedureName = nil }) {
+                AddJournalEntryView(vm: vm, prefilledProcedureName: vm.pendingProcedureName)
             }
             .alert("Couldn't Save Entry", isPresented: Binding(
                 get: { vm.error != nil },
@@ -125,7 +126,7 @@ struct PhotoJournalView: View {
 
             HStack {
                 // Back button — chevron in circle (matches HTML .back-btn)
-                Button { dismiss() } label: {
+                Button { onBackButtonTapped?() } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(J.textHi)
@@ -182,7 +183,7 @@ struct PhotoJournalView: View {
                 )
                 .padding(.horizontal, 18)
 
-                // 4. Entries or empty CTA
+                // 5. Entries or empty CTA
                 if vm.entries.isEmpty {
                     emptyEntriesSection
                         .padding(.horizontal, 18)
@@ -258,15 +259,17 @@ struct PhotoJournalView: View {
                     .font(.custom("Outfit-SemiBold", size: 13))
                     .foregroundColor(J.textHi)
                 Spacer()
-                Text("See all")
-                    .font(.custom("Outfit-Regular", size: 11))
-                    .foregroundColor(J.accent)
+                NavigationLink(value: AllEntriesRoute()) {
+                    Text("See all")
+                        .font(.custom("Outfit-Regular", size: 11))
+                        .foregroundColor(J.accent)
+                }
             }
             .padding(.horizontal, 18)
 
             VStack(spacing: 7) {
                 ForEach(sortedEntries) { entry in
-                    NavigationLink(value: entry.procedureName) {
+                    NavigationLink(value: entry.id) {
                         CompactEntryRow(entry: entry)
                     }
                     .buttonStyle(.plain)
@@ -760,7 +763,7 @@ private struct CompactEntryRow: View {
             // Entry body
             HStack(alignment: .center, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(Self.entryKeyFormatter.string(from: entry.entryDateAsDate) + " · " + entry.dayLabel)
+                    Text(Self.entryKeyFormatter.string(from: entry.entryDateAsDate) + (entry.dayNumber > 0 ? " · " + entry.dayLabel : ""))
                         .font(.custom("Outfit-Regular", size: 9))
                         .foregroundColor(J.textLo)
 

@@ -17,7 +17,10 @@ protocol JournalServiceProtocol {
         dayNumber: Int,
         entryDate: Date,
         notes: String?,
-        photoData: Data?
+        photoData: Data?,
+        bruisingLevel: Int?,
+        swellingLevel: Int?,
+        rednessLevel: Int?
     ) async throws -> JournalEntry
     func deleteEntry(id: UUID) async throws
 }

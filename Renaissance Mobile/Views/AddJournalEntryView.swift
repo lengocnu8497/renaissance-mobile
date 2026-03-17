@@ -8,25 +8,20 @@ import PhotosUI
 
 struct AddJournalEntryView: View {
     @Environment(\.dismiss) private var dismiss
-    var existingEntries: [JournalEntry] = []
-    var onSave: (String, String, Int, Date, String?, Data?) async -> Bool
+
+    let vm: JournalViewModel
 
     // Navigation
     @State private var currentStep: Int
     @State private var goingForward = true
     private let startStep: Int
-    private let totalSteps = 4
+    private let totalSteps = 5
 
     // Procedure
     @State private var procedureName: String
 
-    init(
-        existingEntries: [JournalEntry] = [],
-        prefilledProcedureName: String? = nil,
-        onSave: @escaping (String, String, Int, Date, String?, Data?) async -> Bool
-    ) {
-        self.existingEntries = existingEntries
-        self.onSave = onSave
+    init(vm: JournalViewModel, prefilledProcedureName: String? = nil) {
+        self.vm = vm
         let step = prefilledProcedureName != nil ? 1 : 0
         self.startStep = step
         _currentStep = State(initialValue: step)
@@ -34,22 +29,35 @@ struct AddJournalEntryView: View {
     }
 
     // Entry fields
-    @State private var dayNumber = 0
     @State private var entryDate = Date()
     @State private var notes = ""
+    @State private var bruisingLevel = 0
+    @State private var swellingLevel = 0
+    @State private var rednessLevel = 0
+
+    // Save state
+    @State private var isSaving = false
 
     // Photo
     @State private var capturedImage: UIImage?
     @State private var libraryItem: PhotosPickerItem?
     @State private var showCamera = false
 
-    @State private var isSaving = false
-
-    private var procedureId: String {
-        procedureName
-            .trimmingCharacters(in: .whitespaces)
-            .lowercased()
-            .replacingOccurrences(of: " ", with: "-")
+    // Derived day number — days from earliest existing entry for this procedure
+    private var dayNumber: Int {
+        let pid = makeId(procedureName)
+        guard !pid.isEmpty else { return 0 }
+        let relevant = vm.entries.filter { $0.procedureId == pid }
+        guard let earliest = relevant.min(by: { $0.entryDateAsDate < $1.entryDateAsDate }) else {
+            return 0
+        }
+        let cal = Calendar.current
+        let diff = cal.dateComponents(
+            [.day],
+            from: cal.startOfDay(for: earliest.entryDateAsDate),
+            to: cal.startOfDay(for: entryDate)
+        ).day ?? 0
+        return max(0, diff)
     }
 
     private var canAdvance: Bool {
@@ -70,12 +78,12 @@ struct AddJournalEntryView: View {
                 topBar
                     .padding(.top, Theme.Spacing.md)
 
-                // Step content with slide transition
                 ZStack {
                     switch currentStep {
                     case 0: procedureStep
                     case 1: dayStep
                     case 2: photoStep
+                    case 3: metricsStep
                     default: notesStep
                     }
                 }
@@ -92,7 +100,7 @@ struct AddJournalEntryView: View {
                 bottomNav
             }
         }
-        .interactiveDismissDisabled(false)
+        .interactiveDismissDisabled(isSaving)
         .fullScreenCover(isPresented: $showCamera) {
             PhotoCaptureView(capturedImage: $capturedImage)
         }
@@ -112,10 +120,10 @@ struct AddJournalEntryView: View {
                     .background(Theme.Brand.charcoalRose.opacity(0.1))
                     .clipShape(Circle())
             }
+            .disabled(isSaving)
 
             Spacer()
 
-            // Step progress pills
             HStack(spacing: 5) {
                 ForEach(startStep..<totalSteps, id: \.self) { i in
                     Capsule()
@@ -134,7 +142,7 @@ struct AddJournalEntryView: View {
         .padding(.horizontal, Theme.Spacing.lg)
     }
 
-    // MARK: - Step 1: Procedure
+    // MARK: - Step 0: Procedure
 
     private var procedureStep: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -145,7 +153,6 @@ struct AddJournalEntryView: View {
 
             Spacer()
 
-            // Ghost placeholder + live input
             ZStack(alignment: .topLeading) {
                 if procedureName.isEmpty {
                     Text("Rhinoplasty,\nLip filler…")
@@ -167,7 +174,7 @@ struct AddJournalEntryView: View {
         }
     }
 
-    // MARK: - Step 2: Day
+    // MARK: - Step 1: Date
 
     private var dayStep: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -179,7 +186,6 @@ struct AddJournalEntryView: View {
             Spacer()
 
             VStack(spacing: Theme.Spacing.xl) {
-                // Large day display (read-only)
                 HStack(alignment: .lastTextBaseline, spacing: 10) {
                     if dayNumber == 0 {
                         Text("Day of\nprocedure")
@@ -198,21 +204,19 @@ struct AddJournalEntryView: View {
                 .padding(.horizontal, Theme.Spacing.xl)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text("Auto-calculated from your journal start date")
+                Text("Auto-calculated from your first entry date")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(Theme.Brand.charcoalRose.opacity(0.55))
                     .padding(.horizontal, Theme.Spacing.xl)
 
-                // Date picker
                 HStack(spacing: Theme.Spacing.sm) {
                     Image(systemName: "calendar")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(Theme.Brand.charcoalRose.opacity(0.6))
-                    DatePicker("", selection: $entryDate, displayedComponents: .date)
+                    DatePicker("", selection: $entryDate, in: ...Date(), displayedComponents: .date)
                         .labelsHidden()
                         .tint(Theme.Brand.charcoalRose)
                         .colorScheme(.light)
-                        .onChange(of: entryDate) { _, _ in recalculateDayNumber() }
                 }
                 .padding(.horizontal, Theme.Spacing.xl)
                 .padding(.top, Theme.Spacing.sm)
@@ -221,10 +225,9 @@ struct AddJournalEntryView: View {
             Spacer()
             Spacer()
         }
-        .onAppear { recalculateDayNumber() }
     }
 
-    // MARK: - Step 3: Photo
+    // MARK: - Step 2: Photo
 
     private var photoStep: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -275,6 +278,105 @@ struct AddJournalEntryView: View {
 
             Spacer()
             Spacer()
+        }
+    }
+
+    // MARK: - Step 3: Recovery Metrics
+
+    private var metricsStep: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            stepHeader(
+                title: "How are you\nrecovering?",
+                subtitle: "Day \(dayNumber) — \(procedureName)"
+            )
+
+            Spacer()
+
+            VStack(spacing: 12) {
+                metricRow(
+                    label: "Bruising",
+                    icon: "drop.fill",
+                    value: $bruisingLevel,
+                    color: Color(hex: "#7B4B6A")
+                )
+                metricRow(
+                    label: "Swelling",
+                    icon: "waveform.path",
+                    value: $swellingLevel,
+                    color: Color(hex: "#B76E79")
+                )
+                metricRow(
+                    label: "Redness",
+                    icon: "flame.fill",
+                    value: $rednessLevel,
+                    color: Color(hex: "#C4929A")
+                )
+            }
+            .padding(.horizontal, Theme.Spacing.xl)
+
+            Text("Tap a segment to rate 0–10. Tap again to clear.")
+                .font(.system(size: 11, weight: .regular))
+                .foregroundColor(Theme.Brand.charcoalRose.opacity(0.4))
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 10)
+
+            Spacer()
+            Spacer()
+        }
+    }
+
+    private func metricRow(label: String, icon: String, value: Binding<Int>, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(color)
+                    .frame(width: 16)
+                Text(label)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Theme.Brand.charcoalRose)
+                Spacer()
+                Text(levelLabel(value.wrappedValue))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(value.wrappedValue == 0
+                        ? Theme.Brand.charcoalRose.opacity(0.35)
+                        : color)
+                    .frame(minWidth: 58, alignment: .trailing)
+                    .animation(.easeInOut(duration: 0.15), value: value.wrappedValue)
+            }
+
+            HStack(spacing: 3) {
+                ForEach(0...10, id: \.self) { lvl in
+                    Capsule()
+                        .fill(lvl <= value.wrappedValue ? color : color.opacity(0.12))
+                        .frame(height: 8)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            // Tap the current level to reset to 0
+                            if lvl == value.wrappedValue {
+                                value.wrappedValue = 0
+                            } else {
+                                value.wrappedValue = lvl
+                            }
+                        }
+                }
+            }
+            .animation(.easeInOut(duration: 0.15), value: value.wrappedValue)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background(Theme.Brand.charcoalRose.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func levelLabel(_ value: Int) -> String {
+        switch value {
+        case 0:     return "None"
+        case 1...3: return "Mild"
+        case 4...6: return "Moderate"
+        case 7...9: return "Severe"
+        case 10:    return "Extreme"
+        default:    return "None"
         }
     }
 
@@ -337,6 +439,7 @@ struct AddJournalEntryView: View {
                             .background(Theme.Brand.charcoalRose.opacity(0.1))
                             .clipShape(Circle())
                     }
+                    .disabled(isSaving)
                 }
 
                 Button {
@@ -344,34 +447,13 @@ struct AddJournalEntryView: View {
                         goingForward = true
                         withAnimation { currentStep += 1 }
                     } else {
-                        Task {
-                            isSaving = true
-                            let imageData = capturedImage.flatMap {
-                                $0.jpegData(compressionQuality: 0.75)
-                            }
-                            let saved = await onSave(
-                                procedureId,
-                                procedureName.trimmingCharacters(in: .whitespaces),
-                                dayNumber,
-                                entryDate,
-                                notes.isEmpty ? nil : notes,
-                                imageData
-                            )
-                            if saved {
-                                // Dismiss without resetting isSaving — writing to @State
-                                // and dismissing in the same run loop tick causes
-                                // EXC_BAD_ACCESS (code=2) as SwiftUI re-renders the view
-                                // while simultaneously tearing it down.
-                                dismiss()
-                            } else {
-                                isSaving = false
-                            }
-                        }
+                        saveEntry()
                     }
                 } label: {
                     Group {
                         if isSaving {
-                            ProgressView().tint(.white)
+                            ProgressView()
+                                .tint(.white)
                         } else {
                             Text(currentStep < totalSteps - 1 ? "Continue" : "Save Entry")
                                 .font(.system(size: 16, weight: .semibold))
@@ -381,7 +463,7 @@ struct AddJournalEntryView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 52)
                     .background(
-                        canAdvance && !isSaving
+                        (canAdvance && !isSaving)
                             ? Theme.Brand.charcoalRose
                             : Theme.Brand.charcoalRose.opacity(0.25)
                     )
@@ -394,7 +476,46 @@ struct AddJournalEntryView: View {
         }
     }
 
-    // MARK: - Reusable Components
+    // MARK: - Save
+
+    private func saveEntry() {
+        isSaving = true
+        Task { @MainActor in
+            let photoData = capturedImage.flatMap { $0.jpegData(compressionQuality: 0.85) }
+            let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            let pid = makeId(procedureName)
+            let trimmedName = procedureName.trimmingCharacters(in: .whitespaces)
+
+            let success = await vm.addEntry(
+                procedureId: pid,
+                procedureName: trimmedName,
+                dayNumber: dayNumber,
+                entryDate: entryDate,
+                notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
+                photoData: photoData,
+                bruisingLevel: bruisingLevel > 0 ? bruisingLevel : nil,
+                swellingLevel: swellingLevel > 0 ? swellingLevel : nil,
+                rednessLevel: rednessLevel > 0 ? rednessLevel : nil
+            )
+
+            if success {
+                dismiss()
+            } else {
+                isSaving = false
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    /// Converts a human-readable procedure name to a stable slug used as procedureId.
+    private func makeId(_ name: String) -> String {
+        name.lowercased()
+            .trimmingCharacters(in: .whitespaces)
+            .components(separatedBy: .whitespaces)
+            .filter { !$0.isEmpty }
+            .joined(separator: "-")
+    }
 
     private func stepHeader(title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -432,27 +553,5 @@ struct AddJournalEntryView: View {
         .padding(.vertical, Theme.Spacing.md + 4)
         .background(Theme.Brand.charcoalRose.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
-    }
-
-    // MARK: - Helpers
-
-    private func recalculateDayNumber() {
-        let cal = Calendar.current
-        let procedureEntries = existingEntries.filter { $0.procedureId == procedureId }
-
-        // Anchor: prefer a Day 0 entry, fall back to the earliest entry
-        let anchorEntry: JournalEntry?
-        if let d0 = procedureEntries.first(where: { $0.dayNumber == 0 }) {
-            anchorEntry = d0
-        } else {
-            anchorEntry = procedureEntries.min(by: { $0.dayNumber < $1.dayNumber })
-        }
-
-        guard let anchor = anchorEntry else { return }
-
-        let anchorDate = cal.startOfDay(for: anchor.entryDateAsDate)
-        let selected = cal.startOfDay(for: entryDate)
-        let diff = cal.dateComponents([.day], from: anchorDate, to: selected).day ?? 0
-        dayNumber = max(0, anchor.dayNumber + diff)
     }
 }
