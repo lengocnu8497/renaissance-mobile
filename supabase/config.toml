@@ -24,3 +24,18 @@ entrypoint = "./functions/create-subscription/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/confirm-payment/index.ts"
+
+[functions.create-onboarding-subscription]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/create-onboarding-subscription/index.ts"
+
+[functions.link-onboarding-subscription]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/link-onboarding-subscription/index.ts"
+
+[functions.fetch-stripe-prices]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/fetch-stripe-prices/index.ts"

@@ -211,26 +211,23 @@ enum BillingPlan: String, Codable {
     case free = "free"
     case silver = "silver"
     case gold = "gold"
+    case annual = "annual"
 
     var displayName: String {
         switch self {
-        case .free:
-            return "Free"
-        case .silver:
-            return "Silver"
-        case .gold:
-            return "Gold"
+        case .free:   return "Free"
+        case .silver: return "Silver"
+        case .gold:   return "Gold"
+        case .annual: return "Annual"
         }
     }
 
     var monthlyPrice: String {
         switch self {
-        case .free:
-            return "$0"
-        case .silver:
-            return "$14.99"
-        case .gold:
-            return "$29.99"
+        case .free:   return "$0"
+        case .silver: return "$14.99"
+        case .gold:   return "$29.99"
+        case .annual: return "$X / yr"
         }
     }
 }
@@ -272,6 +269,7 @@ enum SubscriptionStatus: String, Codable {
 enum SubscriptionTier: String, Codable {
     case silver
     case gold
+    case annual
 }
 
 // MARK: - Transaction Model
@@ -459,6 +457,8 @@ struct TierQuotaLimits {
             return TierQuotaLimits(messagesLimit: 30, imagesLimit: 5, creditsLimit: 80)
         case .gold:
             return TierQuotaLimits(messagesLimit: 75, imagesLimit: 15, creditsLimit: 210)
+        case .annual:
+            return TierQuotaLimits(messagesLimit: 75, imagesLimit: 15, creditsLimit: 300)
         }
     }
 }

@@ -15,6 +15,7 @@ struct ProcedureEntriesView: View {
     @State private var isPreparingShareFor: UUID?
     @State private var searchText = ""
     @State private var showSearch = false
+    @State private var showComparison = false
     @FocusState private var searchFocused: Bool
 
     private var entries: [JournalEntry] {
@@ -49,6 +50,11 @@ struct ProcedureEntriesView: View {
         }
         .background(Color(hex: "#FFF8F6").ignoresSafeArea())
         .navigationBarHidden(true)
+        .sheet(isPresented: $showComparison) {
+            WeekComparisonView(entries: entries)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+        }
         .sheet(isPresented: Binding(
             get: { shareItems != nil },
             set: { if !$0 { shareItems = nil } }
@@ -108,6 +114,22 @@ struct ProcedureEntriesView: View {
                                 Image(systemName: "plus")
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundColor(Color(hex: "#3D2B2E"))
+                            )
+                            .shadow(color: Color(hex: "#8E4C5C").opacity(0.08), radius: 6, x: 0, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                // Compare button — only meaningful with 2+ entries
+                if entries.count >= 2 {
+                    Button { showComparison = true } label: {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 38, height: 38)
+                            .overlay(
+                                Image(systemName: "square.2.layers.3d.top.filled")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(Color(hex: "#8E4C5C"))
                             )
                             .shadow(color: Color(hex: "#8E4C5C").opacity(0.08), radius: 6, x: 0, y: 2)
                     }

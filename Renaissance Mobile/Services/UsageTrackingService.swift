@@ -35,7 +35,7 @@ class UsageTrackingService {
 
         // Check if user has active subscription (not free tier)
         // Only silver and gold plans can use AI chat
-        guard profile.billingPlan == .silver || profile.billingPlan == .gold else {
+        guard profile.billingPlan == .silver || profile.billingPlan == .gold || profile.billingPlan == .annual else {
             throw UsageTrackingError.noActiveSubscription
         }
 

@@ -10,6 +10,8 @@ struct PostLoginHomeView: View {
     @State private var firstName: String = ""
     @State private var journalViewModel = JournalViewModel()
     @State private var selectedDay: Date = Calendar.current.startOfDay(for: Date())
+    @State private var homePendingCheckIn: WeeklyCheckIn? = nil
+    @State private var homeGuidedGuide: WeeklyPhotoGuide? = nil
 
     var onNavigateToChat: ((String) -> Void)?
     var onNavigateToJournal: (() -> Void)?
@@ -23,6 +25,7 @@ struct PostLoginHomeView: View {
                     headerSection
                     askRenaCard
                     heroSection
+                    weeklySection
                     recoverySection
                     brandLogoSection
                 }
@@ -36,6 +39,18 @@ struct PostLoginHomeView: View {
             .task {
                 await loadUserProfile()
                 await journalViewModel.load()
+                OnboardingStore.applyIfNeeded(to: journalViewModel)
+                homePendingCheckIn = journalViewModel.primaryPendingCheckIn
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .subscriptionLinked)) { _ in
+                Task { await loadUserProfile() }
+            }
+            .sheet(item: $homeGuidedGuide) { guide in
+                GuidedPhotoStepView(guide: guide) {
+                    onNavigateToJournal?()
+                }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
             }
         }
     }
@@ -68,17 +83,6 @@ struct PostLoginHomeView: View {
             }
 
             Spacer()
-
-            Circle()
-                .fill(Color.white)
-                .frame(width: 44, height: 44)
-                .overlay(
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundColor(Color(hex: "#C4929A"))
-                )
-                .overlay(Circle().stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 1.5))
-                .shadow(color: Color(hex: "#8E4C5C").opacity(0.07), radius: 7, x: 0, y: 2)
         }
         .padding(.horizontal, 18)
         .padding(.top, 60)
@@ -154,10 +158,66 @@ struct PostLoginHomeView: View {
             subtitle: "Find the perfect treatment for you.",
             imageName: nil
         )
+        .overlay(alignment: .topTrailing) {
+            HStack(spacing: 4) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 8, weight: .semibold))
+                Text("Coming Soon")
+                    .font(.custom("Outfit-SemiBold", size: 9))
+                    .tracking(0.5)
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.black.opacity(0.35))
+            .clipShape(Capsule())
+            .padding(.top, 12)
+            .padding(.trailing, 30)
+        }
+        .opacity(0.72)
         .padding(.horizontal, 18)
         .padding(.bottom, 20)
-        .onTapGesture {
-            navigateToProcedures = true
+    }
+
+    // MARK: - Weekly Check-In
+
+    @ViewBuilder
+    private var weeklySection: some View {
+        let primaryId = journalViewModel.groupedByProcedure
+            .max(by: { $0.entries.count < $1.entries.count })?
+            .entries.first?.procedureId
+            ?? journalViewModel.bootstrappedProcedureId
+        let allCheckIns = primaryId.map { journalViewModel.checkIns(for: $0) } ?? []
+
+        if !allCheckIns.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                // Banner when a check-in is due
+                if let checkIn = homePendingCheckIn {
+                    let guide = PhotoAngleGuideService.guide(for: checkIn.procedureName, week: checkIn.weekNumber)
+                    WeeklyCheckInBannerView(
+                        checkIn: checkIn,
+                        guide: guide,
+                        onBeginCheckIn: { homeGuidedGuide = guide },
+                        onSnooze: {
+                            WeeklyCheckInService.shared.snooze(procedureId: checkIn.procedureId)
+                            homePendingCheckIn = nil
+                        }
+                    )
+                    .padding(.horizontal, 18)
+                }
+
+                // Progress strip — always visible when check-ins exist
+                VStack(alignment: .leading, spacing: 6) {
+                    WeeklyProgressStripView(
+                        procedureName: journalViewModel.groupedByProcedure
+                            .max(by: { $0.entries.count < $1.entries.count })?.key ?? "",
+                        checkIns: allCheckIns,
+                        onTapPending: { onNavigateToJournal?() }
+                    )
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 8)
+            }
         }
     }
 

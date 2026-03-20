@@ -63,6 +63,49 @@ final class MockRecoveryInsightsService: RecoveryInsightsServiceProtocol {
     }
 }
 
+// MARK: - RecoveryInsights Test Fixture
+
+extension RecoveryInsights {
+    static func stub(
+        procedureId: String = "rhinoplasty",
+        procedureName: String = "Rhinoplasty",
+        trend: TrendDirection = .improving,
+        flags: [InsightFlag] = [],
+        encouragements: [String] = [],
+        nextSteps: String? = nil
+    ) -> RecoveryInsights {
+        RecoveryInsights(
+            summary: "Test summary",
+            trend: trend,
+            flags: flags,
+            encouragements: encouragements,
+            nextSteps: nextSteps,
+            procedureId: procedureId,
+            procedureName: procedureName,
+            generatedAt: Date(),
+            entryCount: 3
+        )
+    }
+}
+
+// MARK: - TreatmentReminder Test Fixture
+
+extension TreatmentReminder {
+    static func stub(
+        procedureName: String = "Rhinoplasty",
+        daysFromNow: Int = 7,
+        kind: TreatmentReminderKind = .followUp
+    ) -> TreatmentReminder {
+        TreatmentReminder(
+            procedureName: procedureName,
+            procedureDate: Date(),
+            reminderDate: Calendar.current.date(byAdding: .day, value: daysFromNow, to: Date()) ?? Date(),
+            label: "1-week check-up",
+            kind: kind
+        )
+    }
+}
+
 // MARK: - JournalEntry Test Fixture
 
 extension JournalEntry {

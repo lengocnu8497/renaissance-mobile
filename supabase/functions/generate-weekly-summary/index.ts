@@ -1,10 +1,9 @@
-// supabase/functions/generate-recovery-insights/index.ts
+// supabase/functions/generate-weekly-summary/index.ts
 //
-// Analyzes patterns across multiple journal entries using Gemini 2.5 Flash (text-only).
-// Uses semantics from user notes + photo metric trends to produce cross-entry insights.
-// Follows the same auth / subscription / quota pattern as analyze-photo.
-//
-// Quota cost: 2 credits (no image slot — text-only inference).
+// Generates a concise per-week healing summary using Gemini 2.5 Flash.
+// Input:  procedureId, procedureName, weekNumber, entries (for the week's date range)
+// Output: weekNumber, headline, observation, improvement?, concern?
+// Quota cost: 1 credit
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'jsr:@supabase/supabase-js@2';
@@ -13,7 +12,7 @@ const GOOGLE_AI_STUDIO_API_KEY = Deno.env.get("GOOGLE_AI_STUDIO_API_KEY")!;
 const GEMINI_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
-const INSIGHTS_CREDIT_COST = 2;
+const SUMMARY_CREDIT_COST = 1;
 
 function subtractOneMonth(date: Date): Date {
   const d = new Date(date);
@@ -28,36 +27,30 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// MARK: - Request / Response Types
+// MARK: - Types
 
 interface EntryPayload {
   date: string;
   dayNumber: number;
   notes?: string | null;
-  swellingIndex?: number | null;
-  bruisingIndex?: number | null;
-  rednessIndex?: number | null;
-  overallScore?: number | null;
+  bruisingLevel?: number | null;
+  swellingLevel?: number | null;
+  rednessLevel?: number | null;
 }
 
-interface InsightsRequest {
+interface SummaryRequest {
   procedureId: string;
   procedureName: string;
+  weekNumber: number;
   entries: EntryPayload[];
 }
 
-interface InsightFlag {
-  severity: "info" | "warning" | "urgent";
-  message: string;
-  metric?: string | null;
-}
-
-interface InsightsResult {
-  summary: string;
-  trend: "improving" | "stable" | "concerning";
-  flags: InsightFlag[];
-  encouragements: string[];
-  nextSteps: string | null;
+interface SummaryResult {
+  weekNumber: number;
+  headline: string;
+  observation: string;
+  improvement: string | null;
+  concern: string | null;
 }
 
 // MARK: - Gemini Schema
@@ -65,86 +58,72 @@ interface InsightsResult {
 const responseSchema = {
   type: "OBJECT",
   properties: {
-    summary: {
+    weekNumber: {
+      type: "INTEGER",
+      description: "The week number being summarized"
+    },
+    headline: {
       type: "STRING",
-      description: "2–3 sentence overall assessment of the recovery journey, referencing specific notes or metric changes"
+      description: "3-6 word headline capturing the week's healing status. E.g. 'Swelling significantly reduced' or 'Steady healing progress'"
     },
-    trend: {
+    observation: {
       type: "STRING",
-      enum: ["improving", "stable", "concerning"],
-      description: "Overall recovery trajectory"
+      description: "1-2 sentence narrative for this specific week. Reference actual notes or metric changes from entries."
     },
-    flags: {
-      type: "ARRAY",
-      description: "Specific things the patient might have missed — patterns, stalled metrics, or things worth provider attention",
-      items: {
-        type: "OBJECT",
-        properties: {
-          severity: { type: "STRING", enum: ["info", "warning", "urgent"] },
-          message: { type: "STRING" },
-          metric: { type: "STRING", nullable: true }
-        },
-        required: ["severity", "message"]
-      }
-    },
-    encouragements: {
-      type: "ARRAY",
-      description: "Genuine improvements the patient might not have noticed — especially fears that turned out to be unfounded",
-      items: { type: "STRING" }
-    },
-    nextSteps: {
+    improvement: {
       type: "STRING",
       nullable: true,
-      description: "One specific, actionable suggestion for their next entry or day"
+      description: "The single most notable positive change this week. Null if there is no clear improvement."
+    },
+    concern: {
+      type: "STRING",
+      nullable: true,
+      description: "One brief note on anything worth watching. Null if nothing concerning."
     }
   },
-  required: ["summary", "trend", "flags", "encouragements"]
+  required: ["weekNumber", "headline", "observation"]
 };
 
 // MARK: - Prompt Builder
 
-function buildPrompt(procedureName: string, entries: EntryPayload[]): string {
+function buildPrompt(procedureName: string, weekNumber: number, entries: EntryPayload[]): string {
+  if (entries.length === 0) {
+    return `You are a compassionate recovery support assistant. A patient recovering from ${procedureName} did not log any journal entries during Week ${weekNumber}.
+
+Write a brief, encouraging Week ${weekNumber} summary. Set weekNumber to ${weekNumber}. Use a gentle headline like "Check in next week" and a supportive observation reminding them that logging helps track their progress.`;
+  }
+
   const timeline = entries
-    .map((e, i) => {
+    .map((e) => {
       const dayLabel = e.dayNumber === 0 ? "Day of Procedure" : `Day ${e.dayNumber}`;
-      const metricsLine = (e.swellingIndex != null)
-        ? `  Metrics — Swelling: ${e.swellingIndex}/10 | Bruising: ${e.bruisingIndex}/10 | Redness: ${e.rednessIndex}/10 | Recovery score: ${e.overallScore}/10`
-        : `  (no photo metrics for this entry)`;
+      const metricsLine = (e.bruisingLevel != null)
+        ? `  Metrics — Swelling: ${e.swellingLevel}/10 | Bruising: ${e.bruisingLevel}/10 | Redness: ${e.rednessLevel}/10`
+        : `  (no photo metrics recorded)`;
       const notesLine = e.notes?.trim()
         ? `  Notes: "${e.notes.trim()}"`
         : `  (no notes written)`;
-
-      return `Entry ${i + 1} — ${e.date} (${dayLabel}):\n${notesLine}\n${metricsLine}`;
+      return `${e.date} (${dayLabel}):\n${notesLine}\n${metricsLine}`;
     })
     .join("\n\n");
 
-  return `You are a compassionate recovery support assistant. A patient recovering from a ${procedureName} procedure has shared ${entries.length} journal entries with you.
+  return `You are a compassionate recovery support assistant. A patient recovering from ${procedureName} has completed Week ${weekNumber} of their healing journey.
 
-Recovery timeline (oldest to newest):
+Here are their entries from this week:
 
 ${timeline}
 
-Based on this complete timeline, provide the following:
+Write a brief Week ${weekNumber} summary:
 
-1. SUMMARY: 2–3 sentences summarizing their overall recovery journey. Reference specific things they mentioned in their notes or actual metric changes. Be precise, not generic.
+1. HEADLINE: 3-6 words capturing the week's healing status (e.g. "Swelling reduced, feeling hopeful"). Be specific, not generic.
 
-2. TREND: Classify as "improving", "stable", or "concerning" based on the overall trajectory of both notes sentiment and metrics.
+2. OBSERVATION: 1-2 sentences about this specific week. Reference actual details from their notes or metrics. Do not use the word "journey".
 
-3. FLAGS: Identify things the patient might have missed. Look for:
-   - Repeated concerns across multiple entries (e.g., if they mention pain at night in 3 entries, call that out)
-   - Metrics that have not improved after multiple entries when they should be
-   - Anything in their notes that could warrant a provider check-in (new lumps, unexpected changes, persistent symptoms)
-   - If genuinely nothing is concerning, return an empty array — do not invent flags
-   Only use "urgent" severity if the patient should contact their provider soon.
+3. IMPROVEMENT: The single most notable positive change this week, if clearly supported by the entries. Null if nothing clear.
 
-4. ENCOURAGEMENTS: Point out real improvements the patient might not have noticed:
-   - Especially things they were worried or anxious about that turned out to resolve
-   - Specific metric improvements with numbers (e.g., "your swelling dropped from 8.2 to 3.1")
-   - If they are not improving, return an empty array — do not be falsely positive
+4. CONCERN: One brief, gentle note on anything worth watching. Null if nothing concerning.
 
-5. NEXT_STEPS: One specific, actionable suggestion for their next entry or the coming days.
-
-Tone: Warm, honest, and supportive. Quote their exact words from notes briefly when relevant. Never use clinical jargon. Do not be generic or templated.`;
+Set weekNumber to ${weekNumber}.
+Tone: Warm, specific, never generic. Keep it concise.`;
 }
 
 // MARK: - Handler
@@ -200,7 +179,6 @@ serve(async (req) => {
       return new Response(JSON.stringify({
         error: 'No active subscription',
         code: 'NO_SUBSCRIPTION',
-        message: 'Please upgrade to use AI recovery insights.'
       }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -222,35 +200,25 @@ serve(async (req) => {
       });
     }
 
-    if ((usageRecord.credits_used + INSIGHTS_CREDIT_COST) > usageRecord.credits_limit) {
+    if ((usageRecord.credits_used + SUMMARY_CREDIT_COST) > usageRecord.credits_limit) {
       return new Response(JSON.stringify({
         error: 'Quota exceeded',
         code: 'QUOTA_EXCEEDED',
-        limitType: 'credits',
-        usage: {
-          credits: { used: usageRecord.credits_used, limit: usageRecord.credits_limit }
-        }
       }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // ── Input validation ──────────────────────────────────────────────────────
-    const body: InsightsRequest = await req.json();
-    const { procedureId, procedureName, entries } = body;
+    const body: SummaryRequest = await req.json();
+    const { procedureId, procedureName, weekNumber, entries } = body;
 
-    if (!procedureId || !procedureName || !Array.isArray(entries)) {
+    if (!procedureId || !procedureName || typeof weekNumber !== 'number') {
       return new Response(JSON.stringify({ error: "Missing required fields" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    if (entries.length < 2) {
-      return new Response(JSON.stringify({ error: "At least 2 entries required for insights" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     // ── Gemini call ───────────────────────────────────────────────────────────
-    const prompt = buildPrompt(procedureName, entries);
+    const prompt = buildPrompt(procedureName, weekNumber, entries ?? []);
 
     const geminiPayload = {
       contents: [{ parts: [{ text: prompt }] }],
@@ -258,7 +226,7 @@ serve(async (req) => {
         response_mime_type: "application/json",
         response_schema: responseSchema,
         temperature: 0.4,
-        max_output_tokens: 8192,
+        max_output_tokens: 2048,
       },
     };
 
@@ -276,12 +244,12 @@ serve(async (req) => {
     const geminiData = await geminiResponse.json();
     const candidate = geminiData.candidates?.[0];
     if (candidate?.finishReason === "MAX_TOKENS") {
-      throw new Error("Gemini response truncated by token limit — increase max_output_tokens");
+      throw new Error("Gemini response truncated by token limit");
     }
     const rawText = candidate?.content?.parts?.[0]?.text;
     if (!rawText) throw new Error("No content in Gemini response");
 
-    const result: InsightsResult = JSON.parse(rawText);
+    const result: SummaryResult = JSON.parse(rawText);
 
     // ── Increment usage ───────────────────────────────────────────────────────
     try {
@@ -290,7 +258,7 @@ serve(async (req) => {
         p_user_id:  user.id,
         p_messages: 0,
         p_images:   0,
-        p_credits:  INSIGHTS_CREDIT_COST
+        p_credits:  SUMMARY_CREDIT_COST
       });
     } catch (e) {
       console.error("Failed to increment usage:", e);
@@ -302,7 +270,7 @@ serve(async (req) => {
     });
 
   } catch (err) {
-    console.error("generate-recovery-insights error:", err);
+    console.error("generate-weekly-summary error:", err);
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : "Internal error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

@@ -20,6 +20,7 @@ struct SignUpView: View {
 
     var onSignUp: (() -> Void)?
     var onSignIn: (() -> Void)?
+    var prefillEmail: String = ""
 
     private var isFormValid: Bool {
         !fullName.isEmpty &&
@@ -179,6 +180,7 @@ struct SignUpView: View {
                         Task {
                             await authViewModel.signUp(email: email, password: password)
                             if authViewModel.isAuthenticated {
+                                await OnboardingStore.linkSubscriptionIfNeeded()
                                 onSignUp?()
                             }
                         }
@@ -231,6 +233,7 @@ struct SignUpView: View {
                             }
                             await authViewModel.signInWithGoogle(presentingViewController: viewController)
                             if authViewModel.isAuthenticated {
+                                await OnboardingStore.linkSubscriptionIfNeeded()
                                 onSignUp?()
                             }
                         }
@@ -259,6 +262,7 @@ struct SignUpView: View {
                         Task {
                             await authViewModel.signInWithApple()
                             if authViewModel.isAuthenticated {
+                                await OnboardingStore.linkSubscriptionIfNeeded()
                                 onSignUp?()
                             }
                         }
@@ -302,6 +306,9 @@ struct SignUpView: View {
                 }
             }
             .background(Theme.Colors.backgroundWelcome)
+            .onAppear {
+                if !prefillEmail.isEmpty { email = prefillEmail }
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
