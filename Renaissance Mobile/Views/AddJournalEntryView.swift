@@ -15,10 +15,11 @@ struct AddJournalEntryView: View {
     @State private var currentStep: Int
     @State private var goingForward = true
     private let startStep: Int
-    private let totalSteps = 5
+    private let totalSteps = 6
 
     // Procedure
     @State private var procedureName: String
+    @State private var showNewProcedureField = false
 
     init(vm: JournalViewModel, prefilledProcedureName: String? = nil) {
         self.vm = vm
@@ -37,6 +38,13 @@ struct AddJournalEntryView: View {
 
     // Save state
     @State private var isSaving = false
+
+    // Reminder step (step 5) — populated after a successful save
+    @State private var reminderConfig: ProcedureReminderConfig? = nil
+    @State private var reminderEnabled = true
+    @State private var reminderDate = Date()
+    @State private var followUpMilestones: [FollowUpMilestone] = []
+    @State private var isSchedulingReminder = false
 
     // Photo
     @State private var capturedImage: UIImage?
@@ -84,6 +92,7 @@ struct AddJournalEntryView: View {
                     case 1: dayStep
                     case 2: metricsStep
                     case 3: photoStep
+                    case 5: reminderStep
                     default: notesStep
                     }
                 }
@@ -151,7 +160,107 @@ struct AddJournalEntryView: View {
                 subtitle: Self.dateFormatter.string(from: Date())
             )
 
-            Spacer()
+            if vm.proceduresWithEntries.isEmpty || showNewProcedureField {
+                // ── Text-input mode ──────────────────────────────
+                Spacer()
+                newProcedureInputView(showBack: !vm.proceduresWithEntries.isEmpty)
+                Spacer()
+                Spacer()
+            } else {
+                // ── Picker mode ──────────────────────────────────
+                ScrollView(showsIndicators: false) {
+                    previousProceduresList(procedures: vm.proceduresWithEntries)
+                        .padding(.top, Theme.Spacing.lg)
+                        .padding(.bottom, Theme.Spacing.xl)
+                }
+            }
+        }
+    }
+
+    private func previousProceduresList(
+        procedures: [(id: String, name: String)]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("YOUR PROCEDURES")
+                .font(.system(size: 10, weight: .semibold))
+                .kerning(2)
+                .foregroundColor(Theme.Brand.charcoalRose.opacity(0.45))
+                .padding(.horizontal, Theme.Spacing.xl)
+
+            VStack(spacing: 8) {
+                ForEach(procedures, id: \.id) { proc in
+                    let isSelected = procedureName == proc.name
+                    Button {
+                        procedureName = proc.name
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 20))
+                                .foregroundColor(
+                                    isSelected
+                                        ? Theme.Brand.charcoalRose
+                                        : Theme.Brand.charcoalRose.opacity(0.25)
+                                )
+                            Text(proc.name)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(Theme.Brand.charcoalRose)
+                                .lineLimit(2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .background(
+                            isSelected
+                                ? Theme.Brand.charcoalRose.opacity(0.14)
+                                : Theme.Brand.charcoalRose.opacity(0.07)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .animation(.easeInOut(duration: 0.15), value: isSelected)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.xl)
+
+            // New procedure row
+            Button {
+                procedureName = ""
+                showNewProcedureField = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: 18))
+                        .foregroundColor(Theme.Brand.charcoalRose.opacity(0.55))
+                    Text("New procedure")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(Theme.Brand.charcoalRose.opacity(0.65))
+                }
+                .padding(.horizontal, Theme.Spacing.xl)
+                .padding(.top, 6)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func newProcedureInputView(showBack: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if showBack {
+                Button {
+                    procedureName = ""
+                    showNewProcedureField = false
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("My procedures")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.6))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, Theme.Spacing.xl)
+                .padding(.bottom, 20)
+            }
 
             ZStack(alignment: .topLeading) {
                 if procedureName.isEmpty {
@@ -168,9 +277,6 @@ struct AddJournalEntryView: View {
                     .submitLabel(.done)
             }
             .padding(.horizontal, Theme.Spacing.xl)
-
-            Spacer()
-            Spacer()
         }
     }
 
@@ -419,60 +525,332 @@ struct AddJournalEntryView: View {
 
     private var bottomNav: some View {
         VStack(spacing: Theme.Spacing.sm) {
-            if currentStep == totalSteps - 1 {
+            // Disclaimer on the notes step (step 4, previously the last step)
+            if currentStep == totalSteps - 2 {
                 Text("Not medical advice. Photos stored privately.")
                     .font(.system(size: 11))
                     .foregroundColor(Theme.Brand.charcoalRose.opacity(0.45))
                     .multilineTextAlignment(.center)
             }
 
-            HStack(spacing: Theme.Spacing.md) {
-                if currentStep > startStep {
-                    Button {
-                        goingForward = false
-                        withAnimation { currentStep -= 1 }
-                    } label: {
-                        Image(systemName: "arrow.left")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(Theme.Brand.charcoalRose.opacity(0.65))
-                            .frame(width: 52, height: 52)
-                            .background(Theme.Brand.charcoalRose.opacity(0.1))
-                            .clipShape(Circle())
-                    }
-                    .disabled(isSaving)
-                }
-
-                Button {
-                    if currentStep < totalSteps - 1 {
-                        goingForward = true
-                        withAnimation { currentStep += 1 }
-                    } else {
-                        saveEntry()
-                    }
-                } label: {
-                    Group {
-                        if isSaving {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Text(currentStep < totalSteps - 1 ? "Continue" : "Save Entry")
+            if currentStep == totalSteps - 1 {
+                // Reminder step — own nav layout
+                reminderBottomNav
+            } else {
+                HStack(spacing: Theme.Spacing.md) {
+                    // Back button: hidden on step 5 (reminder) since entry is already saved
+                    if currentStep > startStep && currentStep < totalSteps - 1 {
+                        Button {
+                            goingForward = false
+                            withAnimation { currentStep -= 1 }
+                        } label: {
+                            Image(systemName: "arrow.left")
                                 .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.white)
+                                .foregroundColor(Theme.Brand.charcoalRose.opacity(0.65))
+                                .frame(width: 52, height: 52)
+                                .background(Theme.Brand.charcoalRose.opacity(0.1))
+                                .clipShape(Circle())
                         }
+                        .disabled(isSaving)
                     }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
-                    .background(
-                        (canAdvance && !isSaving)
-                            ? Theme.Brand.charcoalRose
-                            : Theme.Brand.charcoalRose.opacity(0.25)
-                    )
-                    .clipShape(Capsule())
+
+                    Button {
+                        if currentStep < totalSteps - 2 {
+                            // Steps 0–3: advance
+                            goingForward = true
+                            withAnimation { currentStep += 1 }
+                        } else {
+                            // Step 4 (notes): save entry, then advance to reminder step
+                            saveEntry()
+                        }
+                    } label: {
+                        Group {
+                            if isSaving {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Text(currentStep < totalSteps - 2 ? "Continue" : "Save Entry")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(
+                            (canAdvance && !isSaving)
+                                ? Theme.Brand.charcoalRose
+                                : Theme.Brand.charcoalRose.opacity(0.25)
+                        )
+                        .clipShape(Capsule())
+                    }
+                    .disabled(!canAdvance || isSaving)
                 }
-                .disabled(!canAdvance || isSaving)
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.bottom, Theme.Spacing.xl)
             }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.bottom, Theme.Spacing.xl)
+        }
+    }
+
+    // MARK: - Step 5: Reminder
+
+    private var reminderStep: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            stepHeader(
+                title: (reminderConfig?.isSurgical == true)
+                    ? "Schedule your\nfollow-ups"
+                    : "One last thing",
+                subtitle: procedureName.trimmingCharacters(in: .whitespaces)
+            )
+
+            Spacer()
+
+            if let config = reminderConfig {
+                if config.isSurgical {
+                    surgicalMilestonesContent(config: config)
+                } else {
+                    retreatmentReminderContent(config: config)
+                }
+            }
+
+            Spacer()
+            Spacer()
+        }
+    }
+
+    private func retreatmentReminderContent(config: ProcedureReminderConfig) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Context note
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.55))
+                    .padding(.top, 1)
+                Text(config.contextNote)
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, Theme.Spacing.xl)
+
+            // Toggle + date picker
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text("Remind me")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(Theme.Brand.charcoalRose)
+                    Spacer()
+                    Toggle("", isOn: $reminderEnabled)
+                        .tint(Theme.Brand.charcoalRose)
+                        .labelsHidden()
+                }
+                .padding(.horizontal, Theme.Spacing.xl)
+
+                if reminderEnabled {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: Theme.Spacing.sm) {
+                            Image(systemName: "calendar")
+                                .font(.system(size: 13))
+                                .foregroundColor(Theme.Brand.charcoalRose.opacity(0.55))
+                            if let label = config.retreatmentRangeLabel {
+                                Text("Suggested: \(label) from today")
+                                    .font(.system(size: 12, weight: .regular))
+                                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.5))
+                            }
+                            Spacer()
+                            DatePicker(
+                                "",
+                                selection: $reminderDate,
+                                in: Date()...,
+                                displayedComponents: .date
+                            )
+                            .labelsHidden()
+                            .tint(Theme.Brand.charcoalRose)
+                            .colorScheme(.light)
+                        }
+                        .padding(.horizontal, Theme.Spacing.xl)
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: reminderEnabled)
+        }
+    }
+
+    private func surgicalMilestonesContent(config: ProcedureReminderConfig) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Context note
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "stethoscope")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.55))
+                    .padding(.top, 1)
+                Text(config.contextNote)
+                    .font(.system(size: 14))
+                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, Theme.Spacing.xl)
+
+            // Milestone rows
+            VStack(spacing: 6) {
+                ForEach(followUpMilestones.indices, id: \.self) { idx in
+                    let milestone = followUpMilestones[idx]
+                    let milestoneDate = Calendar.current.date(
+                        byAdding: .day,
+                        value: milestone.daysFromProcedure,
+                        to: entryDate
+                    ) ?? entryDate
+                    let isPast = milestoneDate <= Date()
+
+                    Button {
+                        guard !isPast else { return }
+                        followUpMilestones[idx].enabled.toggle()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: milestone.enabled ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 20))
+                                .foregroundColor(
+                                    isPast
+                                        ? Theme.Brand.charcoalRose.opacity(0.18)
+                                        : (milestone.enabled
+                                            ? Theme.Brand.charcoalRose
+                                            : Theme.Brand.charcoalRose.opacity(0.28))
+                                )
+
+                            Text(milestone.label)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(
+                                    isPast
+                                        ? Theme.Brand.charcoalRose.opacity(0.28)
+                                        : Theme.Brand.charcoalRose
+                                )
+
+                            Spacer()
+
+                            Text(Self.dateFormatter.string(from: milestoneDate))
+                                .font(.system(size: 12, weight: .regular))
+                                .foregroundColor(
+                                    isPast
+                                        ? Theme.Brand.charcoalRose.opacity(0.22)
+                                        : Theme.Brand.charcoalRose.opacity(0.55)
+                                )
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                        .background(
+                            milestone.enabled && !isPast
+                                ? Theme.Brand.charcoalRose.opacity(0.1)
+                                : Color.clear
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Theme.Brand.charcoalRose.opacity(0.15), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isPast)
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.xl)
+
+            Text("Dates calculated from your procedure date")
+                .font(.system(size: 11))
+                .foregroundColor(Theme.Brand.charcoalRose.opacity(0.38))
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.horizontal, Theme.Spacing.xl)
+        }
+    }
+
+    // MARK: - Reminder Bottom Nav
+
+    private var reminderBottomNav: some View {
+        VStack(spacing: 12) {
+            Button {
+                isSchedulingReminder = true
+                Task { @MainActor in
+                    await scheduleSelectedReminders()
+                    isSchedulingReminder = false
+                    dismiss()
+                }
+            } label: {
+                Group {
+                    if isSchedulingReminder {
+                        ProgressView().tint(.white)
+                    } else {
+                        Text(reminderButtonLabel)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(
+                    isSchedulingReminder
+                        ? Theme.Brand.charcoalRose.opacity(0.5)
+                        : Theme.Brand.charcoalRose
+                )
+                .clipShape(Capsule())
+            }
+            .disabled(isSchedulingReminder)
+
+            Button {
+                dismiss()
+            } label: {
+                Text("Skip")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.55))
+                    .padding(.vertical, 8)
+            }
+            .disabled(isSchedulingReminder)
+        }
+        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.bottom, Theme.Spacing.xl)
+    }
+
+    private var reminderButtonLabel: String {
+        guard let config = reminderConfig else { return "Done" }
+        if config.isSurgical {
+            let count = followUpMilestones.filter(\.enabled).count
+            return count == 0 ? "Done" : "Set \(count) Reminder\(count == 1 ? "" : "s")"
+        }
+        return reminderEnabled ? "Set Reminder" : "Done"
+    }
+
+    // MARK: - Schedule Reminders
+
+    private func scheduleSelectedReminders() async {
+        guard let config = reminderConfig else { return }
+        let name = procedureName.trimmingCharacters(in: .whitespaces)
+
+        if config.isSurgical {
+            var reminders: [TreatmentReminder] = []
+            for milestone in followUpMilestones where milestone.enabled {
+                let date = Calendar.current.date(
+                    byAdding: .day, value: milestone.daysFromProcedure, to: entryDate
+                ) ?? entryDate
+                guard date > Date() else { continue }
+                let reminder = TreatmentReminder(
+                    procedureName: name,
+                    procedureDate: entryDate,
+                    reminderDate: date,
+                    label: milestone.label,
+                    kind: .followUp
+                )
+                await TreatmentNotificationService.shared.schedule(reminder)
+                reminders.append(reminder)
+            }
+            TreatmentReminderStore.shared.saveAll(reminders)
+        } else if reminderEnabled {
+            let reminder = TreatmentReminder(
+                procedureName: name,
+                procedureDate: entryDate,
+                reminderDate: reminderDate,
+                label: "Next \(config.procedureDisplayName)",
+                kind: .retreatment
+            )
+            await TreatmentNotificationService.shared.schedule(reminder)
+            TreatmentReminderStore.shared.save(reminder)
         }
     }
 
@@ -499,7 +877,24 @@ struct AddJournalEntryView: View {
             )
 
             if success {
-                dismiss()
+                // Set up reminder step from the procedure that was just saved
+                let name = procedureName.trimmingCharacters(in: .whitespaces)
+                let config = ProcedureReminderConfig.config(for: name)
+                reminderConfig = config
+                reminderDate = config.defaultReminderDate(from: entryDate)
+                // Pre-populate milestones; auto-disable any whose dates are already past
+                followUpMilestones = config.followUpMilestones.map { m in
+                    let date = Calendar.current.date(
+                        byAdding: .day, value: m.daysFromProcedure, to: entryDate
+                    ) ?? entryDate
+                    guard date > Date() else {
+                        var disabled = m; disabled.enabled = false; return disabled
+                    }
+                    return m
+                }
+                isSaving = false
+                goingForward = true
+                withAnimation { currentStep = 5 }
             } else {
                 isSaving = false
             }

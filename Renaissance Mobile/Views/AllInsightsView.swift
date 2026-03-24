@@ -5,6 +5,11 @@
 //  Full-screen AI insight reveal. Design based on rena-ai-insight-reveal.html.
 //  "See all" destination from the Rena Insights carousel.
 //
+//  Supports lazy loading: present immediately after saving an entry and show
+//  a spinner + cycling encouragements while Rena is analysing in the background.
+//  The view observes JournalViewModel reactively and transitions to full content
+//  as soon as insights land.
+//
 
 import SwiftUI
 
@@ -27,10 +32,26 @@ private enum AI {
 // MARK: - View
 
 struct AllInsightsView: View {
-    let insights: RecoveryInsights
+    let vm: JournalViewModel
+    let procedureId: String
+    let procedureName: String
     var scrollAnchor: String? = nil
+
     @Environment(\.dismiss) private var dismiss
     @State private var showSocialShare = false
+    @State private var loadingMessageIndex = 0
+
+    private var insights: RecoveryInsights? { vm.insights[procedureId] }
+    private var isGenerating: Bool { vm.insightsGenerating.contains(procedureId) }
+
+    private let loadingMessages: [String] = [
+        "You showed up for yourself today.",
+        "Consistency is one of the strongest predictors of a smooth recovery.",
+        "Every entry helps Rena understand your unique healing pattern.",
+        "Your dedication to logging is already making a difference.",
+        "Rena is connecting the dots across your recovery journey.",
+        "Almost there — your personalized insights are being prepared."
+    ]
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -46,6 +67,89 @@ struct AllInsightsView: View {
             )
             .ignoresSafeArea()
 
+            if let insights {
+                insightsContent(insights)
+            } else {
+                loadingContent
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
+    }
+
+    // MARK: - Loading State
+
+    private var loadingContent: some View {
+        VStack(spacing: 0) {
+            topBar
+
+            Spacer()
+
+            VStack(spacing: 28) {
+                // AI logo mark
+                aiLogoMark
+
+                // Title
+                VStack(spacing: 6) {
+                    Text("Rena's Reflection")
+                        .font(.system(size: 28, weight: .medium, design: .serif))
+                        .foregroundColor(AI.textHi)
+
+                    Text("Based on your \(procedureName) recovery")
+                        .font(.custom("Outfit-Regular", size: 12))
+                        .foregroundColor(AI.textLo)
+                }
+                .multilineTextAlignment(.center)
+
+                // Spinner + status
+                VStack(spacing: 14) {
+                    ProgressView()
+                        .tint(AI.accent)
+                        .scaleEffect(1.2)
+
+                    Text("Analyzing your recovery journey...")
+                        .font(.custom("Outfit-Regular", size: 12))
+                        .foregroundColor(AI.textLo)
+                }
+
+                // Cycling encouragement card
+                VStack(spacing: 0) {
+                    Text(loadingMessages[loadingMessageIndex])
+                        .font(.system(size: 17, weight: .regular, design: .serif))
+                        .italic()
+                        .foregroundColor(AI.textHi)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .id(loadingMessageIndex)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        .animation(.easeInOut(duration: 0.5), value: loadingMessageIndex)
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity)
+                .background(Color.white.opacity(0.60))
+                .cornerRadius(20)
+                .overlay(RoundedRectangle(cornerRadius: 20).stroke(AI.border, lineWidth: 1))
+                .padding(.horizontal, 32)
+            }
+
+            Spacer()
+        }
+        .task {
+            // Cycle through messages every 2.8 s while loading
+            while isGenerating || insights == nil {
+                try? await Task.sleep(nanoseconds: 2_800_000_000)
+                withAnimation {
+                    loadingMessageIndex = (loadingMessageIndex + 1) % loadingMessages.count
+                }
+            }
+        }
+    }
+
+    // MARK: - Insights Content
+
+    private func insightsContent(_ insights: RecoveryInsights) -> some View {
+        ZStack(alignment: .bottom) {
             // Scrollable content
             ScrollViewReader { proxy in
                 ScrollView {
@@ -53,7 +157,7 @@ struct AllInsightsView: View {
                         topBar
 
                         // Entry saved chip
-                        entrySavedChip
+                        entrySavedChip(insights)
                             .padding(.top, 12)
 
                         // AI logo mark (large)
@@ -87,8 +191,8 @@ struct AllInsightsView: View {
                             .padding(.horizontal, 24)
                             .padding(.top, 20)
 
-                        // Trend chip (replaces mood tag from HTML)
-                        trendChip
+                        // Trend chip
+                        trendChip(insights)
                             .padding(.horizontal, 24)
                             .padding(.top, 14)
 
@@ -116,7 +220,7 @@ struct AllInsightsView: View {
                             .id("flags")
                         }
 
-                        // All encouragements (first shown in carousel, rest shown here)
+                        // All encouragements
                         if !insights.encouragements.isEmpty {
                             VStack(spacing: 10) {
                                 ForEach(Array(insights.encouragements.enumerated()), id: \.offset) { _, enc in
@@ -128,6 +232,12 @@ struct AllInsightsView: View {
                             .id("encouragements")
                         }
 
+                        // Weekly summaries for completed check-ins
+                        weeklySummarySection
+                            .padding(.horizontal, 24)
+                            .padding(.top, 14)
+                            .id("weeklySummaries")
+
                         // Space for pinned CTAs
                         Color.clear.frame(height: 130)
                     }
@@ -135,7 +245,6 @@ struct AllInsightsView: View {
                 .scrollIndicators(.hidden)
                 .onAppear {
                     guard let anchor = scrollAnchor else { return }
-                    // Defer so the scroll view has laid out before we jump
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         withAnimation(.easeInOut(duration: 0.35)) {
                             proxy.scrollTo(anchor, anchor: .top)
@@ -145,13 +254,62 @@ struct AllInsightsView: View {
             }
 
             // Pinned bottom CTAs
-            ctaStack
+            ctaStack(insights)
         }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.hidden)
     }
 
-    // MARK: - Top Bar
+    // MARK: - Weekly Summary Section
+
+    private var completedCheckIns: [WeeklyCheckIn] {
+        WeeklyCheckInService.shared.loadCheckIns(for: procedureId)
+            .filter(\.isCompleted)
+            .sorted { $0.weekNumber < $1.weekNumber }
+    }
+
+    @ViewBuilder
+    private var weeklySummarySection: some View {
+        let checkIns = completedCheckIns
+        if !checkIns.isEmpty && vm.insightsEnabled {
+            VStack(alignment: .leading, spacing: 12) {
+                // Section header
+                HStack(spacing: 6) {
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(
+                            LinearGradient(colors: [AI.gradA, AI.gradB],
+                                           startPoint: .leading, endPoint: .trailing)
+                        )
+                        .frame(width: 12, height: 2)
+                    Text("WEEKLY BREAKDOWN")
+                        .font(.custom("Outfit-SemiBold", size: 10))
+                        .kerning(1.0)
+                        .foregroundColor(AI.primary)
+                }
+
+                ForEach(checkIns, id: \.weekNumber) { checkIn in
+                    let key = vm.weeklySummaryKey(procedureId, checkIn.weekNumber)
+                    let summary = vm.weeklySummaries[key]
+                    let isGenerating = vm.weeklySummaryGenerating.contains(key)
+
+                    WeeklySummaryCard(
+                        weekNumber: checkIn.weekNumber,
+                        summary: summary,
+                        isGenerating: isGenerating
+                    )
+                    .task {
+                        // Lazy-generate: trigger if not cached and not already in-flight
+                        guard summary == nil, !isGenerating else { return }
+                        await vm.refreshWeeklySummary(
+                            for: procedureId,
+                            procedureName: procedureName,
+                            weekNumber: checkIn.weekNumber
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Shared subviews
 
     private var topBar: some View {
         HStack {
@@ -170,9 +328,7 @@ struct AllInsightsView: View {
         .padding(.top, 20)
     }
 
-    // MARK: - Entry Saved Chip
-
-    private var entrySavedChip: some View {
+    private func entrySavedChip(_ insights: RecoveryInsights) -> some View {
         HStack(spacing: 6) {
             Circle()
                 .fill(AI.primary)
@@ -188,8 +344,6 @@ struct AllInsightsView: View {
         .clipShape(Capsule())
     }
 
-    // MARK: - AI Logo Mark (large, 80pt)
-
     private var aiLogoMark: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 24)
@@ -203,7 +357,6 @@ struct AllInsightsView: View {
                 .frame(width: 80, height: 80)
                 .shadow(color: Color(hex: "#6B3346").opacity(0.30), radius: 20, x: 0, y: 12)
 
-            // Concentric circles (matches HTML SVG)
             ZStack {
                 Circle().stroke(Color.white.opacity(0.20), lineWidth: 1.2).frame(width: 40, height: 40)
                 Circle().stroke(Color.white.opacity(0.35), lineWidth: 1.2).frame(width: 28, height: 28)
@@ -213,13 +366,11 @@ struct AllInsightsView: View {
         }
     }
 
-    // MARK: - Trend Chip (replaces mood tag)
-
-    private var trendChip: some View {
+    private func trendChip(_ insights: RecoveryInsights) -> some View {
         HStack(alignment: .center, spacing: 10) {
             HStack(spacing: 6) {
                 Circle()
-                    .fill(trendColor)
+                    .fill(trendColor(insights.trend))
                     .frame(width: 8, height: 8)
                 Text(insights.trend.label)
                     .font(.custom("Outfit-SemiBold", size: 12))
@@ -236,11 +387,10 @@ struct AllInsightsView: View {
 
             Spacer()
 
-            // Decorative sparkline bars
             HStack(alignment: .bottom, spacing: 3) {
-                ForEach(Array(sparklineHeights.enumerated()), id: \.offset) { idx, h in
+                ForEach(Array(sparklineHeights(insights.trend).enumerated()), id: \.offset) { idx, h in
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(idx == sparklineHeights.count - 1 ? AI.primary : AI.accent.opacity(0.4))
+                        .fill(idx == sparklineHeights(insights.trend).count - 1 ? AI.primary : AI.accent.opacity(0.4))
                         .frame(width: 5, height: h)
                 }
             }
@@ -248,27 +398,24 @@ struct AllInsightsView: View {
         }
     }
 
-    private var trendColor: Color {
-        switch insights.trend {
+    private func trendColor(_ trend: TrendDirection) -> Color {
+        switch trend {
         case .improving:  return Color(hex: "#7ABF7A")
         case .stable:     return AI.accent
         case .concerning: return AI.gradB
         }
     }
 
-    private var sparklineHeights: [CGFloat] {
-        switch insights.trend {
+    private func sparklineHeights(_ trend: TrendDirection) -> [CGFloat] {
+        switch trend {
         case .improving:  return [6, 9, 12, 16, 18]
         case .stable:     return [10, 12, 10, 13, 11]
         case .concerning: return [14, 12, 10, 8, 6]
         }
     }
 
-    // MARK: - Pinned CTAs
-
-    private var ctaStack: some View {
+    private func ctaStack(_ insights: RecoveryInsights) -> some View {
         VStack(spacing: 0) {
-            // Subtle fade above buttons
             LinearGradient(
                 colors: [.clear, AI.bgBot.opacity(0.85)],
                 startPoint: .top,
@@ -316,7 +463,6 @@ struct AllInsightsView: View {
             .background(AI.bgBot.opacity(0.95))
         }
     }
-
 }
 
 // MARK: - Insight Reveal Card (frosted glass, italic serif)
@@ -329,7 +475,6 @@ private struct InsightRevealCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Label row with gradient bar
             HStack(spacing: 6) {
                 RoundedRectangle(cornerRadius: 1)
                     .fill(
@@ -353,7 +498,6 @@ private struct InsightRevealCard: View {
                     .foregroundColor(accent)
             }
 
-            // Insight text — italic serif (Cormorant Garamond style via system serif)
             Text(text)
                 .font(.system(size: 17, weight: .regular, design: .serif))
                 .italic()
@@ -434,10 +578,114 @@ private struct FlagRevealCard: View {
     }
 }
 
+// MARK: - Weekly Summary Card
+
+private struct WeeklySummaryCard: View {
+    let weekNumber: Int
+    let summary: WeeklySummary?
+    let isGenerating: Bool
+
+    private let gradA  = Color(hex: "#6B3346")
+    private let gradB  = Color(hex: "#B76E79")
+    private let accent = Color(hex: "#C4929A")
+    private let textHi = Color(hex: "#3D2B2E")
+    private let textLo = Color(hex: "#B8A9AB")
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Week label
+            HStack(spacing: 6) {
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(colors: [gradA, gradB],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(width: 24, height: 24)
+                    Text("\(weekNumber)")
+                        .font(.custom("Outfit-SemiBold", size: 11))
+                        .foregroundColor(.white)
+                }
+                Text("Week \(weekNumber)")
+                    .font(.custom("Outfit-SemiBold", size: 13))
+                    .foregroundColor(textHi)
+                Spacer()
+                if isGenerating {
+                    ProgressView().scaleEffect(0.75).tint(accent)
+                }
+            }
+
+            if let summary {
+                // Headline
+                Text(summary.headline)
+                    .font(.system(size: 15, weight: .medium, design: .serif))
+                    .italic()
+                    .foregroundColor(textHi)
+
+                // Observation
+                Text(summary.observation)
+                    .font(.custom("Outfit-Regular", size: 13))
+                    .foregroundColor(textHi.opacity(0.75))
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // Improvement + Concern chips
+                if summary.improvement != nil || summary.concern != nil {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if let imp = summary.improvement {
+                            summaryChip(
+                                icon: "arrow.up.circle.fill",
+                                color: Color(hex: "#7ABF7A"),
+                                text: imp
+                            )
+                        }
+                        if let con = summary.concern {
+                            summaryChip(
+                                icon: "exclamationmark.circle.fill",
+                                color: gradB,
+                                text: con
+                            )
+                        }
+                    }
+                }
+            } else if isGenerating {
+                Text("Analyzing this week's entries…")
+                    .font(.custom("Outfit-Regular", size: 13))
+                    .foregroundColor(textLo)
+            } else {
+                Text("No data available for this week.")
+                    .font(.custom("Outfit-Regular", size: 13))
+                    .foregroundColor(textLo)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.70))
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    private func summaryChip(icon: String, color: Color, text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(color)
+                .padding(.top, 1)
+            Text(text)
+                .font(.custom("Outfit-Regular", size: 12))
+                .foregroundColor(Color(hex: "#3D2B2E").opacity(0.8))
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
 // MARK: - Preview
 
 #Preview {
-    AllInsightsView(insights: RecoveryInsights(
+    let vm = JournalViewModel()
+    vm.insights["preview"] = RecoveryInsights(
         summary: "Your recovery is progressing well. The swelling has reduced significantly from Day 1 to Day 7, which is typical of rhinoplasty healing. Your notes reflect a positive mindset which correlates with better recovery outcomes.",
         trend: .improving,
         flags: [
@@ -450,5 +698,6 @@ private struct FlagRevealCard: View {
         procedureName: "Rhinoplasty",
         generatedAt: Date(),
         entryCount: 7
-    ))
+    )
+    return AllInsightsView(vm: vm, procedureId: "preview", procedureName: "Rhinoplasty")
 }

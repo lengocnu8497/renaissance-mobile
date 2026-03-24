@@ -34,13 +34,21 @@ private enum J {
 
 private struct AllEntriesRoute: Hashable {}
 
-/// Pairs insights with the section to scroll to on open.
+/// Drives the SetReminderSheet presentation from an insights urgent-flag prompt.
+private struct ReminderPromptItem: Identifiable {
+    let id = UUID()
+    let name: String
+    let date: Date
+}
+
+/// Pairs a procedure with the section to scroll to on open.
 /// Including the anchor in `id` ensures sheet(item:) re-presents
-/// even when the same insights are shown with a different anchor.
+/// even when the same procedure is shown with a different anchor.
 private struct InsightsPresentation: Identifiable {
-    let insights: RecoveryInsights
+    let procedureId: String
+    let procedureName: String
     let scrollAnchor: String?
-    var id: String { insights.id + (scrollAnchor ?? "") }
+    var id: String { procedureId + (scrollAnchor ?? "") }
 }
 
 struct PhotoJournalView: View {
@@ -52,11 +60,15 @@ struct PhotoJournalView: View {
     @State private var insightPresentation: InsightsPresentation? = nil
     @State private var showChat = false
     @State private var showReminderSet = false
+    @State private var upcomingReminders: [TreatmentReminder] = []
+    @State private var reminderPromptItem: ReminderPromptItem? = nil
     @State private var subscriptionViewModel = SubscriptionViewModel()
     @State private var showPaywall = false
     @State private var isSubscribed = false
     @State private var paymentErrorMessage = ""
     @State private var showPaymentError = false
+    @State private var pendingCheckIn: WeeklyCheckIn? = nil
+    @State private var guidedPhotoGuide: WeeklyPhotoGuide? = nil
 
     var body: some View {
         NavigationStack {
@@ -88,7 +100,25 @@ struct PhotoJournalView: View {
                     )
                 }
             }
-            .sheet(isPresented: $vm.showAddEntry, onDismiss: { vm.pendingProcedureName = nil }) {
+            .sheet(isPresented: $vm.showAddEntry, onDismiss: {
+                vm.pendingProcedureName = nil
+                upcomingReminders = TreatmentReminderStore.shared.activeUpcoming()
+                pendingCheckIn = vm.primaryPendingCheckIn
+                // Open insights immediately for the procedure just journaled.
+                // AllInsightsView shows a loading state while generation is in-flight.
+                if isSubscribed, let entry = vm.entries.first {
+                    let count = vm.groupedByProcedure
+                        .first { $0.entries.first?.procedureId == entry.procedureId }?
+                        .entries.count ?? 0
+                    if count >= 2 {
+                        insightPresentation = InsightsPresentation(
+                            procedureId: entry.procedureId,
+                            procedureName: entry.procedureName,
+                            scrollAnchor: nil
+                        )
+                    }
+                }
+            }) {
                 AddJournalEntryView(vm: vm, prefilledProcedureName: vm.pendingProcedureName)
             }
             .alert("Couldn't Save Entry", isPresented: Binding(
@@ -113,6 +143,9 @@ struct PhotoJournalView: View {
         .task {
             await vm.load()
             await checkSubscription()
+            TreatmentReminderStore.shared.pruneExpired()
+            upcomingReminders = TreatmentReminderStore.shared.activeUpcoming()
+            pendingCheckIn = vm.primaryPendingCheckIn
         }
         .onChange(of: addEntryTrigger.wrappedValue) { _, triggered in
             if triggered {
@@ -121,16 +154,12 @@ struct PhotoJournalView: View {
             }
         }
         .onChange(of: vm.entries.count) { oldCount, newCount in
-            // Trigger insights for every eligible procedure when entries are added.
-            // Fires after the sheet has fully dismissed — safer than a fire-and-forget
-            // inside addEntry() which races with sheet dismissal.
-            // Checking all procedures (not just vm.entries.first) handles bulk adds
-            // and entries added for a non-primary procedure.
+            // Regenerate insights for every eligible procedure when a new entry is added.
+            // Always regenerates (no nil guard) so insights reflect the latest entry.
             guard isSubscribed, newCount > oldCount else { return }
             Task {
                 for group in vm.groupedByProcedure where group.entries.count >= 2 {
-                    guard let procedureId = group.entries.first?.procedureId,
-                          vm.insights[procedureId] == nil else { continue }
+                    guard let procedureId = group.entries.first?.procedureId else { continue }
                     await vm.refreshInsights(for: procedureId, procedureName: group.key)
                 }
             }
@@ -151,7 +180,14 @@ struct PhotoJournalView: View {
             Text("This will permanently delete all \(count) \(count == 1 ? "entry" : "entries") in this group.")
         }
         .sheet(item: $insightPresentation) { pres in
-            AllInsightsView(insights: pres.insights, scrollAnchor: pres.scrollAnchor)
+            AllInsightsView(vm: vm, procedureId: pres.procedureId, procedureName: pres.procedureName, scrollAnchor: pres.scrollAnchor)
+        }
+        .sheet(item: $guidedPhotoGuide) { guide in
+            GuidedPhotoStepView(guide: guide) {
+                vm.tapAddEntry(for: guide.procedureName)
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showChat) {
             ChatView()
@@ -173,6 +209,11 @@ struct PhotoJournalView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("We'll remind you to check in on your recovery tomorrow morning.")
+        }
+        .sheet(item: $reminderPromptItem, onDismiss: {
+            upcomingReminders = TreatmentReminderStore.shared.activeUpcoming()
+        }) { item in
+            SetReminderSheet(procedureName: item.name, procedureDate: item.date)
         }
     }
 
@@ -224,19 +265,68 @@ struct PhotoJournalView: View {
                 )
                 .padding(.horizontal, 18)
 
-                // 2. Rena Insights Section
+                // 2. Weekly check-in banner (when a check-in is due)
+                if let checkIn = pendingCheckIn {
+                    let guide = PhotoAngleGuideService.guide(for: checkIn.procedureName, week: checkIn.weekNumber)
+                    WeeklyCheckInBannerView(
+                        checkIn: checkIn,
+                        guide: guide,
+                        onBeginCheckIn: { guidedPhotoGuide = guide },
+                        onSnooze: {
+                            WeeklyCheckInService.shared.snooze(procedureId: checkIn.procedureId)
+                            pendingCheckIn = nil
+                        }
+                    )
+                    .padding(.horizontal, 18)
+                }
+
+                // 3. Weekly progress strip (when check-ins exist for primary procedure)
+                if let primaryId = vm.groupedByProcedure
+                    .max(by: { $0.entries.count < $1.entries.count })?
+                    .entries.first?.procedureId {
+                    let allCheckIns = vm.checkIns(for: primaryId)
+                    if !allCheckIns.isEmpty {
+                        VStack(alignment: .leading, spacing: 0) {
+                            WeeklyProgressStripView(
+                                procedureName: vm.groupedByProcedure
+                                    .max(by: { $0.entries.count < $1.entries.count })?.key ?? "",
+                                checkIns: allCheckIns,
+                                onTapPending: { vm.tapAddEntry(for: vm.groupedByProcedure
+                                    .max(by: { $0.entries.count < $1.entries.count })?.key)
+                                }
+                            )
+                        }
+                        .padding(.horizontal, 18)
+                    }
+                }
+
+                // 4. Upcoming treatment reminders (hidden when empty)
+                UpcomingRemindersSection(
+                    reminders: upcomingReminders,
+                    onDelete: { id in
+                        TreatmentReminderStore.shared.delete(id: id)
+                        upcomingReminders = TreatmentReminderStore.shared.activeUpcoming()
+                    }
+                )
+
+                // 3. Rena Insights Section
                 JournalInsightsSection(
                     insights: vm.primaryInsights,
                     isGenerating: vm.isPrimaryGenerating,
                     isEmpty: vm.entries.isEmpty,
                     isSubscribed: isSubscribed,
+                    upcomingReminders: upcomingReminders,
                     onShowInsights: { anchor in
                         guard let ins = vm.primaryInsights else { return }
-                        insightPresentation = InsightsPresentation(insights: ins, scrollAnchor: anchor)
+                        insightPresentation = InsightsPresentation(procedureId: ins.procedureId, procedureName: ins.procedureName, scrollAnchor: anchor)
                     },
                     onUnlock: { showPaywall = true },
                     onTalkToRena: { showChat = true },
-                    onSetReminder: { scheduleReminder(); showReminderSet = true }
+                    onSetReminder: { scheduleReminder(); showReminderSet = true },
+                    onScheduleFromInsights: { procName in
+                        let date = earliestEntryDate(for: procName)
+                        reminderPromptItem = ReminderPromptItem(name: procName, date: date)
+                    }
                 )
 
                 // 3. Calendar Strip
@@ -392,6 +482,7 @@ struct PhotoJournalView: View {
             // Load the cache only now that insightsEnabled is set, so free users never
             // briefly see stale cached insights from a lapsed subscription.
             vm.loadCachedInsights()
+            vm.loadCachedWeeklySummaries()
 
             // Generate insights for every eligible procedure that has no cached result.
             // Handles entries that pre-date the insights feature, a cleared cache, or
@@ -410,8 +501,9 @@ struct PhotoJournalView: View {
     private func handleUpgrade(tier: SubscriptionTier) async {
         let priceId: String
         switch tier {
-        case .silver: priceId = EnvironmentConfig.stripeSilverPriceId
-        case .gold:   priceId = EnvironmentConfig.stripeGoldPriceId
+        case .silver:  priceId = EnvironmentConfig.stripeSilverPriceId
+        case .gold:    priceId = EnvironmentConfig.stripeGoldPriceId
+        case .annual:  priceId = EnvironmentConfig.stripeAnnualPriceId
         }
 
         guard !priceId.contains("REPLACE_WITH_YOUR") else {
@@ -513,6 +605,19 @@ struct PhotoJournalView: View {
         } catch {
             print("Subscription profile update failed: \(error)")
         }
+    }
+
+    /// Looks up the earliest journal entry date for a procedure, falling back to today.
+    /// Used to anchor surgical follow-up milestone dates in SetReminderSheet.
+    private func earliestEntryDate(for procedureName: String) -> Date {
+        let pid = procedureName.lowercased()
+            .components(separatedBy: .whitespaces)
+            .filter { !$0.isEmpty }
+            .joined(separator: "-")
+        return vm.entries
+            .filter { $0.procedureId == pid }
+            .min(by: { $0.entryDateAsDate < $1.entryDateAsDate })?
+            .entryDateAsDate ?? Date()
     }
 
     private func scheduleReminder() {
@@ -677,12 +782,25 @@ private struct JournalInsightsSection: View {
     let isGenerating: Bool
     let isEmpty: Bool
     var isSubscribed: Bool = true
+    /// Active upcoming reminders — used to detect urgent-flag + no-reminder state.
+    var upcomingReminders: [TreatmentReminder] = []
     /// Called with the scroll anchor for the section to jump to ("nextSteps", "flags",
     /// "encouragements", or nil for the top). Replaces the old onSeeAll/onViewTrends pair.
     var onShowInsights: ((String?) -> Void)? = nil
     var onUnlock: (() -> Void)? = nil
     var onTalkToRena: (() -> Void)? = nil
     var onSetReminder: (() -> Void)? = nil
+    /// Fired when the user taps "Schedule now" on an urgent-flag/no-reminder prompt card.
+    /// Passes the procedure name; caller resolves the procedure date.
+    var onScheduleFromInsights: ((String) -> Void)? = nil
+
+    private var showUrgentFollowUpPrompt: Bool {
+        guard let insights else { return false }
+        return JournalViewModel.urgentFlagNeedsReminder(
+            insights: insights,
+            upcomingReminders: upcomingReminders
+        )
+    }
 
     private var insightCardCount: Int {
         guard let insights else { return 0 }
@@ -690,6 +808,7 @@ private struct JournalInsightsSection: View {
         count += min(2, insights.flags.count)
         if !insights.encouragements.isEmpty { count += 1 }
         if insights.nextSteps != nil { count += 1 }
+        if showUrgentFollowUpPrompt { count += 1 }
         return count
     }
 
@@ -761,6 +880,14 @@ private struct JournalInsightsSection: View {
                                 onCTA: flag.severity == .urgent ? onTalkToRena : onSetReminder
                             )
                         }
+                        // Urgent flag + no reminder scheduled → prompt to set one
+                        if showUrgentFollowUpPrompt {
+                            InsightCard(
+                                type: .urgentFollowUp,
+                                message: "A concern was flagged but no follow-up reminder is scheduled for \(insights.procedureName). Set one to stay protected.",
+                                onCTA: { onScheduleFromInsights?(insights.procedureName) }
+                            )
+                        }
                         if let encouragement = insights.encouragements.first {
                             InsightCard(type: .progress, message: encouragement,
                                         onCTA: { onShowInsights?("encouragements") })
@@ -816,6 +943,8 @@ private struct JournalInsightsSection: View {
 
 private enum InsightCardType {
     case concern, reminder, progress, placeholder, generating, nextSteps, locked
+    /// Urgent flag exists but no follow-up reminder is scheduled — prompt user to set one.
+    case urgentFollowUp
 
     var accentColor: Color {
         switch self {
@@ -824,6 +953,7 @@ private enum InsightCardType {
         case .progress:             return J.primary   // Mauve Berry #8E4C5C
         case .nextSteps:            return J.primary
         case .locked:               return J.gradB
+        case .urgentFollowUp:       return J.gradB
         case .placeholder, .generating: return J.accent
         }
     }
@@ -834,6 +964,7 @@ private enum InsightCardType {
         case .progress:             return J.positiveTint  // #F8EDF0
         case .nextSteps:            return J.positiveTint
         case .locked:               return J.concernTint
+        case .urgentFollowUp:       return J.concernTint
         case .placeholder, .generating: return Color(hex: "#FDF5F6")
         }
     }
@@ -844,37 +975,41 @@ private enum InsightCardType {
         case .progress:             return J.primary.opacity(0.18)
         case .nextSteps:            return J.primary.opacity(0.18)
         case .locked:               return J.gradB.opacity(0.22)
+        case .urgentFollowUp:       return J.gradB.opacity(0.35)
         case .placeholder, .generating: return J.accent.opacity(0.18)
         }
     }
     var icon: String {
         switch self {
-        case .concern:   return "exclamationmark.triangle.fill"
-        case .reminder:  return "bell.fill"
-        case .progress:  return "star.fill"
-        case .nextSteps: return "list.bullet"
-        case .locked:    return "lock.fill"
+        case .concern:         return "exclamationmark.triangle.fill"
+        case .reminder:        return "bell.fill"
+        case .progress:        return "star.fill"
+        case .nextSteps:       return "list.bullet"
+        case .locked:          return "lock.fill"
+        case .urgentFollowUp:  return "alarm.fill"
         case .placeholder, .generating: return "sparkles"
         }
     }
     var typeLabel: String {
         switch self {
-        case .concern:    return "CONCERN"
-        case .reminder:   return "REMINDER"
-        case .progress:   return "PROGRESS"
-        case .nextSteps:  return "NEXT STEPS"
-        case .locked:     return "PREMIUM"
-        case .placeholder: return "INSIGHTS"
-        case .generating: return "ANALYZING"
+        case .concern:         return "CONCERN"
+        case .reminder:        return "REMINDER"
+        case .progress:        return "PROGRESS"
+        case .nextSteps:       return "NEXT STEPS"
+        case .locked:          return "PREMIUM"
+        case .urgentFollowUp:  return "ACTION NEEDED"
+        case .placeholder:     return "INSIGHTS"
+        case .generating:      return "ANALYZING"
         }
     }
     var ctaLabel: String {
         switch self {
-        case .concern:    return "Talk to Rena"
-        case .reminder:   return "Set reminder"
-        case .progress:   return "View trends"
-        case .nextSteps:  return "See all"
-        case .locked:     return "Unlock Insights"
+        case .concern:         return "Talk to Rena"
+        case .reminder:        return "Set reminder"
+        case .progress:        return "View trends"
+        case .nextSteps:       return "See all"
+        case .locked:          return "Unlock Insights"
+        case .urgentFollowUp:  return "Schedule now"
         case .placeholder, .generating: return ""
         }
     }
@@ -1093,6 +1228,110 @@ private struct CompactEntryRow: View {
         // Cycle accent bar through brand colors by procedure name hash
         let colors: [Color] = [J.gradB, J.primary, J.accent, Color(hex: "#D4C4C6")]
         return colors[abs(entry.procedureName.hashValue) % colors.count]
+    }
+}
+
+// MARK: - Upcoming Reminders Section
+
+private struct UpcomingRemindersSection: View {
+    let reminders: [TreatmentReminder]
+    let onDelete: (UUID) -> Void
+
+    var body: some View {
+        if !reminders.isEmpty {
+            VStack(alignment: .leading, spacing: 9) {
+                // Header
+                HStack(spacing: 6) {
+                    Image(systemName: "bell.badge.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(J.primary)
+                    Text("Upcoming Reminders")
+                        .font(.custom("Outfit-SemiBold", size: 13))
+                        .foregroundColor(J.textHi)
+                    Text("\(reminders.count)")
+                        .font(.custom("Outfit-Bold", size: 9.5))
+                        .foregroundColor(J.primary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(J.primaryDim)
+                        .clipShape(Capsule())
+                    Spacer()
+                }
+                .padding(.horizontal, 18)
+
+                // Reminder rows
+                VStack(spacing: 6) {
+                    ForEach(reminders) { reminder in
+                        ReminderRow(reminder: reminder, onDelete: { onDelete(reminder.id) })
+                    }
+                }
+                .padding(.horizontal, 18)
+            }
+        }
+    }
+}
+
+private struct ReminderRow: View {
+    let reminder: TreatmentReminder
+    let onDelete: () -> Void
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "MMM d, yyyy"; return f
+    }()
+
+    private var kindIcon: String {
+        switch reminder.kind {
+        case .retreatment: return "clock.arrow.circlepath"
+        case .followUp:    return "calendar.badge.checkmark"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            // Kind icon
+            Image(systemName: kindIcon)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(J.primary)
+                .frame(width: 28, height: 28)
+                .background(J.primaryDim)
+                .clipShape(Circle())
+
+            // Label + procedure
+            VStack(alignment: .leading, spacing: 2) {
+                Text(reminder.label)
+                    .font(.custom("Outfit-SemiBold", size: 12))
+                    .foregroundColor(J.textHi)
+                    .lineLimit(1)
+                Text(reminder.procedureName)
+                    .font(.custom("Outfit-Regular", size: 11))
+                    .foregroundColor(J.textLo)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            // Date
+            Text(Self.dateFormatter.string(from: reminder.reminderDate))
+                .font(.custom("Outfit-Regular", size: 11))
+                .foregroundColor(J.accent)
+
+            // Cancel
+            Button(action: onDelete) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(J.textLo)
+                    .frame(width: 20, height: 20)
+                    .background(J.border)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(J.cardWhite)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(J.border, lineWidth: 1))
+        .shadow(color: J.shadowS.color, radius: J.shadowS.radius, x: J.shadowS.x, y: J.shadowS.y)
     }
 }
 

@@ -157,6 +157,8 @@ struct ChatView: View {
             priceId = EnvironmentConfig.stripeSilverPriceId
         case .gold:
             priceId = EnvironmentConfig.stripeGoldPriceId
+        case .annual:
+            priceId = EnvironmentConfig.stripeAnnualPriceId
         }
 
         // Validate price ID is configured

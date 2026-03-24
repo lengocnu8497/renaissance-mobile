@@ -108,7 +108,7 @@ struct SettingsView: View {
 
                         Spacer()
 
-                        if userProfile?.billingPlan == .silver || userProfile?.billingPlan == .gold {
+                        if userProfile?.billingPlan == .silver || userProfile?.billingPlan == .gold || userProfile?.billingPlan == .annual {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 24))
                                 .foregroundColor(.green)
@@ -118,7 +118,7 @@ struct SettingsView: View {
                     .padding(.vertical, Theme.Spacing.md)
 
                     // Plan Details
-                    if let plan = userProfile?.billingPlan, plan == .silver || plan == .gold {
+                    if let plan = userProfile?.billingPlan, plan == .silver || plan == .gold || plan == .annual {
                         Divider()
                             .padding(.horizontal, Theme.Spacing.lg)
 
@@ -155,7 +155,7 @@ struct SettingsView: View {
     private var cancelSubscriptionButton: some View {
         VStack(spacing: Theme.Spacing.md) {
             // Only show cancel button for active paid subscriptions (not already canceled)
-            if (userProfile?.billingPlan == .silver || userProfile?.billingPlan == .gold) &&
+            if (userProfile?.billingPlan == .silver || userProfile?.billingPlan == .gold || userProfile?.billingPlan == .annual) &&
                 userProfile?.subscriptionStatus != .canceled {
                 // Disclaimer note
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
@@ -302,36 +302,40 @@ struct SettingsView: View {
     private var planDisplayName: String {
         guard let plan = userProfile?.billingPlan else { return "Free" }
         switch plan {
-        case .free: return "Free"
+        case .free:   return "Free"
         case .silver: return "Silver Plan"
-        case .gold: return "Gold Plan"
+        case .gold:   return "Gold Plan"
+        case .annual: return "Annual Plan"
         }
     }
 
     private var planMessages: String {
         guard let plan = userProfile?.billingPlan else { return "Limited messages" }
         switch plan {
-        case .free: return "Limited messages"
+        case .free:   return "Limited messages"
         case .silver: return "30 messages per month"
-        case .gold: return "75 messages per month"
+        case .gold:   return "75 messages per month"
+        case .annual: return "75 messages per month"
         }
     }
 
     private var planImages: String {
         guard let plan = userProfile?.billingPlan else { return "No image uploads" }
         switch plan {
-        case .free: return "No image uploads"
+        case .free:   return "No image uploads"
         case .silver: return "5 images per month"
-        case .gold: return "15 images per month"
+        case .gold:   return "15 images per month"
+        case .annual: return "15 images per month"
         }
     }
 
     private var planCredits: String {
         guard let plan = userProfile?.billingPlan else { return "No AI credits" }
         switch plan {
-        case .free: return "No AI credits"
+        case .free:   return "No AI credits"
         case .silver: return "80 AI credits per month"
-        case .gold: return "210 AI credits per month"
+        case .gold:   return "210 AI credits per month"
+        case .annual: return "300 AI credits per month"
         }
     }
 
