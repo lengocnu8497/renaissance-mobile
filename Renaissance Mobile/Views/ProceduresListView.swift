@@ -11,10 +11,30 @@ struct ProceduresListView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
     @State private var selectedFilter = "Face"
+    @State private var viewModel = ProceduresViewModel()
+    @State private var selectedProcedure: Procedure?
+    @State private var savedProcedureIds: Set<UUID>
     var onBackButtonTapped: (() -> Void)?
+    var onNavigateToChat: ((String, Procedure?) -> Void)?
+    var onSaveProcedure: ((Procedure) -> Void)?
+
+    init(
+        initialSavedIds: Set<UUID> = [],
+        onBackButtonTapped: (() -> Void)? = nil,
+        onNavigateToChat: ((String, Procedure?) -> Void)? = nil,
+        onSaveProcedure: ((Procedure) -> Void)? = nil
+    ) {
+        self._savedProcedureIds = State(initialValue: initialSavedIds)
+        self.onBackButtonTapped = onBackButtonTapped
+        self.onNavigateToChat = onNavigateToChat
+        self.onSaveProcedure = onSaveProcedure
+    }
 
     let filters = ["Face", "Body", "Skin", "Injectables", "Non-Surgical", "Surgical"]
-    let procedures = ProceduresListView.mockProcedures
+
+    private var displayedProcedures: [Procedure] {
+        viewModel.filtered(by: selectedFilter, searchText: searchText)
+    }
 
     var body: some View {
         ZStack {
@@ -26,13 +46,31 @@ struct ProceduresListView: View {
                 searchBar
                 filterChips
                 proceduresList
-
                 Spacer()
+            }
+            .onAppear {
+                Task { await viewModel.fetchProcedures() }
             }
 
             floatingButton
         }
         .navigationBarHidden(true)
+        .navigationDestination(item: $selectedProcedure) { procedure in
+            ProcedureDetailView(
+                procedure: procedure,
+                allProcedures: viewModel.procedures,
+                onNavigateToChat: { msg, proc in onNavigateToChat?(msg, proc) },
+                onSaveProcedure: { proc in
+                    if savedProcedureIds.contains(proc.id) {
+                        savedProcedureIds.remove(proc.id)
+                    } else {
+                        savedProcedureIds.insert(proc.id)
+                    }
+                    onSaveProcedure?(proc)
+                },
+                isSaved: savedProcedureIds.contains(procedure.id)
+            )
+        }
     }
 
     // MARK: - Subviews
@@ -89,9 +127,7 @@ struct ProceduresListView: View {
                     FilterChipView(
                         title: filter,
                         isSelected: selectedFilter == filter,
-                        action: {
-                            selectedFilter = filter
-                        }
+                        action: { selectedFilter = filter }
                     )
                 }
             }
@@ -101,29 +137,71 @@ struct ProceduresListView: View {
     }
 
     private var proceduresList: some View {
-        ScrollView {
-            VStack(spacing: Theme.Spacing.lg) {
-                ForEach(procedures) { procedure in
-                    ProcedureListItemView(procedure: procedure)
-                        .background(Theme.Colors.cardBackground)
-                        .cornerRadius(Theme.CornerRadius.medium)
-                        .shadow(color: Theme.Shadow.card.color, radius: Theme.Shadow.card.radius, x: Theme.Shadow.card.x, y: Theme.Shadow.card.y)
+        Group {
+            if viewModel.isLoading {
+                VStack {
+                    Spacer()
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: Theme.Colors.textProceduresPrimary))
+                    Spacer()
+                }
+            } else if let error = viewModel.errorMessage {
+                VStack(spacing: Theme.Spacing.md) {
+                    Spacer()
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 32))
+                        .foregroundColor(Theme.Colors.textProceduresSubtle)
+                    Text(error)
+                        .font(.system(size: 15))
+                        .foregroundColor(Theme.Colors.textProceduresSubtle)
+                        .multilineTextAlignment(.center)
+                    Spacer()
+                }
+                .padding(.horizontal, Theme.Spacing.xl)
+            } else if displayedProcedures.isEmpty {
+                VStack(spacing: Theme.Spacing.md) {
+                    Spacer()
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 32))
+                        .foregroundColor(Theme.Colors.textProceduresSubtle)
+                    Text(searchText.isEmpty ? "No procedures in this category yet." : "No results for \"\(searchText)\"")
+                        .font(.system(size: 15))
+                        .foregroundColor(Theme.Colors.textProceduresSubtle)
+                        .multilineTextAlignment(.center)
+                    Spacer()
+                }
+                .padding(.horizontal, Theme.Spacing.xl)
+            } else {
+                ScrollView {
+                    VStack(spacing: Theme.Spacing.lg) {
+                        ForEach(displayedProcedures) { procedure in
+                            Button {
+                                selectedProcedure = procedure
+                            } label: {
+                                ProcedureListItemView(procedure: procedure)
+                                    .background(Theme.Colors.cardBackground)
+                                    .cornerRadius(Theme.CornerRadius.medium)
+                                    .shadow(color: Theme.Shadow.card.color, radius: Theme.Shadow.card.radius, x: Theme.Shadow.card.x, y: Theme.Shadow.card.y)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, Theme.Spacing.lg)
+                    .padding(.bottom, 120)
                 }
             }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.bottom, 120)
         }
     }
 
     private var floatingButton: some View {
         VStack {
             Spacer()
-
-            Button(action: {}) {
+            Button {
+                onNavigateToChat?("I'd like help exploring procedures and finding the right treatment for me.", nil)
+            } label: {
                 HStack(spacing: Theme.Spacing.md) {
                     Image(systemName: "message.fill")
                         .font(.system(size: 20))
-
                     Text("Chat with a Concierge")
                         .font(.system(size: 16, weight: .bold))
                 }
@@ -137,18 +215,10 @@ struct ProceduresListView: View {
             .padding(.bottom, 24)
         }
     }
-
-    // MARK: - Mock Data
-    static let mockProcedures = [
-        Procedure(name: "Microneedling", description: "For skin rejuvenation and texture improvement", category: "Non-Surgical", imageName: nil),
-        Procedure(name: "Lip Fillers", description: "Enhance volume and define lip shape", category: "Injectable", imageName: nil),
-        Procedure(name: "Laser Hair Removal", description: "Permanent reduction of unwanted hair", category: "Laser", imageName: nil),
-        Procedure(name: "Chemical Peel", description: "Improves skin tone and reduces blemishes", category: "Skin", imageName: nil),
-        Procedure(name: "Botox", description: "Reduces fine lines and wrinkles", category: "Injectable", imageName: nil),
-        Procedure(name: "Dermal Fillers", description: "Restore volume and smooth wrinkles", category: "Injectable", imageName: nil)
-    ]
 }
 
 #Preview {
-    ProceduresListView()
+    NavigationStack {
+        ProceduresListView()
+    }
 }

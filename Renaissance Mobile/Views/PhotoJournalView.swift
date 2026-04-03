@@ -19,6 +19,7 @@ private enum J {
     static let accent        = Color(hex: "#C4929A")   // Dusty Rose – reminder / calendar active
     static let textHi        = Color(hex: "#3D2B2E")
     static let textLo        = Color(hex: "#B8A9AB")
+    static let card          = Color(hex: "#F8EDF0")
     static let cardWhite     = Color.white
     static let border        = Color(hex: "#C4929A").opacity(0.18)
     // AI card tints
@@ -30,6 +31,10 @@ private enum J {
     // Shadows  (blur values in HTML → SwiftUI radius ≈ blur/2)
     static let shadowS       = (color: Color(hex: "#8E4C5C").opacity(0.07), radius: CGFloat(7),  x: CGFloat(0), y: CGFloat(2))
     static let shadowHero    = (color: Color(hex: "#6B3346").opacity(0.30), radius: CGFloat(14), x: CGFloat(0), y: CGFloat(8))
+    static let streakRadius: CGFloat = 999
+    static let cardRadius: CGFloat = 18
+    static let heroRadius: CGFloat = 24
+    static let strokeWidth: CGFloat = 1
 }
 
 private struct AllEntriesRoute: Hashable {}
@@ -63,12 +68,11 @@ struct PhotoJournalView: View {
     @State private var upcomingReminders: [TreatmentReminder] = []
     @State private var reminderPromptItem: ReminderPromptItem? = nil
     @State private var subscriptionViewModel = SubscriptionViewModel()
+    @State private var onboardingPaymentViewModel = OnboardingPaymentViewModel()
     @State private var showPaywall = false
     @State private var isSubscribed = false
     @State private var paymentErrorMessage = ""
     @State private var showPaymentError = false
-    @State private var pendingCheckIn: WeeklyCheckIn? = nil
-    @State private var guidedPhotoGuide: WeeklyPhotoGuide? = nil
 
     var body: some View {
         NavigationStack {
@@ -100,27 +104,6 @@ struct PhotoJournalView: View {
                     )
                 }
             }
-            .sheet(isPresented: $vm.showAddEntry, onDismiss: {
-                vm.pendingProcedureName = nil
-                upcomingReminders = TreatmentReminderStore.shared.activeUpcoming()
-                pendingCheckIn = vm.primaryPendingCheckIn
-                // Open insights immediately for the procedure just journaled.
-                // AllInsightsView shows a loading state while generation is in-flight.
-                if isSubscribed, let entry = vm.entries.first {
-                    let count = vm.groupedByProcedure
-                        .first { $0.entries.first?.procedureId == entry.procedureId }?
-                        .entries.count ?? 0
-                    if count >= 2 {
-                        insightPresentation = InsightsPresentation(
-                            procedureId: entry.procedureId,
-                            procedureName: entry.procedureName,
-                            scrollAnchor: nil
-                        )
-                    }
-                }
-            }) {
-                AddJournalEntryView(vm: vm, prefilledProcedureName: vm.pendingProcedureName)
-            }
             .alert("Couldn't Save Entry", isPresented: Binding(
                 get: { vm.error != nil },
                 set: { if !$0 { vm.error = nil } }
@@ -140,12 +123,31 @@ struct PhotoJournalView: View {
                 }
             }
         }
+        .sheet(isPresented: $vm.showAddEntry, onDismiss: {
+            vm.pendingProcedureName = nil
+            upcomingReminders = TreatmentReminderStore.shared.activeUpcoming()
+            // Open insights immediately for the procedure just journaled.
+            // AllInsightsView shows a loading state while generation is in-flight.
+            if isSubscribed, let entry = vm.entries.first {
+                let count = vm.groupedByProcedure
+                    .first { $0.entries.first?.procedureId == entry.procedureId }?
+                    .entries.count ?? 0
+                if count >= 2 {
+                    insightPresentation = InsightsPresentation(
+                        procedureId: entry.procedureId,
+                        procedureName: entry.procedureName,
+                        scrollAnchor: nil
+                    )
+                }
+            }
+        }) {
+            AddJournalEntryView(vm: vm, prefilledProcedureName: vm.pendingProcedureName)
+        }
         .task {
             await vm.load()
             await checkSubscription()
             TreatmentReminderStore.shared.pruneExpired()
             upcomingReminders = TreatmentReminderStore.shared.activeUpcoming()
-            pendingCheckIn = vm.primaryPendingCheckIn
         }
         .onChange(of: addEntryTrigger.wrappedValue) { _, triggered in
             if triggered {
@@ -182,23 +184,23 @@ struct PhotoJournalView: View {
         .sheet(item: $insightPresentation) { pres in
             AllInsightsView(vm: vm, procedureId: pres.procedureId, procedureName: pres.procedureName, scrollAnchor: pres.scrollAnchor)
         }
-        .sheet(item: $guidedPhotoGuide) { guide in
-            GuidedPhotoStepView(guide: guide) {
-                vm.tapAddEntry(for: guide.procedureName)
-            }
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-        }
         .sheet(isPresented: $showChat) {
             ChatView()
         }
         .sheet(isPresented: $showPaywall) {
             QuotaExceededView(
                 reason: "Subscribe to unlock AI-powered recovery insights personalized to your healing journey.",
+                silverPrice: onboardingPaymentViewModel.silverPriceInfo?.displayPrice ?? "...",
+                goldPrice: onboardingPaymentViewModel.goldPriceInfo?.displayPrice ?? "...",
+                annualPrice: onboardingPaymentViewModel.annualPriceInfo?.displayPrice ?? "...",
                 onUpgrade: { tier in await handleUpgrade(tier: tier) },
                 onDismiss: { showPaywall = false }
             )
-            .interactiveDismissDisabled()
+            .task {
+                if onboardingPaymentViewModel.silverPriceInfo == nil {
+                    await onboardingPaymentViewModel.fetchPrices()
+                }
+            }
         }
         .alert("Payment Error", isPresented: $showPaymentError) {
             Button("OK", role: .cancel) {}
@@ -255,81 +257,64 @@ struct PhotoJournalView: View {
 
     private var mainContent: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 14) {
-
-                // 1. Recovery Hero Card
-                JournalHeroCard(
-                    heroData: vm.heroData,
+            LazyVStack(alignment: .leading, spacing: 10) {
+                JournalStreakStrip(
                     streak: vm.streak,
-                    isNewUser: !vm.hasEverLoggedEntry
+                    dayNumber: vm.heroData?.dayNumber ?? 0,
+                    procedureName: vm.primaryProcedureName
                 )
                 .padding(.horizontal, 18)
 
-                // 2. Weekly check-in banner (when a check-in is due)
-                if let checkIn = pendingCheckIn {
-                    let guide = PhotoAngleGuideService.guide(for: checkIn.procedureName, week: checkIn.weekNumber)
-                    WeeklyCheckInBannerView(
-                        checkIn: checkIn,
-                        guide: guide,
-                        onBeginCheckIn: { guidedPhotoGuide = guide },
-                        onSnooze: {
-                            WeeklyCheckInService.shared.snooze(procedureId: checkIn.procedureId)
-                            pendingCheckIn = nil
+                JournalTodayCard(
+                    latestEntry: vm.latestEntry,
+                    procedureName: vm.primaryProcedureName,
+                    onLogToday: { vm.tapAddEntry(for: vm.primaryProcedureName) }
+                )
+                .padding(.horizontal, 18)
+                .padding(.top, 2)
+
+                HStack(alignment: .top, spacing: 12) {
+                    JournalPainTrendCard(painSeries: vm.primaryPainSeries)
+                    JournalTodaySignalsCard(
+                        pain: vm.latestPainLevel,
+                        swelling: vm.latestSwellingLevel,
+                        bruising: vm.latestBruisingLevel
+                    )
+                }
+                .padding(.horizontal, 18)
+
+                if let alert = vm.journalAlert {
+                    JournalAlertCard(alert: alert)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 2)
+                }
+
+                if vm.entries.isEmpty {
+                    emptyEntriesSection
+                        .padding(.horizontal, 18)
+                        .padding(.top, 10)
+                } else {
+                    recentEntriesSection
+                        .padding(.top, 10)
+                }
+
+                if let preview = vm.weeklyReportPreview {
+                    JournalWeeklyReportCard(
+                        preview: preview,
+                        onOpenReport: {
+                            guard let procedureId = vm.primaryProcedureId,
+                                  let procedureName = vm.primaryProcedureName else { return }
+                            insightPresentation = InsightsPresentation(
+                                procedureId: procedureId,
+                                procedureName: procedureName,
+                                scrollAnchor: nil
+                            )
                         }
                     )
                     .padding(.horizontal, 18)
+                    .padding(.top, 12)
                 }
 
-                // 3. Weekly progress strip (when check-ins exist for primary procedure)
-                if let primaryId = vm.groupedByProcedure
-                    .max(by: { $0.entries.count < $1.entries.count })?
-                    .entries.first?.procedureId {
-                    let allCheckIns = vm.checkIns(for: primaryId)
-                    if !allCheckIns.isEmpty {
-                        VStack(alignment: .leading, spacing: 0) {
-                            WeeklyProgressStripView(
-                                procedureName: vm.groupedByProcedure
-                                    .max(by: { $0.entries.count < $1.entries.count })?.key ?? "",
-                                checkIns: allCheckIns,
-                                onTapPending: { vm.tapAddEntry(for: vm.groupedByProcedure
-                                    .max(by: { $0.entries.count < $1.entries.count })?.key)
-                                }
-                            )
-                        }
-                        .padding(.horizontal, 18)
-                    }
-                }
-
-                // 4. Upcoming treatment reminders (hidden when empty)
-                UpcomingRemindersSection(
-                    reminders: upcomingReminders,
-                    onDelete: { id in
-                        TreatmentReminderStore.shared.delete(id: id)
-                        upcomingReminders = TreatmentReminderStore.shared.activeUpcoming()
-                    }
-                )
-
-                // 3. Rena Insights Section
-                JournalInsightsSection(
-                    insights: vm.primaryInsights,
-                    isGenerating: vm.isPrimaryGenerating,
-                    isEmpty: vm.entries.isEmpty,
-                    isSubscribed: isSubscribed,
-                    upcomingReminders: upcomingReminders,
-                    onShowInsights: { anchor in
-                        guard let ins = vm.primaryInsights else { return }
-                        insightPresentation = InsightsPresentation(procedureId: ins.procedureId, procedureName: ins.procedureName, scrollAnchor: anchor)
-                    },
-                    onUnlock: { showPaywall = true },
-                    onTalkToRena: { showChat = true },
-                    onSetReminder: { scheduleReminder(); showReminderSet = true },
-                    onScheduleFromInsights: { procName in
-                        let date = earliestEntryDate(for: procName)
-                        reminderPromptItem = ReminderPromptItem(name: procName, date: date)
-                    }
-                )
-
-                // 3. Calendar Strip
                 JournalCalendarStrip(
                     weekDates: vm.currentWeekDates,
                     entryDates: Set(vm.entries.map(\.entryDate)),
@@ -342,18 +327,17 @@ struct PhotoJournalView: View {
                     }
                 )
                 .padding(.horizontal, 18)
+                .padding(.top, 4)
 
-                // 5. Entries or empty CTA
-                if vm.entries.isEmpty {
-                    emptyEntriesSection
+                if !vm.photoReelEntries().isEmpty {
+                    JournalPhotoReelSection(entries: vm.photoReelEntries())
                         .padding(.horizontal, 18)
-                } else {
-                    recentEntriesSection
+                        .padding(.top, 12)
                 }
 
                 Color.clear.frame(height: 40)
             }
-            .padding(.top, 4)
+            .padding(.top, 2)
         }
     }
 
@@ -413,15 +397,17 @@ struct PhotoJournalView: View {
     // MARK: - Recent Entries Section
 
     private var recentEntriesSection: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 11) {
             HStack {
                 Text("Recent Entries")
-                    .font(.custom("Outfit-SemiBold", size: 13))
+                    .font(.custom("Outfit-Regular", size: 10))
+                    .kerning(2.1)
                     .foregroundColor(J.textHi)
+                    .textCase(.uppercase)
                 Spacer()
                 NavigationLink(value: AllEntriesRoute()) {
                     Text("See all")
-                        .font(.custom("Outfit-Regular", size: 11))
+                        .font(.custom("Outfit-SemiBold", size: 11))
                         .foregroundColor(J.accent)
                 }
             }
@@ -454,7 +440,7 @@ struct PhotoJournalView: View {
     }
 
     private var sortedEntries: [JournalEntry] {
-        vm.entries.sorted { $0.entryDateAsDate > $1.entryDateAsDate }
+        vm.recentEntries()
     }
 
     private func isoDate(_ date: Date) -> String {
@@ -483,6 +469,7 @@ struct PhotoJournalView: View {
             // briefly see stale cached insights from a lapsed subscription.
             vm.loadCachedInsights()
             vm.loadCachedWeeklySummaries()
+            await vm.loadRemoteWeeklySummaries()
 
             // Generate insights for every eligible procedure that has no cached result.
             // Handles entries that pre-date the insights feature, a cleared cache, or
@@ -501,9 +488,9 @@ struct PhotoJournalView: View {
     private func handleUpgrade(tier: SubscriptionTier) async {
         let priceId: String
         switch tier {
-        case .silver:  priceId = EnvironmentConfig.stripeSilverPriceId
-        case .gold:    priceId = EnvironmentConfig.stripeGoldPriceId
-        case .annual:  priceId = EnvironmentConfig.stripeAnnualPriceId
+        case .silver:  priceId = AppConfig.stripeSilverPriceId
+        case .gold:    priceId = AppConfig.stripeGoldPriceId
+        case .annual:  priceId = AppConfig.stripeAnnualPriceId
         }
 
         guard !priceId.contains("REPLACE_WITH_YOUR") else {
@@ -545,7 +532,7 @@ struct PhotoJournalView: View {
         configuration.billingDetailsCollectionConfiguration.phone = .always
         configuration.billingDetailsCollectionConfiguration.address = .full
         configuration.applePay = PaymentSheet.ApplePayConfiguration(
-            merchantId: EnvironmentConfig.appleMerchantId,
+            merchantId: AppConfig.appleMerchantId,
             merchantCountryCode: "US"
         )
 
@@ -645,12 +632,387 @@ struct PhotoJournalView: View {
     }
 }
 
+private struct JournalStreakStrip: View {
+    let streak: Int
+    let dayNumber: Int
+    let procedureName: String?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(J.gradB)
+                Text(streak > 0 ? "\(streak)-day streak" : "Start your streak")
+                    .font(.custom("Outfit-SemiBold", size: 11))
+                    .foregroundColor(J.textHi)
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 8)
+            .background(J.cardWhite)
+            .overlay(Capsule().stroke(J.border, lineWidth: J.strokeWidth))
+            .clipShape(Capsule())
+
+            Text(dayNumber > 0 ? "Day \(dayNumber)" : (procedureName ?? "Recovery journal"))
+                .font(.custom("Outfit-Regular", size: 11))
+                .foregroundColor(J.textLo)
+
+            Spacer()
+        }
+    }
+}
+
+private struct JournalTodayCard: View {
+    let latestEntry: JournalEntry?
+    let procedureName: String?
+    let onLogToday: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 15) {
+            Text("TODAY'S JOURNAL")
+                .font(.custom("Outfit-Regular", size: 9))
+                .kerning(2.2)
+                .foregroundColor(J.textLo)
+
+            Text(headline)
+                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .foregroundColor(J.textHi)
+                .lineSpacing(0)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(subtitle)
+                .font(.custom("Outfit-Regular", size: 13))
+                .foregroundColor(J.textHi.opacity(0.72))
+                .lineSpacing(3)
+
+            HStack(spacing: 12) {
+                if let latestEntry, let notes = latestEntry.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty {
+                    Text(notes)
+                        .font(.custom("Outfit-Regular", size: 11))
+                        .foregroundColor(J.textLo)
+                        .lineLimit(2)
+                } else {
+                    Text("Add a photo, symptoms, or a quick note.")
+                        .font(.custom("Outfit-Regular", size: 11))
+                        .foregroundColor(J.textLo)
+                }
+
+                Spacer(minLength: 8)
+
+                Button(action: onLogToday) {
+                    Text("Log today")
+                        .font(.custom("Outfit-SemiBold", size: 12))
+                        .foregroundColor(J.textHi)
+                        .padding(.horizontal, 15)
+                        .padding(.vertical, 10)
+                        .background(J.cardWhite)
+                        .overlay(Capsule().stroke(J.border, lineWidth: J.strokeWidth))
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 13)
+            .background(J.reminderTint)
+            .clipShape(RoundedRectangle(cornerRadius: J.cardRadius))
+        }
+        .padding(20)
+        .background(J.cardWhite)
+        .cornerRadius(J.heroRadius)
+        .overlay(RoundedRectangle(cornerRadius: J.heroRadius).stroke(J.border, lineWidth: J.strokeWidth))
+        .shadow(color: J.shadowS.color, radius: J.shadowS.radius, x: J.shadowS.x, y: J.shadowS.y)
+    }
+
+    private var headline: String {
+        if latestEntry != nil {
+            return "How are you healing today?"
+        }
+        return "Start today's recovery note."
+    }
+
+    private var subtitle: String {
+        if let procedureName {
+            return "Keep your \(procedureName.lowercased()) report building with one quick check-in."
+        }
+        return "A quick entry helps Rena track your healing rhythm over time."
+    }
+}
+
+private struct JournalPainTrendCard: View {
+    let painSeries: [Int]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Pain Trend")
+                .font(.custom("Outfit-Regular", size: 10))
+                .kerning(2.0)
+                .foregroundColor(J.textHi)
+                .textCase(.uppercase)
+
+            HStack(alignment: .bottom, spacing: 7) {
+                ForEach(chartValues.indices, id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(index == chartValues.count - 1 ? J.primary : J.primary.opacity(0.22))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: max(CGFloat(chartValues[index]) * 10, 14))
+                }
+            }
+            .frame(height: 92, alignment: .bottom)
+            .padding(.top, 2)
+
+            Text(trendLabel)
+                .font(.custom("Outfit-Regular", size: 11))
+                .foregroundColor(J.textLo)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(15)
+        .background(J.cardWhite)
+        .cornerRadius(J.cardRadius)
+        .overlay(RoundedRectangle(cornerRadius: J.cardRadius).stroke(J.border, lineWidth: J.strokeWidth))
+    }
+
+    private var chartValues: [Int] {
+        let values = Array(painSeries.suffix(5))
+        return values.isEmpty ? [2, 4, 3, 2, 1] : values
+    }
+
+    private var trendLabel: String {
+        guard painSeries.count >= 2 else { return "Keep logging to reveal a trend." }
+        let recent = Array(painSeries.suffix(2))
+        if recent[1] < recent[0] { return "Pain is easing in your latest logs." }
+        if recent[1] > recent[0] { return "Pain is slightly higher in your latest logs." }
+        return "Pain is holding steady right now."
+    }
+}
+
+private struct JournalTodaySignalsCard: View {
+    let pain: Int?
+    let swelling: Int?
+    let bruising: Int?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Today's Signals")
+                .font(.custom("Outfit-Regular", size: 10))
+                .kerning(2.0)
+                .foregroundColor(J.textHi)
+                .textCase(.uppercase)
+
+            VStack(alignment: .leading, spacing: 12) {
+                signalRow("Pain", value: pain)
+                signalRow("Swelling", value: swelling)
+                signalRow("Bruising", value: bruising)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(15)
+        .background(J.cardWhite)
+        .cornerRadius(J.cardRadius)
+        .overlay(RoundedRectangle(cornerRadius: J.cardRadius).stroke(J.border, lineWidth: J.strokeWidth))
+    }
+
+    private func signalRow(_ label: String, value: Int?) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(label)
+                    .font(.custom("Outfit-Regular", size: 11))
+                    .foregroundColor(J.textLo)
+                Spacer()
+                Text(value.map { "\($0)/10" } ?? "--")
+                    .font(.custom("Outfit-SemiBold", size: 12))
+                    .foregroundColor(J.textHi)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.9))
+                        .frame(height: 6)
+                    Capsule()
+                        .fill(progressColor(for: label))
+                        .frame(width: proxy.size.width * CGFloat((value ?? 0)) / 10.0, height: 6)
+                }
+            }
+            .frame(height: 6)
+        }
+    }
+
+    private func progressColor(for label: String) -> Color {
+        switch label {
+        case "Pain":
+            return Color(hex: "#4D7A58")
+        case "Swelling":
+            return J.gradB
+        default:
+            return J.primary
+        }
+    }
+}
+
+private struct JournalAlertCard: View {
+    let alert: JournalAlertSnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: alert.severity.systemImage)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(alert.severity == .warning || alert.severity == .urgent ? J.gradB : J.primary)
+                Text("Smart Recovery Alert")
+                    .font(.custom("Outfit-Regular", size: 10))
+                    .kerning(2.0)
+                    .foregroundColor(alert.severity == .warning || alert.severity == .urgent ? J.gradB : J.textHi)
+                    .textCase(.uppercase)
+            }
+
+            Text(alert.title)
+                .font(.custom("Outfit-SemiBold", size: 14))
+                .foregroundColor(J.textHi)
+
+            Text(alert.body)
+                .font(.custom("Outfit-Regular", size: 12))
+                .foregroundColor(J.textHi.opacity(0.72))
+                .lineSpacing(3)
+
+            if let metric = alert.metric {
+                Text(metric)
+                    .font(.custom("Outfit-SemiBold", size: 11))
+                    .foregroundColor(J.primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(J.primaryDim)
+                    .clipShape(Capsule())
+            }
+        }
+        .padding(15)
+        .background(alert.severity == .warning || alert.severity == .urgent ? J.concernTint : J.positiveTint)
+        .cornerRadius(J.cardRadius)
+        .overlay(RoundedRectangle(cornerRadius: J.cardRadius).stroke(J.border, lineWidth: J.strokeWidth))
+    }
+}
+
+private struct JournalWeeklyReportCard: View {
+    let preview: JournalWeeklyReportPreview
+    let onOpenReport: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Weekly Report")
+                    .font(.custom("Outfit-Regular", size: 10))
+                    .kerning(2.0)
+                    .foregroundColor(J.textHi)
+                    .textCase(.uppercase)
+                Spacer()
+                Text(preview.statusLabel)
+                    .font(.custom("Outfit-SemiBold", size: 10))
+                    .foregroundColor(J.primary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(J.primaryDim)
+                    .clipShape(Capsule())
+            }
+
+            Text(preview.title)
+                .font(.system(size: 26, weight: .bold, design: .rounded))
+                .foregroundColor(J.textHi)
+
+            Text(preview.subtitle)
+                .font(.custom("Outfit-Regular", size: 13))
+                .foregroundColor(J.textHi.opacity(0.72))
+                .lineSpacing(3)
+
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(J.primary.opacity(0.12))
+                        .frame(height: 8)
+                    GeometryReader { proxy in
+                        Capsule()
+                            .fill(J.primary)
+                            .frame(width: proxy.size.width * CGFloat(preview.progress) / 100.0, height: 8)
+                    }
+                    .frame(height: 8)
+                }
+                .frame(height: 8)
+
+                Text("\(preview.progress)% built")
+                    .font(.custom("Outfit-Regular", size: 11))
+                    .foregroundColor(J.textLo)
+            }
+
+            Button(action: onOpenReport) {
+                HStack(spacing: 8) {
+                    Text(preview.actionTitle)
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .font(.custom("Outfit-SemiBold", size: 13))
+                .foregroundColor(.white)
+                .padding(.horizontal, 15)
+                .padding(.vertical, 10)
+                .background(J.primary)
+                .clipShape(Capsule())
+            }
+        }
+        .padding(17)
+        .background(J.cardWhite)
+        .cornerRadius(J.cardRadius)
+        .overlay(RoundedRectangle(cornerRadius: J.cardRadius).stroke(J.border, lineWidth: J.strokeWidth))
+        .shadow(color: J.shadowS.color, radius: J.shadowS.radius, x: J.shadowS.x, y: J.shadowS.y)
+    }
+}
+
+private struct JournalPhotoReelSection: View {
+    let entries: [JournalEntry]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Photo Reel")
+                .font(.custom("Outfit-Regular", size: 10))
+                .kerning(2.0)
+                .foregroundColor(J.textHi)
+                .textCase(.uppercase)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(entries) { entry in
+                        VStack(alignment: .leading, spacing: 8) {
+                            RoundedRectangle(cornerRadius: 18)
+                                .fill(J.card.opacity(0.9))
+                                .frame(width: 164, height: 146)
+                                .overlay(
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text("Day \(entry.dayNumber)")
+                                            .font(.custom("Outfit-SemiBold", size: 13))
+                                            .foregroundColor(J.textHi)
+                                        Text(entry.entryDate)
+                                            .font(.custom("Outfit-Regular", size: 11))
+                                            .foregroundColor(J.textLo)
+                                        Spacer()
+                                        Image(systemName: "photo.on.rectangle.angled")
+                                            .font(.system(size: 19, weight: .medium))
+                                            .foregroundColor(J.primary.opacity(0.55))
+                                    }
+                                    .padding(14)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                                )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Recovery Hero Card
 
 private struct JournalHeroCard: View {
     let heroData: (procedureName: String, dayNumber: Int, progress: Double)?
     let streak: Int
     let isNewUser: Bool
+    let recoveryScore: Int?
+    let hasLoggedToday: Bool
+    let onLogToday: () -> Void
 
     var body: some View {
         ZStack {
@@ -707,22 +1069,54 @@ private struct JournalHeroCard: View {
                     Spacer().frame(height: 10)
 
                     progressBar(progress: heroData?.progress ?? 0)
+
+                    Spacer().frame(height: 12)
+
+                    Button(action: onLogToday) {
+                        HStack(spacing: 8) {
+                            Image(systemName: hasLoggedToday ? "checkmark.circle.fill" : "plus.circle.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text(hasLoggedToday ? "Logged today" : "Log today")
+                                .font(.custom("Outfit-SemiBold", size: 12))
+                        }
+                        .foregroundColor(J.textHi)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(Color.white.opacity(0.88))
+                        .clipShape(Capsule())
+                    }
                 }
 
                 Spacer()
 
-                // Right column: streak badge
-                if streak > 0 {
-                    Text("🔥 \(streak)-day streak")
-                        .font(.custom("Outfit-SemiBold", size: 9))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4)
-                        .background(Color.white.opacity(0.16))
-                        .overlay(
-                            Capsule().stroke(Color.white.opacity(0.22), lineWidth: 1)
-                        )
-                        .clipShape(Capsule())
+                VStack(alignment: .trailing, spacing: 8) {
+                    if let recoveryScore {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("Recovery Score")
+                                .font(.custom("Outfit-Regular", size: 9))
+                                .foregroundColor(.white.opacity(0.6))
+                            Text("\(recoveryScore)/100")
+                                .font(.system(size: 22, weight: .regular, design: .serif))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+
+                    if streak > 0 {
+                        Text("🔥 \(streak)-day streak")
+                            .font(.custom("Outfit-SemiBold", size: 9))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(Color.white.opacity(0.16))
+                            .overlay(
+                                Capsule().stroke(Color.white.opacity(0.22), lineWidth: 1)
+                            )
+                            .clipShape(Capsule())
+                    }
                 }
             }
             .padding(16)
@@ -772,6 +1166,114 @@ private struct JournalHeroCard: View {
             .font(.custom("Outfit-Regular", size: 9))
             .foregroundColor(.white.opacity(0.48))
         }
+    }
+}
+
+private struct SmartRecoveryAlertsSection: View {
+    let alerts: [SmartRecoveryAlert]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "waveform.path.ecg")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(J.gradB)
+                Text("Smart Recovery Alerts")
+                    .font(.custom("Outfit-SemiBold", size: 14))
+                    .foregroundColor(J.textHi)
+            }
+
+            ForEach(alerts) { alert in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(alert.title)
+                        .font(.custom("Outfit-SemiBold", size: 13))
+                        .foregroundColor(J.textHi)
+                    Text(alert.message)
+                        .font(.custom("Outfit-Regular", size: 12))
+                        .foregroundColor(J.textHi.opacity(0.72))
+                        .lineSpacing(3)
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(alert.severity == .warning ? J.concernTint : J.positiveTint)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(alert.severity == .warning ? J.gradB.opacity(0.16) : J.border, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+        }
+    }
+}
+
+private struct HealingProgressSection: View {
+    let score: RecoveryScoreSnapshot?
+    let painSeries: [Int]
+    let photoTimeline: [JournalEntry]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Healing Progress")
+                    .font(.custom("Outfit-SemiBold", size: 14))
+                    .foregroundColor(J.textHi)
+                Spacer()
+                if let score {
+                    Text("\(score.consistencyRate)% consistent")
+                        .font(.custom("Outfit-Regular", size: 11))
+                        .foregroundColor(J.textLo)
+                }
+            }
+
+            if !painSeries.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Pain trend")
+                        .font(.custom("Outfit-SemiBold", size: 12))
+                        .foregroundColor(J.textHi)
+                    HStack(spacing: 8) {
+                        Text(painSeries.map(String.init).joined(separator: " → "))
+                            .font(.system(size: 18, weight: .regular, design: .serif))
+                            .foregroundColor(J.primary)
+                        Spacer()
+                    }
+                }
+            }
+
+            if !photoTimeline.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Photo timeline")
+                        .font(.custom("Outfit-SemiBold", size: 12))
+                        .foregroundColor(J.textHi)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(photoTimeline) { entry in
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text("Day \(entry.dayNumber)")
+                                        .font(.custom("Outfit-SemiBold", size: 11))
+                                        .foregroundColor(J.primary)
+                                    Text(entry.entryDate)
+                                        .font(.custom("Outfit-Regular", size: 10))
+                                        .foregroundColor(J.textLo)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background(J.cardWhite)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(J.border, lineWidth: 1)
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(J.cardWhite)
+        .cornerRadius(16)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(J.border, lineWidth: 1))
+        .shadow(color: J.shadowS.color, radius: J.shadowS.radius, x: J.shadowS.x, y: J.shadowS.y)
     }
 }
 
@@ -1105,11 +1607,10 @@ private struct JournalCalendarStrip: View {
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 12)
-        .background(J.cardWhite)
+        .padding(.vertical, 11)
+        .background(J.card)
         .cornerRadius(14)
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(J.border, lineWidth: 1))
-        .shadow(color: J.shadowS.color, radius: J.shadowS.radius, x: J.shadowS.x, y: J.shadowS.y)
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(J.border.opacity(0.72), lineWidth: J.strokeWidth))
     }
 
     private func dayCell(date: Date) -> some View {
@@ -1135,7 +1636,7 @@ private struct JournalCalendarStrip: View {
                     RoundedRectangle(cornerRadius: 9)
                         .fill(J.accent)
                         .frame(width: 30, height: 30)
-                        .shadow(color: J.accent.opacity(0.4), radius: 5, x: 0, y: 3)
+                        .shadow(color: J.accent.opacity(0.24), radius: 4, x: 0, y: 2)
                 } else if isTappable && hasEntry {
                     // Past day with entry — subtle filled background
                     RoundedRectangle(cornerRadius: 9)
@@ -1187,17 +1688,17 @@ private struct CompactEntryRow: View {
             HStack(alignment: .center, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(Self.entryKeyFormatter.string(from: entry.entryDateAsDate) + (entry.dayNumber > 0 ? " · " + entry.dayLabel : ""))
-                        .font(.custom("Outfit-Regular", size: 9))
+                        .font(.custom("Outfit-Regular", size: 8.5))
                         .foregroundColor(J.textLo)
 
                     Text(entry.procedureName)
-                        .font(.custom("Outfit-SemiBold", size: 12))
+                        .font(.custom("Outfit-SemiBold", size: 13))
                         .foregroundColor(J.textHi)
                         .lineLimit(1)
 
                     if let notes = entry.notes, !notes.isEmpty {
                         Text(notes)
-                            .font(.custom("Outfit-Light", size: 10))
+                            .font(.custom("Outfit-Regular", size: 10.5))
                             .foregroundColor(J.textLo)
                             .lineLimit(1)
                     }
@@ -1209,18 +1710,18 @@ private struct CompactEntryRow: View {
                 ZStack {
                     Circle()
                         .fill(J.primaryDim)
-                        .frame(width: 22, height: 22)
+                        .frame(width: 24, height: 24)
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundColor(J.primary)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 13)
+            .padding(.vertical, 12)
             .background(J.cardWhite)
         }
         .clipShape(RoundedRectangle(cornerRadius: 13))
-        .overlay(RoundedRectangle(cornerRadius: 13).stroke(J.border, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(J.border, lineWidth: J.strokeWidth))
         .shadow(color: J.shadowS.color, radius: J.shadowS.radius, x: J.shadowS.x, y: J.shadowS.y)
     }
 

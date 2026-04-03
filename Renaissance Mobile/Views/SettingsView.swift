@@ -43,11 +43,9 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        dismiss()
-                    }) {
-                        Image(systemName: "arrow.left")
-                            .font(.system(size: 20))
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(Theme.Colors.textProfilePrimary)
                     }
                 }
@@ -55,16 +53,12 @@ struct SettingsView: View {
             .alert("Cancel Subscription", isPresented: $showCancelConfirmation) {
                 Button("Cancel", role: .cancel) {}
                 Button("Confirm", role: .destructive) {
-                    Task {
-                        await cancelSubscription()
-                    }
+                    Task { await cancelSubscription() }
                 }
             } message: {
                 Text("Are you sure you want to cancel your subscription? You will lose access to premium features at the end of your billing period.")
             }
-            .task {
-                await loadProfile()
-            }
+            .task { await loadProfile() }
         }
     }
 

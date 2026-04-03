@@ -19,6 +19,7 @@ struct JournalEntry: Identifiable, Codable {
     var photoUrl: String?       // cached URL
 
     // Recovery metrics (0–10 scale stored as NUMERIC in DB)
+    var painLevel: Double?      // maps to pain_index
     var bruisingLevel: Double?  // maps to bruising_index
     var swellingLevel: Double?  // maps to swelling_index
     var rednessLevel: Double?   // maps to redness_index
@@ -35,6 +36,7 @@ struct JournalEntry: Identifiable, Codable {
         case entryDate      = "entry_date"
         case photoPath      = "photo_path"
         case photoUrl       = "photo_url"
+        case painLevel      = "pain_index"
         case bruisingLevel  = "bruising_index"
         case swellingLevel  = "swelling_index"
         case rednessLevel   = "redness_index"
@@ -55,12 +57,13 @@ struct JournalEntry: Identifiable, Codable {
     }
 
     // Integer accessors for UI display
+    var painInt: Int { Int(painLevel ?? 0) }
     var bruisingInt: Int { Int(bruisingLevel ?? 0) }
     var swellingInt: Int { Int(swellingLevel ?? 0) }
     var rednessInt:  Int { Int(rednessLevel  ?? 0) }
 
     var hasRecoveryMetrics: Bool {
-        bruisingLevel != nil || swellingLevel != nil || rednessLevel != nil
+        painLevel != nil || bruisingLevel != nil || swellingLevel != nil || rednessLevel != nil
     }
 }
 
@@ -75,6 +78,7 @@ struct JournalEntryInsert: Encodable {
     var notes: String?
     var photoPath: String?
     var photoUrl: String?
+    var painLevel: Int?         // maps to pain_index
     var bruisingLevel: Int?     // maps to bruising_index
     var swellingLevel: Int?     // maps to swelling_index
     var rednessLevel: Int?      // maps to redness_index
@@ -88,6 +92,7 @@ struct JournalEntryInsert: Encodable {
         case entryDate     = "entry_date"
         case photoPath     = "photo_path"
         case photoUrl      = "photo_url"
+        case painLevel     = "pain_index"
         case bruisingLevel = "bruising_index"
         case swellingLevel = "swelling_index"
         case rednessLevel  = "redness_index"

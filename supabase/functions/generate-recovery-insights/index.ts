@@ -34,6 +34,7 @@ interface EntryPayload {
   date: string;
   dayNumber: number;
   notes?: string | null;
+  painLevel?: number | null;
   swellingIndex?: number | null;
   bruisingIndex?: number | null;
   rednessIndex?: number | null;
@@ -107,8 +108,8 @@ function buildPrompt(procedureName: string, entries: EntryPayload[]): string {
   const timeline = entries
     .map((e, i) => {
       const dayLabel = e.dayNumber === 0 ? "Day of Procedure" : `Day ${e.dayNumber}`;
-      const metricsLine = (e.swellingIndex != null)
-        ? `  Metrics — Swelling: ${e.swellingIndex}/10 | Bruising: ${e.bruisingIndex}/10 | Redness: ${e.rednessIndex}/10 | Recovery score: ${e.overallScore}/10`
+      const metricsLine = (e.swellingIndex != null || e.bruisingIndex != null || e.rednessIndex != null || e.painLevel != null)
+        ? `  Metrics — Pain: ${e.painLevel ?? "n/a"}/10 | Swelling: ${e.swellingIndex ?? "n/a"}/10 | Bruising: ${e.bruisingIndex ?? "n/a"}/10 | Redness: ${e.rednessIndex ?? "n/a"}/10 | Recovery score: ${e.overallScore ?? "n/a"}/10`
         : `  (no photo metrics for this entry)`;
       const notesLine = e.notes?.trim()
         ? `  Notes: "${e.notes.trim()}"`

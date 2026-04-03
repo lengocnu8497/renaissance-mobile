@@ -24,11 +24,14 @@ struct ProfileView: View {
     var onBackButtonTapped: (() -> Void)?
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                // Background
-                Theme.Colors.backgroundProfile
-                    .ignoresSafeArea()
+        ZStack {
+            // Background
+            Theme.Colors.backgroundProfile
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Custom navigation bar
+                profileNavigationBar
 
                 ScrollView {
                     VStack(spacing: Theme.Spacing.xl) {
@@ -51,47 +54,57 @@ struct ProfileView: View {
                     .padding(.bottom, Theme.Spacing.xl)
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text("Profile & Settings")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(Theme.Colors.textProfilePrimary)
-                }
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        onBackButtonTapped?()
-                    }) {
-                        Image(systemName: "arrow.left")
-                            .font(.system(size: 20))
-                            .foregroundColor(Theme.Colors.textProfilePrimary)
-                    }
-                }
-            }
-            .sheet(isPresented: $showEditProfile) {
-                EditProfileView()
-            }
-            .sheet(isPresented: $showSettings) {
-                SettingsView()
-            }
-            .sheet(isPresented: $showPasswordSecurity) {
-                PasswordSecurityView()
-            }
-            .sheet(isPresented: $showHelpSupport) {
-                HelpSupportView()
-            }
-            .task {
-                await loadProfile()
-            }
-            .onChange(of: showEditProfile) { _, isShowing in
-                // Reload profile when returning from EditProfileView
-                if !isShowing {
-                    Task {
-                        await loadProfile()
-                    }
+        }
+        .sheet(isPresented: $showEditProfile) {
+            EditProfileView()
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+        }
+        .sheet(isPresented: $showPasswordSecurity) {
+            PasswordSecurityView()
+        }
+        .sheet(isPresented: $showHelpSupport) {
+            HelpSupportView()
+        }
+        .navigationBarHidden(true)
+        .task {
+            await loadProfile()
+        }
+        .onChange(of: showEditProfile) { _, isShowing in
+            // Reload profile when returning from EditProfileView
+            if !isShowing {
+                Task {
+                    await loadProfile()
                 }
             }
         }
+    }
+
+    // MARK: - Custom Navigation Bar
+    private var profileNavigationBar: some View {
+        ZStack {
+            Text("Profile & Settings")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(Theme.Colors.textProfilePrimary)
+
+            HStack {
+                Button(action: {
+                    onBackButtonTapped?()
+                }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(Theme.Colors.textProfilePrimary)
+                        .padding(10)
+                        .background(Color.white)
+                        .clipShape(Circle())
+                }
+                Spacer()
+            }
+            .padding(.horizontal, Theme.Spacing.lg)
+        }
+        .frame(height: 44)
+        .padding(.top, 8)
     }
 
     // MARK: - Profile Loading

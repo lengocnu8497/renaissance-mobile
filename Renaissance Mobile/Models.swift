@@ -162,6 +162,16 @@ struct UserProfile: Identifiable, Codable {
     var updatedAt: Date
     var metadata: [String: AnyCodable]?
 
+    // MARK: - AI Personalization Context
+    var gender: String?
+    var ageRange: String?
+    var raceEthnicity: String?
+    var aestheticGoals: [String]?
+    var proceduresOfInterest: [String]?
+    var previousProcedures: [String]?
+    var healthFlags: [String]?
+    var bodyAreasOfInterest: [String]?
+
     enum CodingKeys: String, CodingKey {
         case id
         case fullName = "full_name"
@@ -175,6 +185,14 @@ struct UserProfile: Identifiable, Codable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case metadata
+        case gender
+        case ageRange = "age_range"
+        case raceEthnicity = "race_ethnicity"
+        case aestheticGoals = "aesthetic_goals"
+        case proceduresOfInterest = "procedures_of_interest"
+        case previousProcedures = "previous_procedures"
+        case healthFlags = "health_flags"
+        case bodyAreasOfInterest = "body_areas_of_interest"
     }
 
     init(
@@ -189,7 +207,15 @@ struct UserProfile: Identifiable, Codable {
         subscriptionCurrentPeriodEnd: Date? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
-        metadata: [String: AnyCodable]? = nil
+        metadata: [String: AnyCodable]? = nil,
+        gender: String? = nil,
+        ageRange: String? = nil,
+        raceEthnicity: String? = nil,
+        aestheticGoals: [String]? = nil,
+        proceduresOfInterest: [String]? = nil,
+        previousProcedures: [String]? = nil,
+        healthFlags: [String]? = nil,
+        bodyAreasOfInterest: [String]? = nil
     ) {
         self.id = id
         self.fullName = fullName
@@ -203,42 +229,106 @@ struct UserProfile: Identifiable, Codable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.metadata = metadata
+        self.gender = gender
+        self.ageRange = ageRange
+        self.raceEthnicity = raceEthnicity
+        self.aestheticGoals = aestheticGoals
+        self.proceduresOfInterest = proceduresOfInterest
+        self.previousProcedures = previousProcedures
+        self.healthFlags = healthFlags
+        self.bodyAreasOfInterest = bodyAreasOfInterest
     }
 }
 
 // MARK: - Billing Plan Enum
 enum BillingPlan: String, Codable {
     case free = "free"
-    case silver = "silver"
-    case gold = "gold"
-    case annual = "annual"
+    case weekly = "weekly"
+    case monthly = "monthly"
+    case yearly = "yearly"
 
     var displayName: String {
         switch self {
-        case .free:   return "Free"
-        case .silver: return "Silver"
-        case .gold:   return "Gold"
-        case .annual: return "Annual"
+        case .free:    return "Free"
+        case .weekly:  return "Weekly"
+        case .monthly: return "Monthly"
+        case .yearly:  return "Yearly"
         }
     }
 
-    var monthlyPrice: String {
-        switch self {
-        case .free:   return "$0"
-        case .silver: return "$14.99"
-        case .gold:   return "$29.99"
-        case .annual: return "$X / yr"
-        }
-    }
 }
 
-// MARK: - Procedure Model
-struct Procedure: Identifiable {
-    let id = UUID()
+/// MARK: - Procedure Model
+struct Procedure: Identifiable, Codable, Hashable {
+    let id: UUID
     let name: String
     let description: String
     let category: String
-    let imageName: String?
+    let recoveryDurationDays: Int
+    let recoveryDurationLabel: String
+    let isSurgical: Bool
+    let sortOrder: Int
+
+    // Extended detail fields (Pre-Procedure Research)
+    var whoItsFor: String?
+    var recoveryOverview: String?
+    var whatIsNormal: String?
+    var whatToWatchFor: String?
+    var costRangeMin: Int?
+    var costRangeMax: Int?
+    var relatedProcedureIds: [UUID]?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case description
+        case category
+        case recoveryDurationDays = "recovery_duration_days"
+        case recoveryDurationLabel = "recovery_duration_label"
+        case isSurgical = "is_surgical"
+        case sortOrder = "sort_order"
+        case whoItsFor = "who_its_for"
+        case recoveryOverview = "recovery_overview"
+        case whatIsNormal = "what_is_normal"
+        case whatToWatchFor = "what_to_watch_for"
+        case costRangeMin = "cost_range_min"
+        case costRangeMax = "cost_range_max"
+        case relatedProcedureIds = "related_procedure_ids"
+    }
+
+    var costRangeDisplay: String? {
+        guard let min = costRangeMin, let max = costRangeMax else { return nil }
+        let fmt = NumberFormatter()
+        fmt.numberStyle = .currency
+        fmt.maximumFractionDigits = 0
+        fmt.locale = Locale(identifier: "en_US")
+        let minStr = fmt.string(from: NSNumber(value: min)) ?? "$\(min)"
+        let maxStr = fmt.string(from: NSNumber(value: max)) ?? "$\(max)"
+        return "\(minStr) – \(maxStr)"
+    }
+}
+
+// MARK: - Saved Procedure Model
+struct SavedProcedure: Identifiable, Codable, Hashable {
+    let id: UUID
+    let userId: UUID
+    let procedureId: UUID
+    var notes: String?
+    var questions: [String]
+    var conversationIds: [UUID]
+    let createdAt: Date
+    var updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case procedureId = "procedure_id"
+        case notes
+        case questions
+        case conversationIds = "conversation_ids"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
 }
 
 // MARK: - Subscription Models
@@ -267,9 +357,9 @@ enum SubscriptionStatus: String, Codable {
 }
 
 enum SubscriptionTier: String, Codable {
-    case silver
-    case gold
-    case annual
+    case weekly
+    case monthly
+    case yearly
 }
 
 // MARK: - Transaction Model

@@ -12,31 +12,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-interface CreateSubscriptionRequest {
-  priceId: string
-  tier: 'weekly' | 'monthly' | 'yearly'
-}
-
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // Authenticate user
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
-    )
-
+    // 1. Authenticate the requesting user
     const authHeader = req.headers.get('Authorization')
-
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: 'Missing authorization header' }),
@@ -44,39 +27,40 @@ serve(async (req) => {
       )
     }
 
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    )
+
     const token = authHeader.replace('Bearer ', '')
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
 
     if (authError || !user) {
-      console.error('❌ Auth error:', authError)
-      console.error('❌ User:', user)
       return new Response(
-        JSON.stringify({ error: 'Unauthorized', details: authError?.message }),
+        JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Parse request body
-    const { priceId, tier }: CreateSubscriptionRequest = await req.json()
-
-    if (!priceId || !tier) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required fields: priceId, tier' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Get or create Stripe customer
-    const { data: profile } = await supabaseClient
+    // 2. Get or create the Stripe customer — customer ID always derived
+    //    server-side from the authenticated user, never from the client.
+    const { data: profile, error: profileError } = await supabaseClient
       .from('user_profiles')
       .select('stripe_customer_id, email, full_name')
       .eq('id', user.id)
       .single()
 
+    if (profileError) {
+      console.error('Profile fetch error:', profileError.message)
+      return new Response(
+        JSON.stringify({ error: 'Failed to load account data' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     let customerId = profile?.stripe_customer_id
 
-    // Verify the stored customer exists in this Stripe account (guards against
-    // stale IDs from a different account or environment)
     if (customerId) {
       try {
         await stripe.customers.retrieve(customerId)
@@ -91,55 +75,37 @@ serve(async (req) => {
     }
 
     if (!customerId) {
-      // Create new Stripe customer
       const customer = await stripe.customers.create({
         email: user.email,
         name: profile?.full_name || undefined,
-        metadata: {
-          user_id: user.id,
-        },
+        metadata: { user_id: user.id },
       })
       customerId = customer.id
 
-      // Save customer ID to profile
       await supabaseClient
         .from('user_profiles')
         .update({ stripe_customer_id: customerId })
         .eq('id', user.id)
     }
 
-    // Create subscription
-    const subscription = await stripe.subscriptions.create({
+    // 3. Create a SetupIntent scoped to this customer.
+    //    off_session usage means the saved card can be charged later
+    //    without the user present (e.g. subscription renewal).
+    const setupIntent = await stripe.setupIntents.create({
       customer: customerId,
-      items: [{ price: priceId }],
-      payment_behavior: 'default_incomplete',
-      payment_settings: {
-        payment_method_types: ['card'],
-        save_default_payment_method: 'on_subscription',
-      },
-      expand: ['latest_invoice.payment_intent'],
-      metadata: {
-        user_id: user.id,
-        tier: tier,
-      },
+      usage: 'off_session',
+      automatic_payment_methods: { enabled: true },
     })
 
-    const invoice = subscription.latest_invoice as Stripe.Invoice
-    const paymentIntent = invoice.payment_intent as Stripe.PaymentIntent
-
-    // Return client secret for Payment Sheet
+    // 4. Return only the client secret — no Stripe IDs or customer data
     return new Response(
-      JSON.stringify({
-        subscriptionId: subscription.id,
-        clientSecret: paymentIntent.client_secret,
-        customerId: customerId,
-      }),
+      JSON.stringify({ clientSecret: setupIntent.client_secret }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (error) {
-    console.error('Error creating subscription:', error)
+    console.error('create-setup-intent error:', error)
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: 'An unexpected error occurred' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

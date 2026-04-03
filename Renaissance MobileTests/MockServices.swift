@@ -28,6 +28,7 @@ final class MockJournalService: JournalServiceProtocol {
         entryDate: Date,
         notes: String?,
         photoData: Data?,
+        painLevel: Int? = nil,
         bruisingLevel: Int? = nil,
         swellingLevel: Int? = nil,
         rednessLevel: Int? = nil
@@ -114,7 +115,11 @@ extension JournalEntry {
         procedureName: String = "Rhinoplasty",
         dayNumber: Int = 1,
         entryDate: Date = Date(),
-        notes: String? = nil
+        notes: String? = nil,
+        painLevel: Double? = nil,
+        bruisingLevel: Double? = nil,
+        swellingLevel: Double? = nil,
+        rednessLevel: Double? = nil
     ) -> JournalEntry {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
@@ -128,9 +133,10 @@ extension JournalEntry {
             notes: notes,
             photoPath: nil,
             photoUrl: nil,
-            bruisingLevel: nil,
-            swellingLevel: nil,
-            rednessLevel: nil,
+            painLevel: painLevel,
+            bruisingLevel: bruisingLevel,
+            swellingLevel: swellingLevel,
+            rednessLevel: rednessLevel,
             createdAt: Date(),
             updatedAt: Date()
         )

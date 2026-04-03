@@ -8,6 +8,10 @@ import SwiftUI
 struct ContentView: View {
     @State private var selectedTab = 0
     @State private var searchQuery: String = ""
+    @State private var chatProcedureContext: Procedure? = nil
+    @State private var chatLinkedSavedProcedureId: UUID? = nil
+    @State private var chatConversationIdToLoad: UUID? = nil
+    @State private var chatSessionId: UUID = UUID()
     @State private var journalAddTrigger = false
     @State private var isKeyboardVisible = false
 
@@ -20,6 +24,8 @@ struct ContentView: View {
             PostLoginHomeView(
                 onNavigateToChat: { query in
                     searchQuery = query
+                    chatProcedureContext = nil
+                    chatSessionId = UUID()
                     selectedTab = 1
                 },
                 onNavigateToJournal: {
@@ -28,8 +34,15 @@ struct ContentView: View {
             )
             .tag(0)
 
-            ChatTabView(selectedTab: $selectedTab, searchQuery: $searchQuery)
-                .tag(1)
+            ChatTabView(
+                selectedTab: $selectedTab,
+                searchQuery: $searchQuery,
+                procedureContext: $chatProcedureContext,
+                sessionId: chatSessionId,
+                linkedSavedProcedureId: chatLinkedSavedProcedureId,
+                conversationIdToLoad: chatConversationIdToLoad
+            )
+            .tag(1)
 
             Color.clear
                 .tag(2)
@@ -39,8 +52,28 @@ struct ContentView: View {
             })
             .tag(3)
 
+            ResearchTabView(
+                onNavigateToChat: { query, procedure, savedProcedureId in
+                    searchQuery = query
+                    chatProcedureContext = procedure
+                    chatLinkedSavedProcedureId = savedProcedureId
+                    chatConversationIdToLoad = nil
+                    chatSessionId = UUID()
+                    selectedTab = 1
+                },
+                onReopenConversation: { conversationId in
+                    chatConversationIdToLoad = conversationId
+                    chatLinkedSavedProcedureId = nil
+                    chatProcedureContext = nil
+                    searchQuery = ""
+                    chatSessionId = UUID()
+                    selectedTab = 1
+                }
+            )
+            .tag(4)
+
             ProfileTabView(selectedTab: $selectedTab)
-                .tag(4)
+                .tag(5)
         }
         .buttonStyle(TickButtonStyle())
         .onChange(of: selectedTab) { _, newTab in
@@ -50,7 +83,7 @@ struct ContentView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if selectedTab != 1 {
+            if selectedTab != 1 && selectedTab != 5 {
                 customTabBar
                     .padding(.horizontal, 14)
                     .padding(.bottom, 6)
@@ -59,6 +92,7 @@ struct ContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.25), value: isKeyboardVisible)
+        .animation(.easeOut(duration: 0.22), value: selectedTab)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             isKeyboardVisible = true
         }
@@ -73,26 +107,9 @@ struct ContentView: View {
         HStack(spacing: 0) {
             navItem(icon: selectedTab == 0 ? "house.fill" : "house", label: "Home", tag: 0)
             navItem(icon: "bubble.left", label: "Chats", tag: 1)
-
-            // Center plus button
-            Button {
-                selectedTab = 3
-                journalAddTrigger = true
-            } label: {
-                Circle()
-                    .fill(Color(hex: "#3D2B2E"))
-                    .frame(width: 50, height: 50)
-                    .overlay(
-                        Image(systemName: "plus")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(.white)
-                    )
-                    .shadow(color: Color(hex: "#3D2B2E").opacity(0.22), radius: 8, x: 0, y: 4)
-            }
-            .frame(maxWidth: .infinity)
-
-            navItem(icon: "doc.text", label: "Journal", tag: 3)
-            navItem(icon: "person", label: "Profile", tag: 4)
+            navItem(icon: selectedTab == 3 ? "doc.text.fill" : "doc.text", label: "Journal", tag: 3)
+            navItem(icon: selectedTab == 4 ? "bookmark.fill" : "bookmark", label: "Research", tag: 4)
+            navItem(icon: "person", label: "Profile", tag: 5)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
@@ -129,15 +146,27 @@ struct ContentView: View {
 struct ChatTabView: View {
     @Binding var selectedTab: Int
     @Binding var searchQuery: String
+    @Binding var procedureContext: Procedure?
+    var sessionId: UUID
+    var linkedSavedProcedureId: UUID? = nil
+    var conversationIdToLoad: UUID? = nil
 
     var body: some View {
-        ChatView(initialMessage: searchQuery.isEmpty ? nil : searchQuery, onBackButtonTapped: {
-            selectedTab = 0
-        })
+        ChatView(
+            initialMessage: searchQuery.isEmpty ? nil : searchQuery,
+            procedureContext: procedureContext,
+            savedProcedureId: linkedSavedProcedureId,
+            conversationIdToLoad: conversationIdToLoad,
+            onBackButtonTapped: {
+                selectedTab = 0
+            }
+        )
+        .id(sessionId)
         .onChange(of: selectedTab) { oldValue, newValue in
             if oldValue == 1 && newValue != 1 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     searchQuery = ""
+                    procedureContext = nil
                 }
             }
         }

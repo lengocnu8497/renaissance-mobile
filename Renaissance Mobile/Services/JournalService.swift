@@ -15,9 +15,9 @@ class JournalService {
 
     // MARK: - Shared URL / auth helpers
 
-    private var base: String { EnvironmentConfig.supabaseURL + "/rest/v1" }
-    private var storageBase: String { EnvironmentConfig.supabaseURL + "/storage/v1" }
-    private var key: String { EnvironmentConfig.supabaseAnonKey }
+    private var base: String { AppConfig.supabaseURL + "/rest/v1" }
+    private var storageBase: String { AppConfig.supabaseURL + "/storage/v1" }
+    private var key: String { AppConfig.supabaseAnonKey }
 
     private var token: String {
         supabase.auth.currentSession?.accessToken ?? key
@@ -126,6 +126,7 @@ class JournalService {
         entryDate: Date = Date(),
         notes: String?,
         photoData: Data?,
+        painLevel: Int? = nil,
         bruisingLevel: Int? = nil,
         swellingLevel: Int? = nil,
         rednessLevel: Int? = nil
@@ -154,6 +155,7 @@ class JournalService {
             notes: notes,
             photoPath: photoPath,
             photoUrl: photoUrl,
+            painLevel: painLevel,
             bruisingLevel: bruisingLevel,
             swellingLevel: swellingLevel,
             rednessLevel: rednessLevel
@@ -243,7 +245,7 @@ class JournalService {
 
         struct SignResponse: Decodable { let signedURL: String }
         let signedPath = try JSONDecoder().decode(SignResponse.self, from: signData).signedURL
-        let fullURL = EnvironmentConfig.supabaseURL + "/storage/v1" + signedPath
+        let fullURL = AppConfig.supabaseURL + "/storage/v1" + signedPath
 
         return (path, fullURL)
     }

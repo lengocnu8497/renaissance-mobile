@@ -181,6 +181,7 @@ struct SignUpView: View {
                             await authViewModel.signUp(email: email, password: password)
                             if authViewModel.isAuthenticated {
                                 await OnboardingStore.linkSubscriptionIfNeeded()
+                                await OnboardingStore.syncUserContextIfNeeded(using: UserProfileService(supabase: supabase))
                                 onSignUp?()
                             }
                         }
@@ -234,6 +235,7 @@ struct SignUpView: View {
                             await authViewModel.signInWithGoogle(presentingViewController: viewController)
                             if authViewModel.isAuthenticated {
                                 await OnboardingStore.linkSubscriptionIfNeeded()
+                                await OnboardingStore.syncUserContextIfNeeded(using: UserProfileService(supabase: supabase))
                                 onSignUp?()
                             }
                         }
@@ -263,6 +265,7 @@ struct SignUpView: View {
                             await authViewModel.signInWithApple()
                             if authViewModel.isAuthenticated {
                                 await OnboardingStore.linkSubscriptionIfNeeded()
+                                await OnboardingStore.syncUserContextIfNeeded(using: UserProfileService(supabase: supabase))
                                 onSignUp?()
                             }
                         }

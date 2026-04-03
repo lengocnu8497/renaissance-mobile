@@ -34,8 +34,8 @@ struct ProcedureListItemView: View {
                     .foregroundColor(Theme.Colors.textProceduresSubtle)
                     .lineLimit(2)
 
-                // Category tag
-                HStack {
+                // Category + recovery row
+                HStack(spacing: Theme.Spacing.sm) {
                     Text(procedure.category)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(Theme.Colors.textProceduresPrimary)
@@ -43,6 +43,16 @@ struct ProcedureListItemView: View {
                         .padding(.vertical, 4)
                         .background(Theme.Colors.accentProcedures.opacity(0.3))
                         .cornerRadius(6)
+
+                    if !procedure.recoveryDurationLabel.isEmpty {
+                        HStack(spacing: 3) {
+                            Image(systemName: "clock")
+                                .font(.system(size: 11))
+                            Text(procedure.recoveryDurationLabel)
+                                .font(.system(size: 12))
+                        }
+                        .foregroundColor(Theme.Colors.textProceduresSubtle)
+                    }
 
                     Spacer()
                 }
@@ -70,10 +80,14 @@ struct ProcedureListItemView: View {
 #Preview {
     ProcedureListItemView(
         procedure: Procedure(
+            id: UUID(),
             name: "Microneedling",
-            description: "For skin rejuvenation and texture improvement",
-            category: "Non-Surgical",
-            imageName: nil
+            description: "Collagen-induction therapy using fine needles to improve skin texture, tone, and fine lines.",
+            category: "Skin",
+            recoveryDurationDays: 4,
+            recoveryDurationLabel: "2–4 days",
+            isSurgical: false,
+            sortOrder: 210
         )
     )
     .padding()

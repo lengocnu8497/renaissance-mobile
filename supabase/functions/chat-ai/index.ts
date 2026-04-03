@@ -71,6 +71,114 @@ async function uploadImageToStorage(
   return data.publicUrl
 }
 
+/**
+ * Builds a structured user context block injected at the start of the system prompt.
+ * Acts as a RAG-style knowledge layer so Rena always knows who she's talking to
+ * without the user needing to re-introduce themselves every session.
+ */
+function buildUserContext(profile: Record<string, any>): string {
+  const lines: string[] = []
+
+  const name = profile.full_name
+  if (name) lines.push(`User's name: ${name}`)
+
+  const demographics: string[] = []
+  if (profile.gender) demographics.push(profile.gender)
+  if (profile.age_range) demographics.push(`age range ${profile.age_range}`)
+  if (profile.race_ethnicity) demographics.push(profile.race_ethnicity)
+  if (demographics.length) lines.push(`Demographics: ${demographics.join(', ')}`)
+
+  const goals: string[] = profile.aesthetic_goals ?? []
+  if (goals.length) lines.push(`Aesthetic goals: ${goals.join(', ')}`)
+
+  const bodyAreas: string[] = profile.body_areas_of_interest ?? []
+  if (bodyAreas.length) lines.push(`Body areas of interest: ${bodyAreas.join(', ')}`)
+
+  const considering: string[] = profile.procedures_of_interest ?? []
+  if (considering.length) lines.push(`Procedures they are considering (pre-consultation): ${considering.join(', ')}`)
+
+  const previous: string[] = profile.previous_procedures ?? []
+  if (previous.length) lines.push(`Procedures they have already had: ${previous.join(', ')}`)
+
+  const health: string[] = profile.health_flags ?? []
+  if (health.length) lines.push(`Health considerations: ${health.join(', ')}`)
+
+  if (!lines.length) return ''
+
+  return [
+    '--- USER PROFILE CONTEXT ---',
+    'Use the following information to personalise every response. Do not repeat this context back verbatim — just use it to tailor your tone, focus, and recommendations.',
+    ...lines,
+    '--- END CONTEXT ---'
+  ].join('\n')
+}
+
+/**
+ * Builds a structured recovery journal context block from the user's recent journal entries.
+ * Groups entries by procedure and surfaces the latest metrics, notes, and trends so the AI
+ * can give recovery-aware advice without the user having to re-explain their situation.
+ */
+function buildJournalContext(entries: Record<string, any>[]): string {
+  if (!entries || entries.length === 0) return ''
+
+  // Group entries by procedure name (entries are already sorted desc by entry_date)
+  const byProcedure: Record<string, Record<string, any>[]> = {}
+  for (const entry of entries) {
+    const key = entry.procedure_name
+    if (!byProcedure[key]) byProcedure[key] = []
+    byProcedure[key].push(entry)
+  }
+
+  const blocks = Object.entries(byProcedure).map(([procedure, logs]) => {
+    const latest = logs[0]
+    const lines: string[] = [
+      `Procedure: ${procedure}`,
+      `Current recovery day: ${latest.day_number}`,
+      `Last logged: ${latest.entry_date}`,
+    ]
+
+    if (latest.overall_score != null)
+      lines.push(`Overall recovery score: ${latest.overall_score}/10`)
+    if (latest.pain_index != null)
+      lines.push(`Pain: ${latest.pain_index}/10`)
+    if (latest.swelling_index != null)
+      lines.push(`Swelling: ${latest.swelling_index}/10`)
+    if (latest.bruising_index != null)
+      lines.push(`Bruising: ${latest.bruising_index}/10`)
+    if (latest.redness_index != null)
+      lines.push(`Redness: ${latest.redness_index}/10`)
+    if (latest.summary)
+      lines.push(`AI analysis summary: ${latest.summary}`)
+    if (latest.notes)
+      lines.push(`User's own notes: ${latest.notes.substring(0, 300)}`)
+
+    // Surface a simple trend if we have at least 2 entries to compare
+    if (logs.length >= 2) {
+      const older = logs[Math.min(3, logs.length - 1)]
+      const dayDelta = latest.day_number - older.day_number
+      if (dayDelta > 0 && latest.swelling_index != null && older.swelling_index != null) {
+        const delta = latest.swelling_index - older.swelling_index
+        const direction = delta > 0 ? `+${delta.toFixed(1)} (worsening)` : `${delta.toFixed(1)} (improving)`
+        lines.push(`Swelling trend over last ${dayDelta} day(s): ${direction}`)
+      }
+      if (dayDelta > 0 && latest.pain_index != null && older.pain_index != null) {
+        const delta = latest.pain_index - older.pain_index
+        const direction = delta > 0 ? `+${delta.toFixed(1)} (worsening)` : `${delta.toFixed(1)} (improving)`
+        lines.push(`Pain trend over last ${dayDelta} day(s): ${direction}`)
+      }
+    }
+
+    return lines.join('\n')
+  })
+
+  return [
+    '--- RECOVERY JOURNAL CONTEXT ---',
+    'The user has logged their recovery progress below. Reference this when relevant — alert them to concerning metrics, acknowledge positive trends, and tailor advice to where they are in their recovery. Do not surface this data unprompted on every message.',
+    ...blocks,
+    '--- END JOURNAL CONTEXT ---'
+  ].join('\n')
+}
+
 Deno.serve(async (req) => {
   try {
     // AUTHENTICATION: Create Supabase client with user's auth context
@@ -120,12 +228,31 @@ Deno.serve(async (req) => {
       )
     }
 
-    // QUOTA ENFORCEMENT: Check user's subscription and usage limits
-    const { data: userProfile, error: profileError } = await supabaseClient
-      .from('user_profiles')
-      .select('subscription_tier, subscription_current_period_end, subscription_status')
-      .eq('id', user.id)
-      .single()
+    // QUOTA ENFORCEMENT + PERSONALIZATION CONTEXT: Fetch user profile and journal entries in parallel
+    const [
+      { data: userProfile, error: profileError },
+      { data: journalEntries }
+    ] = await Promise.all([
+      supabaseClient
+        .from('user_profiles')
+        .select(`
+          subscription_tier, subscription_current_period_end, subscription_status,
+          full_name, gender, age_range, race_ethnicity,
+          aesthetic_goals, procedures_of_interest, previous_procedures,
+          health_flags, body_areas_of_interest
+        `)
+        .eq('id', user.id)
+        .single(),
+      supabaseClient
+        .from('journal_entries')
+        .select(`
+          procedure_name, day_number, entry_date, notes,
+          pain_index, swelling_index, bruising_index, redness_index, overall_score, summary
+        `)
+        .eq('user_id', user.id)
+        .order('entry_date', { ascending: false })
+        .limit(10)
+    ])
 
     if (profileError || !userProfile) {
       return new Response(
@@ -215,8 +342,12 @@ Deno.serve(async (req) => {
       )
     }
 
-    // System instructions for the AI
-    const instructions = prompts.systemInstructions
+    // Build personalized system context from user profile + recovery journal
+    const userContext = buildUserContext(userProfile)
+    const journalContext = buildJournalContext(journalEntries ?? [])
+    const instructions = [prompts.systemInstructions, userContext, journalContext]
+      .filter(Boolean)
+      .join('\n\n')
 
     // Initialize OpenAI client
     const openai = new OpenAI({
@@ -268,13 +399,18 @@ Deno.serve(async (req) => {
       inputMessages = [{ role: 'user', content: userMessageContent }]
     }
 
+    // Consultation Prep requests need more room for 3 structured sections
+    const isConsultationPrep = message.toLowerCase().includes('consultation prep') ||
+      message.toLowerCase().includes('questions to ask my surgeon')
+    const maxOutputTokens = isConsultationPrep ? 700 : 300
+
     // Build request parameters
     const requestParams: any = {
       model: modelUsed,
       input: inputMessages,
       instructions: instructions,
       temperature: 0.7,
-      max_output_tokens: 300,
+      max_output_tokens: maxOutputTokens,
     }
 
     // Add previous_response_id if available

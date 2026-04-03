@@ -67,16 +67,19 @@ struct MessageBubbleView: View {
                 timestampText(prefix: "Concierge")
 
                 VStack(alignment: .leading, spacing: 8) {
-                    // Display text if available
                     if !message.text.isEmpty {
-                        Text(message.text)
-                            .font(Theme.Typography.messageText)
-                            .foregroundColor(Theme.Colors.textChatPrimary)
-                            .padding(.horizontal, Theme.Spacing.lg)
-                            .padding(.vertical, Theme.Spacing.md)
-                            .background(Theme.Colors.conciergeBubble)
-                            .cornerRadius(Theme.CornerRadius.medium)
-                            .cornerRadius(2, corners: [.bottomLeft])
+                        if isConsultationPrepResponse {
+                            ConsultationPrepCardBubble(text: message.text)
+                        } else {
+                            Text(message.text)
+                                .font(Theme.Typography.messageText)
+                                .foregroundColor(Theme.Colors.textChatPrimary)
+                                .padding(.horizontal, Theme.Spacing.lg)
+                                .padding(.vertical, Theme.Spacing.md)
+                                .background(Theme.Colors.conciergeBubble)
+                                .cornerRadius(Theme.CornerRadius.medium)
+                                .cornerRadius(2, corners: [.bottomLeft])
+                        }
                     }
 
                     // Display AI-generated image if available
@@ -100,10 +103,21 @@ struct MessageBubbleView: View {
                     }
                 }
             }
-            .frame(maxWidth: 280, alignment: .leading)
+            .frame(maxWidth: 300, alignment: .leading)
 
             Spacer()
         }
+    }
+
+    // Detect if this is a Consultation Prep response by looking for the section headers
+    private var isConsultationPrepResponse: Bool {
+        let t = message.text
+        return !message.isFromUser && (
+            t.contains("Questions to Ask") ||
+            t.contains("Proactively Disclose") ||
+            t.contains("What to Look For") ||
+            (t.contains("1)") && t.contains("2)") && t.contains("surgeon"))
+        )
     }
 
     // MARK: - Helper Views
@@ -170,6 +184,188 @@ struct MessageBubbleView: View {
             dot.addEllipse(in: CGRect(x: cx - 4*s, y: cy - 4*s, width: 8*s, height: 8*s))
             context.fill(dot, with: .color(dustyRose))
         }
+    }
+}
+
+// MARK: - Consultation Prep Card Bubble
+// Matches the "rena-card" style from renaesthetic.com landing page:
+// rgba(196,146,154,0.07) bg, rgba(196,146,154,0.22) border, uppercase dusty rose label
+
+struct ConsultationPrepCardBubble: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header label
+            HStack(spacing: 6) {
+                Image(systemName: "checklist")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Color(hex: "#C4929A"))
+                Text("CONSULTATION PREP")
+                    .font(.custom("Outfit-SemiBold", size: 9))
+                    .tracking(2.5)
+                    .foregroundColor(Color(hex: "#C4929A"))
+            }
+
+            // Parse sections from AI response text
+            let sections = parseConsultationSections(text)
+            if !sections.isEmpty {
+                ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
+                    consultationSection(title: section.title, bullets: section.bullets)
+                }
+            } else {
+                // Fallback: render raw text
+                Text(text)
+                    .font(.custom("Outfit-Light", size: 13))
+                    .foregroundColor(Color(hex: "#3D2B2E"))
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(16)
+        .background(Color(hex: "#C4929A").opacity(0.07))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color(hex: "#C4929A").opacity(0.22), lineWidth: 1)
+        )
+        .cornerRadius(16)
+    }
+
+    private func consultationSection(title: String, bullets: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title.uppercased())
+                .font(.custom("Outfit-SemiBold", size: 9))
+                .tracking(2)
+                .foregroundColor(Color(hex: "#C4929A"))
+                .padding(.bottom, 2)
+
+            ForEach(bullets, id: \.self) { bullet in
+                HStack(alignment: .top, spacing: 8) {
+                    Text("·")
+                        .font(.custom("Outfit-SemiBold", size: 16))
+                        .foregroundColor(Color(hex: "#C4929A"))
+                        .frame(width: 10)
+                        .offset(y: -2)
+                    Text(bullet)
+                        .font(.custom("Outfit-Light", size: 13))
+                        .foregroundColor(Color(hex: "#3D2B2E"))
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    private struct ConsultationSection {
+        let title: String
+        let bullets: [String]
+    }
+
+    private func parseConsultationSections(_ text: String) -> [ConsultationSection] {
+        // Try to split on numbered sections like "1)" or "**1."
+        var sections: [ConsultationSection] = []
+        let lines = text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+
+        var currentTitle = ""
+        var currentBullets: [String] = []
+
+        let sectionStarters = ["1)", "2)", "3)", "1.", "2.", "3."]
+
+        for line in lines {
+            guard !line.isEmpty else { continue }
+
+            let cleanLine = line
+                .replacingOccurrences(of: "**", with: "")
+                .replacingOccurrences(of: "##", with: "")
+                .trimmingCharacters(in: .whitespaces)
+
+            let isSectionHeader = sectionStarters.contains(where: { cleanLine.hasPrefix($0) }) &&
+                cleanLine.count < 80
+
+            if isSectionHeader {
+                if !currentTitle.isEmpty {
+                    sections.append(ConsultationSection(title: currentTitle, bullets: currentBullets))
+                }
+                // Extract title after the number
+                let title = cleanLine.dropFirst(2).trimmingCharacters(in: .whitespaces)
+                currentTitle = title
+                currentBullets = []
+            } else if cleanLine.hasPrefix("-") || cleanLine.hasPrefix("•") || cleanLine.hasPrefix("*") {
+                let bullet = String(cleanLine.dropFirst()).trimmingCharacters(in: .whitespaces)
+                if !bullet.isEmpty { currentBullets.append(bullet) }
+            } else if !currentTitle.isEmpty && !cleanLine.isEmpty {
+                // Plain line under a section — treat as bullet
+                currentBullets.append(cleanLine)
+            }
+        }
+
+        if !currentTitle.isEmpty {
+            sections.append(ConsultationSection(title: currentTitle, bullets: currentBullets))
+        }
+
+        return sections
+    }
+}
+
+// MARK: - Consultation Prep Offer Card (injected into chat)
+
+struct ConsultationPrepOfferCard: View {
+    let procedureName: String
+    let onAccept: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            // Small avatar placeholder
+            Circle()
+                .fill(Color(hex: "#C4929A").opacity(0.15))
+                .frame(width: 32, height: 32)
+                .overlay(
+                    Image(systemName: "checklist")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color(hex: "#C4929A"))
+                )
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Would you like me to prepare a **Consultation Prep** for \(procedureName)?")
+                    .font(.custom("Outfit-Light", size: 14))
+                    .foregroundColor(Color(hex: "#3D2B2E"))
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("I'll give you personalized questions to ask, things to disclose, and what to look for in a provider.")
+                    .font(.custom("Outfit-Light", size: 12))
+                    .foregroundColor(Color(hex: "#B8A9AB"))
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button(action: onAccept) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 12))
+                        Text("Yes, prepare my consultation guide")
+                            .font(.custom("Outfit-SemiBold", size: 12))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(hex: "#6B3346"), Color(hex: "#8E4C5C")],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .cornerRadius(10)
+                    .shadow(color: Color(hex: "#8E4C5C").opacity(0.28), radius: 6, x: 0, y: 3)
+                }
+            }
+            .padding(14)
+            .background(Color(hex: "#C4929A").opacity(0.07))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(hex: "#C4929A").opacity(0.22), lineWidth: 1))
+            .cornerRadius(16)
+        }
+        .padding(.leading, 4)
     }
 }
 

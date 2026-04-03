@@ -23,9 +23,21 @@ class ChatViewModel {
     // Current conversation
     var currentConversation: ChatConversation?
 
+    // Procedure context — set when deep-linking from ProcedureDetailView
+    var procedureContext: Procedure?
+
+    // Whether the AI has already offered the Consultation Prep Flow for this procedure
+    var consultationPrepOffered = false
+
+    // Personalization context injected on the first AI call for procedure-context sessions
+    private var userContextNote: String? = nil
+
     // Services
     private let databaseService: ChatDatabaseService
     private let usageService: UsageTrackingService
+    private let profileService = UserProfileService(supabase: supabase)
+    private let insightsService = RecoveryInsightsService()
+    private let savedProcedureService = SavedProcedureService(supabase: supabase)
 
     // MARK: - Initialization
     init(
@@ -34,27 +46,120 @@ class ChatViewModel {
     ) {
         self.databaseService = databaseService
         self.usageService = usageService
+        // Initialization is deferred to ChatView.onAppear via initialize()
+        // to avoid a race condition with startChatWithProcedure.
+    }
 
-        // Always start a fresh conversation when the app opens
-        Task {
-            await createNewConversation()
-        }
+    /// Called from ChatView.onAppear for the plain (no initial message) case.
+    func initialize() async {
+        await createNewConversation()
     }
 
     // MARK: - Public Methods
 
+    var isProcedureContextChat: Bool {
+        procedureContext != nil
+    }
+
+    var chatTitle: String {
+        procedureContext?.name ?? "Ask Rena"
+    }
+
+    var chatSubtitle: String {
+        if let procedure = procedureContext {
+            return "Questions and guidance for \(procedure.name.lowercased())"
+        }
+        return "Beauty concierge"
+    }
+
+    var starterPrompts: [String] {
+        if let procedure = procedureContext {
+            return [
+                "What should I ask in my \(procedure.name) consultation?",
+                "What is recovery usually like for \(procedure.name)?",
+                "Can you explain the main risks and tradeoffs?"
+            ]
+        }
+
+        return [
+            "Help me compare two procedures",
+            "What should I ask at a consultation?",
+            "Can you look at this photo?"
+        ]
+    }
+
     /// Start a new chat session - clears UI and creates fresh conversation
     func startNewChat() async {
-        // Clear the current messages from UI
         messages = []
         currentConversation = nil
         errorMessage = nil
         isTyping = false
         quotaExceeded = false
         quotaExceededReason = nil
+        procedureContext = nil
+        consultationPrepOffered = false
+        userContextNote = nil
 
-        // Create a new conversation with greeting
         await createNewConversation()
+    }
+
+    /// Start a chat pre-loaded with a procedure context.
+    /// Pass `savedProcedureId` to automatically link the new conversation to a saved procedure.
+    func startChatWithProcedure(_ procedure: Procedure, initialMessage: String, savedProcedureId: UUID? = nil) async {
+        procedureContext = procedure
+        // If the initial message is itself a consultation prep request, mark it as already
+        // offered so the offer card doesn't appear redundantly after the AI responds.
+        consultationPrepOffered = initialMessage.contains("Consultation Prep")
+        messages = []
+        currentConversation = nil
+        errorMessage = nil
+        isTyping = false
+        quotaExceeded = false
+        quotaExceededReason = nil
+        userContextNote = nil
+
+        // Fetch profile + most recent insight in parallel for context injection
+        async let profileFetch: UserProfile? = try? profileService.getUserProfile()
+        let recentInsight = insightsService.fetchMostRecentCached()
+        if let profile = await profileFetch {
+            let context = buildUserContext(profile: profile, insight: recentInsight, procedure: procedure)
+            userContextNote = context.isEmpty ? nil : context
+        }
+
+        await createNewConversation(title: procedure.name)
+
+        // Link conversation to saved procedure in the background
+        if let savedId = savedProcedureId, let conversation = currentConversation {
+            Task {
+                try? await savedProcedureService.linkConversation(conversation.id, to: savedId)
+            }
+        }
+
+        await sendMessage(initialMessage)
+    }
+
+    /// Load an existing conversation by ID (used when re-opening a research session).
+    func loadExistingConversation(_ conversationId: UUID) async {
+        messages = []
+        currentConversation = nil
+        errorMessage = nil
+        isTyping = false
+        quotaExceeded = false
+        quotaExceededReason = nil
+        procedureContext = nil
+        consultationPrepOffered = true  // don't offer prep again on existing sessions
+        userContextNote = nil
+
+        do {
+            if let conversation = try await databaseService.getConversation(id: conversationId) {
+                currentConversation = conversation
+                await loadMessages(for: conversationId)
+            } else {
+                await createNewConversation()
+            }
+        } catch {
+            await createNewConversation()
+        }
     }
 
     /// Send a user message with optional image and get AI response
@@ -149,13 +254,24 @@ class ChatViewModel {
             // Get the previous response ID from the last AI message
             let previousResponseId = messages.last(where: { !$0.isFromUser })?.responseId
 
+            // On the first message of a procedure-context session, prepend the user's
+            // personalization context to what the AI receives. The bubble still shows
+            // only `text` — the context is invisible in the UI.
+            let aiMessageText: String
+            if let context = userContextNote, previousResponseId == nil {
+                aiMessageText = "\(context)\n\n---\n\n\(text)"
+                userContextNote = nil  // consume once
+            } else {
+                aiMessageText = text
+            }
+
             // Track response time
             let startTime = Date()
 
             // Call Supabase Edge Function with streaming
             // Message is created on first delta and updated in real-time
             let response = try await callAIFunction(
-                userMessage: text,
+                userMessage: aiMessageText,
                 previousResponseId: previousResponseId,
                 imageData: imageData,
                 conversationId: conversation.id
@@ -277,9 +393,9 @@ class ChatViewModel {
     }
 
     /// Create a new conversation session
-    private func createNewConversation() async {
+    private func createNewConversation(title: String = "New Chat") async {
         do {
-            let conversation = try await databaseService.createConversation(title: "New Chat")
+            let conversation = try await databaseService.createConversation(title: title)
             currentConversation = conversation
 
             // Add initial greeting
@@ -313,16 +429,22 @@ class ChatViewModel {
             return
         }
 
+        let greetingText: String
+        if let proc = procedureContext {
+            greetingText = "Hello! I'm Rena — your personal beauty concierge. I see you're exploring **\(proc.name)**. I'm ready to help you research this procedure, answer your questions, and prepare you for your consultation. What would you like to know?"
+        } else {
+            greetingText = "Hello! I'm Rena -- your personal beauty concierge assistant. How can I assist you today?"
+        }
+
         let greeting = ChatMessage(
             conversationId: conversation.id,
             userId: userId,
-            messageText: "Hello! I'm Rena -- your personal beauty concierge assistant. How can I assist you today?",
+            messageText: greetingText,
             isFromUser: false,
             createdAt: Date()
         )
         messages.append(greeting)
 
-        // Save greeting to database
         Task {
             do {
                 _ = try await databaseService.saveMessage(greeting)
@@ -330,6 +452,54 @@ class ChatViewModel {
                 print("Failed to save greeting: \(error)")
             }
         }
+    }
+
+    /// After a procedure-context AI response, check if we should offer the Consultation Prep Flow
+    func checkAndOfferConsultationPrep() -> Bool {
+        guard let _ = procedureContext,
+              !consultationPrepOffered,
+              messages.filter({ !$0.isFromUser }).count >= 2 else {
+            return false
+        }
+        consultationPrepOffered = true
+        return true
+    }
+
+    // MARK: - User Context Builder
+
+    private func buildUserContext(profile: UserProfile, insight: RecoveryInsights?, procedure: Procedure) -> String {
+        // Only build context if there's meaningful data to include
+        var details: [String] = []
+
+        if let age = profile.ageRange { details.append("Age range: \(age)") }
+        if let gender = profile.gender { details.append("Gender: \(gender)") }
+        if let ethnicity = profile.raceEthnicity { details.append("Ethnicity/background: \(ethnicity)") }
+        if let priors = profile.previousProcedures, !priors.isEmpty {
+            details.append("Previous procedures: \(priors.joined(separator: ", "))")
+        }
+        if let flags = profile.healthFlags, !flags.isEmpty {
+            details.append("Health considerations: \(flags.joined(separator: ", "))")
+        }
+        if let goals = profile.aestheticGoals, !goals.isEmpty {
+            details.append("Aesthetic goals: \(goals.joined(separator: ", "))")
+        }
+        if let areas = profile.bodyAreasOfInterest, !areas.isEmpty {
+            details.append("Areas of interest: \(areas.joined(separator: ", "))")
+        }
+        if let insight = insight {
+            details.append("Current recovery (\(insight.procedureName), \(insight.entryCount) entries, \(insight.trend.label)): \(insight.summary)")
+            if let next = insight.nextSteps {
+                details.append("Rena's active next steps for them: \(next)")
+            }
+        }
+
+        guard !details.isEmpty else { return "" }
+
+        return """
+        [About me — use this to make your answer specific to my situation. \
+        Do not list or echo this back; just let it inform your response naturally.]
+        \(details.joined(separator: "\n"))
+        """
     }
 
     private func callAIFunction(
@@ -372,7 +542,7 @@ class ChatViewModel {
         let bodyData = try encoder.encode(requestBody)
 
         // Build the URL for the Edge Function
-        let functionURL = URL(string: "\(EnvironmentConfig.supabaseURL)/functions/v1/chat-ai")!
+        let functionURL = URL(string: "\(AppConfig.supabaseURL)/functions/v1/chat-ai")!
 
         // Create the request
         var request = URLRequest(url: functionURL)
@@ -384,7 +554,7 @@ class ChatViewModel {
         if let session = try? await supabase.auth.session {
             request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
         }
-        request.setValue(EnvironmentConfig.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue(AppConfig.supabaseAnonKey, forHTTPHeaderField: "apikey")
 
         // Call the edge function
         let (data, response) = try await URLSession.shared.data(for: request)

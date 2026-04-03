@@ -10,12 +10,28 @@ import UIKit
 import Supabase
 import StripePaymentSheet
 
+// MARK: - Saved Card Model
+// Minimal card representation — only what the UI needs.
+// Raw Stripe payment method IDs and billing details are intentionally excluded.
+struct SavedCard: Identifiable {
+    let id = UUID()
+    let brand: String
+    let last4: String
+    let expiryDate: String
+    let isDefault: Bool
+}
+
 @MainActor
 @Observable
 class PaymentViewModel {
     var isLoading = false
     var errorMessage: String?
     var successMessage: String?
+
+    // MARK: - Saved Payment Methods
+    var savedCards: [SavedCard] = []
+    var isLoadingPaymentMethods = false
+    var paymentMethodsError: String?
 
     // Stripe Payment Sheet
     var paymentSheet: PaymentSheet?
@@ -95,7 +111,7 @@ class PaymentViewModel {
 
         // Enable Apple Pay
         configuration.applePay = PaymentSheet.ApplePayConfiguration(
-            merchantId: EnvironmentConfig.appleMerchantId,
+            merchantId: AppConfig.appleMerchantId,
             merchantCountryCode: "US"
         )
 
@@ -188,6 +204,124 @@ class PaymentViewModel {
                     continuation.resume(returning: result)
                 }
             }
+        }
+    }
+
+    // MARK: - Setup Sheet (Save Card without Charging)
+
+    var setupSheet: PaymentSheet?
+    var isAddingCard = false
+    var addCardError: String?
+
+    /// Creates a SetupIntent via the backend and prepares a PaymentSheet in setup mode.
+    /// Uses the same appearance as the payment sheet for visual consistency.
+    func prepareSetupSheet() async -> Bool {
+        isAddingCard = true
+        addCardError = nil
+        defer { isAddingCard = false }
+
+        do {
+            struct SetupIntentResponse: Decodable {
+                let clientSecret: String
+            }
+
+            let response: SetupIntentResponse = try await supabase.functions
+                .invoke("create-setup-intent", options: FunctionInvokeOptions())
+
+            var configuration = PaymentSheet.Configuration()
+            configuration.merchantDisplayName = "Renaissance"
+            configuration.returnURL = "renaissance://payment-complete"
+            configuration.allowsDelayedPaymentMethods = false
+
+            var appearance = PaymentSheet.Appearance()
+            appearance.colors.primary = UIColor(red: 208/255, green: 187/255, blue: 149/255, alpha: 1.0)
+            appearance.colors.background = UIColor(red: 247/255, green: 247/255, blue: 246/255, alpha: 1.0)
+            appearance.colors.componentBackground = UIColor.white
+            appearance.colors.componentBorder = UIColor(red: 230/255, green: 230/255, blue: 230/255, alpha: 1.0)
+            appearance.colors.componentDivider = UIColor(red: 230/255, green: 230/255, blue: 230/255, alpha: 1.0)
+            appearance.colors.text = UIColor(red: 51/255, green: 51/255, blue: 51/255, alpha: 1.0)
+            appearance.colors.textSecondary = UIColor(red: 130/255, green: 130/255, blue: 130/255, alpha: 1.0)
+            appearance.cornerRadius = 16
+            configuration.appearance = appearance
+
+            configuration.applePay = PaymentSheet.ApplePayConfiguration(
+                merchantId: AppConfig.appleMerchantId,
+                merchantCountryCode: "US"
+            )
+
+            setupSheet = PaymentSheet(
+                setupIntentClientSecret: response.clientSecret,
+                configuration: configuration
+            )
+            return true
+        } catch {
+            print("❌ prepareSetupSheet error: \(error)")
+            addCardError = "Unable to initialize card setup"
+            return false
+        }
+    }
+
+    /// Presents the setup sheet. Call after a successful prepareSetupSheet().
+    func presentSetupSheet() async -> PaymentSheetResult {
+        guard let setupSheet else {
+            return .failed(error: NSError(
+                domain: "PaymentViewModel",
+                code: -3,
+                userInfo: [NSLocalizedDescriptionKey: "Setup sheet not initialized"]
+            ))
+        }
+
+        guard let topViewController = UIApplication.shared.topViewController else {
+            return .failed(error: NSError(
+                domain: "PaymentViewModel",
+                code: -4,
+                userInfo: [NSLocalizedDescriptionKey: "No view controller found to present from"]
+            ))
+        }
+
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                setupSheet.present(from: topViewController) { [weak self] result in
+                    self?.setupSheet = nil
+                    continuation.resume(returning: result)
+                }
+            }
+        }
+    }
+
+    // MARK: - Fetch Saved Payment Methods
+
+    func fetchPaymentMethods() async {
+        isLoadingPaymentMethods = true
+        paymentMethodsError = nil
+
+        defer { isLoadingPaymentMethods = false }
+
+        do {
+            struct ListPaymentMethodsResponse: Decodable {
+                struct CardDTO: Decodable {
+                    let brand: String
+                    let last4: String
+                    let expiryDate: String
+                    let isDefault: Bool
+                }
+                let paymentMethods: [CardDTO]
+            }
+
+            let response: ListPaymentMethodsResponse = try await supabase.functions
+                .invoke("list-payment-methods", options: FunctionInvokeOptions())
+
+            savedCards = response.paymentMethods.map { dto in
+                SavedCard(
+                    brand: dto.brand,
+                    last4: dto.last4,
+                    expiryDate: dto.expiryDate,
+                    isDefault: dto.isDefault
+                )
+            }
+        } catch {
+            print("❌ fetchPaymentMethods error: \(error)")
+            paymentMethodsError = "Unable to load payment methods"
         }
     }
 

@@ -133,6 +133,16 @@ struct OnboardingFlowView: View {
     @State private var isProcessingPayment = false
     @State private var paymentError: String? = nil
 
+    // User context quiz state (screens 5–7)
+    @State private var selectedGender: String? = nil
+    @State private var selectedAgeRange: String? = nil
+    @State private var selectedRaceEthnicity: String? = nil
+    @State private var selectedAestheticGoals: Set<String> = []
+    @State private var selectedBodyAreas: Set<String> = []
+    @State private var selectedProceduresOfInterest: Set<String> = []
+    @State private var selectedPreviousProcedures: Set<String> = []
+    @State private var selectedHealthFlags: Set<String> = []
+
     private var isValidEmail: Bool {
         let regex = #"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$"#
         return email.range(of: regex, options: .regularExpression) != nil
@@ -140,13 +150,13 @@ struct OnboardingFlowView: View {
 
     private var selectedPlanPriceId: String {
         switch selectedPlan {
-        case 1:  return EnvironmentConfig.stripeGoldPriceId
-        case 2:  return EnvironmentConfig.stripeSilverPriceId
-        default: return EnvironmentConfig.stripeAnnualPriceId
+        case 1:  return AppConfig.stripeMonthlyPriceId
+        case 2:  return AppConfig.stripeWeeklyPriceId
+        default: return AppConfig.stripeYearlyPriceId
         }
     }
 
-    private let totalScreens = 6
+    private let totalScreens = 7
 
     var body: some View {
         ZStack {
@@ -154,10 +164,11 @@ struct OnboardingFlowView: View {
             Group {
                 switch screen {
                 case 0: hookScreen
-                case 1: procedureScreen
-                case 2: whenScreen
-                case 3: projectionScreen
-                case 4: socialProofScreen
+                case 1: aboutYouScreen
+                case 2: goalsScreen
+                case 3: healthHistoryScreen
+                case 4: whenScreen
+                case 5: socialProofScreen
                 default: paywallScreen
                 }
             }
@@ -313,66 +324,11 @@ struct OnboardingFlowView: View {
 
     // MARK: - Screen 2: Q1 Procedure
 
-    private var procedureScreen: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            questionTopBar(step: 1, total: 3)
-
-            Text("Your procedure")
-                .font(.custom("Outfit-SemiBold", size: 9))
-                .foregroundColor(Color(hex: "#C4929A"))
-                .tracking(3)
-                .textCase(.uppercase)
-                .padding(.horizontal, 18)
-                .padding(.bottom, 8)
-
-            (
-                Text("What did you\n")
-                    .font(.system(size: 23, weight: .regular, design: .serif))
-                +
-                Text("have done?")
-                    .font(.system(size: 23, weight: .regular, design: .serif))
-            )
-            .foregroundColor(Color(hex: "#3D2B2E"))
-            .lineSpacing(2)
-            .padding(.horizontal, 18)
-            .padding(.bottom, 6)
-
-            Text("We'll build your personalised recovery timeline from this.")
-                .font(.custom("Outfit-Light", size: 11))
-                .foregroundColor(Color(hex: "#B8A9AB"))
-                .lineSpacing(3)
-                .padding(.horizontal, 18)
-                .padding(.bottom, 22)
-
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 9) {
-                    ForEach(ProcedureOption.allCases) { option in
-                        optionPill(
-                            icon: option.icon,
-                            title: option.rawValue,
-                            desc: option.optionDescription,
-                            isSelected: selectedProcedure == option
-                        ) {
-                            withAnimation(.spring(response: 0.3)) { selectedProcedure = option }
-                        }
-                    }
-                }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 18)
-            }
-
-            primaryButton(label: "Continue →", enabled: selectedProcedure != nil, gradient: false) {
-                withAnimation { screen = 2 }
-            }
-            Spacer().frame(height: 14)
-        }
-    }
-
-    // MARK: - Screen 3: Q2 When
+    // MARK: - Screen 4: When
 
     private var whenScreen: some View {
         VStack(alignment: .leading, spacing: 0) {
-            questionTopBar(step: 2, total: 3)
+            questionTopBar(step: 4, total: 4)
 
             Text("Your timing")
                 .font(.custom("Outfit-SemiBold", size: 9))
@@ -412,176 +368,13 @@ struct OnboardingFlowView: View {
             }
 
             primaryButton(label: "Continue →", enabled: selectedWhen != nil, gradient: false) {
-                if let proc = selectedProcedure, let when = selectedWhen {
-                    OnboardingStore.save(procedureName: proc.storedName, procedureDate: when.procedureDate)
+                if let when = selectedWhen {
+                    OnboardingStore.save(procedureName: selectedProcedure?.storedName ?? "Surgery", procedureDate: when.procedureDate)
                 }
-                withAnimation { screen = 3 }
+                withAnimation { screen = 5 }
             }
             Spacer().frame(height: 14)
         }
-    }
-
-    // MARK: - Screen 4: Recovery Projection
-
-    private var projectionScreen: some View {
-        let proc = selectedProcedure ?? .rhinoplasty
-        let nodes = proc.timelineNodes
-        let dayNum = daysSinceProcedure + 1
-        let dayBadge = dayNum <= 14 ? "Day \(dayNum)" : "Week \(dayNum / 7)"
-
-        return VStack(alignment: .leading, spacing: 0) {
-            Spacer().frame(height: 14)
-
-            // "Your Recovery Plan" badge
-            HStack(spacing: 5) {
-                Circle().fill(Color(hex: "#8E4C5C")).frame(width: 5, height: 5)
-                Text("Your Recovery Plan")
-                    .font(.custom("Outfit-Bold", size: 9))
-                    .foregroundColor(Color(hex: "#8E4C5C"))
-                    .tracking(1.5)
-                    .textCase(.uppercase)
-            }
-            .padding(.horizontal, 11).padding(.vertical, 5)
-            .background(Color(hex: "#8E4C5C").opacity(0.10))
-            .clipShape(Capsule())
-            .padding(.horizontal, 16)
-            .padding(.bottom, 10)
-
-            // Headline
-            (
-                Text("Your \(proc.storedName)\n")
-                    .font(.system(size: 22, weight: .regular, design: .serif))
-                    .foregroundColor(Color(hex: "#3D2B2E"))
-                +
-                Text("timeline is ready.")
-                    .font(.system(size: 22, weight: .light, design: .serif))
-                    .italic()
-                    .foregroundColor(Color(hex: "#8E4C5C"))
-            )
-            .lineSpacing(2)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 4)
-
-            Text("Based on your procedure and timing. Your journal will track where you are day by day.")
-                .font(.custom("Outfit-Light", size: 10))
-                .foregroundColor(Color(hex: "#B8A9AB"))
-                .lineSpacing(2)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 10)
-
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 8) {
-                    // Timeline card
-                    VStack(alignment: .leading, spacing: 0) {
-                        // Header
-                        HStack {
-                            Text("\(proc.storedName)")
-                                .font(.custom("Outfit-SemiBold", size: 11))
-                                .foregroundColor(Color(hex: "#3D2B2E"))
-                            Spacer()
-                            Text("\(dayBadge) ✦")
-                                .font(.custom("Outfit-Bold", size: 9))
-                                .foregroundColor(.white)
-                                .tracking(0.5)
-                                .padding(.horizontal, 9).padding(.vertical, 3)
-                                .background(Color(hex: "#8E4C5C"))
-                                .clipShape(Capsule())
-                        }
-                        .padding(.bottom, 14)
-
-                        // Vertical timeline
-                        ZStack(alignment: .topLeading) {
-                            LinearGradient(
-                                colors: [Color(hex: "#8E4C5C"), Color(hex: "#C4929A").opacity(0.2)],
-                                startPoint: .top, endPoint: .bottom
-                            )
-                            .frame(width: 1.5)
-                            .padding(.leading, 5.25)
-                            .padding(.vertical, 6)
-
-                            VStack(alignment: .leading, spacing: 0) {
-                                ForEach(nodes.indices, id: \.self) { i in
-                                    timelineNode(nodes[i])
-                                        .padding(.bottom, i < nodes.count - 1 ? 10 : 0)
-                                }
-                            }
-                            .padding(.leading, 14)
-                        }
-                    }
-                    .padding(12)
-                    .background(Color.white)
-                    .cornerRadius(16)
-                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 1))
-                    .shadow(color: Color(hex: "#8E4C5C").opacity(0.12), radius: 8, x: 0, y: 4)
-                    .padding(.horizontal, 16)
-
-                    // Pink note
-                    HStack(spacing: 6) {
-                        Text("📸")
-                            .font(.system(size: 12))
-                        Text("We'll prompt you to log photos at the right moments — so you never miss a milestone.")
-                            .font(.custom("Outfit-Light", size: 10))
-                            .foregroundColor(Color(hex: "#8E4C5C"))
-                            .lineSpacing(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        LinearGradient(
-                            colors: [Color(hex: "#f8e9ef"), Color(hex: "#f0d4dc")],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        )
-                    )
-                    .cornerRadius(12)
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#C4929A").opacity(0.25), lineWidth: 1))
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 18)
-                }
-            }
-
-            primaryButton(label: "This looks right →", enabled: true, gradient: true) {
-                withAnimation { screen = 4 }
-            }
-            Spacer().frame(height: 14)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func timelineNode(_ node: (time: String, desc: String, isCurrent: Bool)) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            ZStack {
-                if node.isCurrent {
-                    Circle().stroke(Color(hex: "#8E4C5C").opacity(0.2), lineWidth: 3).frame(width: 18, height: 18)
-                    Circle().fill(Color(hex: "#8E4C5C")).frame(width: 12, height: 12)
-                } else {
-                    Circle().fill(Color.white).frame(width: 12, height: 12)
-                    Circle().stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 2).frame(width: 12, height: 12)
-                }
-            }
-            .frame(width: 18, alignment: .center)
-            .padding(.top, 2)
-            .zIndex(2)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(node.time)
-                    .font(.custom("Outfit-Bold", size: 9))
-                    .foregroundColor(node.isCurrent ? Color(hex: "#8E4C5C") : Color(hex: "#B8A9AB"))
-                    .tracking(0.8)
-                    .textCase(.uppercase)
-                Text(node.desc)
-                    .font(.custom("Outfit-Light", size: 10.5))
-                    .foregroundColor(node.isCurrent ? Color(hex: "#3D2B2E") : Color(hex: "#B8A9AB"))
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private var daysSinceProcedure: Int {
-        let cal = Calendar.current
-        let date = selectedWhen?.procedureDate ?? Date()
-        return max(0, cal.dateComponents([.day], from: cal.startOfDay(for: date), to: cal.startOfDay(for: Date())).day ?? 0)
     }
 
     // MARK: - Screen 5: Social Proof
@@ -680,7 +473,7 @@ struct OnboardingFlowView: View {
             }
 
             primaryButton(label: "I'm ready →", enabled: true, gradient: false) {
-                withAnimation { screen = 5 }
+                withAnimation { screen = 6 }
             }
             Spacer().frame(height: 14)
         }
@@ -780,30 +573,30 @@ struct OnboardingFlowView: View {
                     // Plan options
                     VStack(spacing: 7) {
                         planCard(
-                            name: "Annual",
-                            price: paymentVM.annualPriceInfo?.displayPrice ?? "—",
-                            subtitle: "All benefits of Gold at a discounted price for 12 months",
+                            name: "Yearly",
+                            price: paymentVM.yearlyPriceInfo?.displayPrice ?? "—",
+                            subtitle: "All benefits of Monthly at a discounted price for 12 months",
                             isSelected: selectedPlan == 0,
                             badge: "Best Value",
-                            isLoading: paymentVM.isFetchingPrices && paymentVM.annualPriceInfo == nil
+                            isLoading: paymentVM.isFetchingPrices && paymentVM.yearlyPriceInfo == nil
                         ) { selectedPlan = 0 }
 
                         planCard(
-                            name: "Gold",
-                            price: paymentVM.goldPriceInfo?.displayPrice ?? "—",
+                            name: "Monthly",
+                            price: paymentVM.monthlyPriceInfo?.displayPrice ?? "—",
                             isSelected: selectedPlan == 1,
                             badge: nil,
                             perks: ["75 msgs", "15 imgs", "210 credits"],
-                            isLoading: paymentVM.isFetchingPrices && paymentVM.goldPriceInfo == nil
+                            isLoading: paymentVM.isFetchingPrices && paymentVM.monthlyPriceInfo == nil
                         ) { selectedPlan = 1 }
 
                         planCard(
-                            name: "Silver",
-                            price: paymentVM.silverPriceInfo?.displayPrice ?? "—",
+                            name: "Weekly",
+                            price: paymentVM.weeklyPriceInfo?.displayPrice ?? "—",
                             isSelected: selectedPlan == 2,
                             badge: nil,
                             perks: ["30 msgs", "5 imgs", "80 credits"],
-                            isLoading: paymentVM.isFetchingPrices && paymentVM.silverPriceInfo == nil
+                            isLoading: paymentVM.isFetchingPrices && paymentVM.weeklyPriceInfo == nil
                         ) { selectedPlan = 2 }
                     }
                     .padding(.horizontal, 16)
@@ -961,6 +754,333 @@ struct OnboardingFlowView: View {
                             .underline()
                     }
                     .padding(.bottom, 24)
+                }
+            }
+        }
+    }
+
+    // MARK: - Screen 6: About You
+
+    private var aboutYouScreen: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            questionTopBar(step: 1, total: 4)
+
+            Text("About you")
+                .font(.custom("Outfit-SemiBold", size: 9))
+                .foregroundColor(Color(hex: "#C4929A"))
+                .tracking(3)
+                .textCase(.uppercase)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 8)
+
+            (
+                Text("Help Rena\n")
+                    .font(.system(size: 23, weight: .regular, design: .serif))
+                +
+                Text("know you better.")
+                    .font(.system(size: 23, weight: .light, design: .serif))
+                    .italic()
+                    .foregroundColor(Color(hex: "#8E4C5C"))
+            )
+            .foregroundColor(Color(hex: "#3D2B2E"))
+            .lineSpacing(2)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 6)
+
+            Text("This helps us tailor guidance to your healing, skin, and aesthetic journey. All optional.")
+                .font(.custom("Outfit-Light", size: 11))
+                .foregroundColor(Color(hex: "#B8A9AB"))
+                .lineSpacing(3)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 22)
+
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    contextSection(title: "Gender identity") {
+                        chipGrid(options: ["Woman", "Man", "Non-binary", "Prefer not to say"],
+                                 selected: selectedGender.map { [$0] } ?? [],
+                                 multiSelect: false) { val in
+                            selectedGender = selectedGender == val ? nil : val
+                        }
+                    }
+                    contextSection(title: "Age range") {
+                        chipGrid(options: ["Under 25", "25–34", "35–44", "45–54", "55+"],
+                                 selected: selectedAgeRange.map { [$0] } ?? [],
+                                 multiSelect: false) { val in
+                            selectedAgeRange = selectedAgeRange == val ? nil : val
+                        }
+                    }
+                    contextSection(title: "Race / Ethnicity") {
+                        chipGrid(
+                            options: ["Asian", "Black / African American", "Hispanic / Latino",
+                                      "Middle Eastern", "White / Caucasian", "Multiracial", "Prefer not to say"],
+                            selected: selectedRaceEthnicity.map { [$0] } ?? [],
+                            multiSelect: false
+                        ) { val in
+                            selectedRaceEthnicity = selectedRaceEthnicity == val ? nil : val
+                        }
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 18)
+            }
+
+            primaryButton(label: "Continue →", enabled: true, gradient: false) {
+                withAnimation { screen = 2 }
+            }
+            Button { withAnimation { screen = 2 } } label: {
+                Text("Skip for now")
+                    .font(.custom("Outfit-Light", size: 11))
+                    .foregroundColor(Color(hex: "#B8A9AB"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 8)
+            }
+            Spacer().frame(height: 14)
+        }
+    }
+
+    // MARK: - Screen 7: Goals & Interests
+
+    private var goalsScreen: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            questionTopBar(step: 2, total: 4)
+
+            Text("Your goals")
+                .font(.custom("Outfit-SemiBold", size: 9))
+                .foregroundColor(Color(hex: "#C4929A"))
+                .tracking(3)
+                .textCase(.uppercase)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 8)
+
+            (
+                Text("What are you\n")
+                    .font(.system(size: 23, weight: .regular, design: .serif))
+                +
+                Text("hoping to achieve?")
+                    .font(.system(size: 23, weight: .light, design: .serif))
+                    .italic()
+                    .foregroundColor(Color(hex: "#8E4C5C"))
+            )
+            .foregroundColor(Color(hex: "#3D2B2E"))
+            .lineSpacing(2)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 6)
+
+            Text("Select all that apply. This shapes the advice and insights Rena gives you.")
+                .font(.custom("Outfit-Light", size: 11))
+                .foregroundColor(Color(hex: "#B8A9AB"))
+                .lineSpacing(3)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 22)
+
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    contextSection(title: "Aesthetic goals") {
+                        chipGrid(
+                            options: ["Look more refreshed", "Look younger", "Change a specific feature",
+                                      "Enhance my confidence", "Explore non-surgical first", "Just researching options"],
+                            selected: Array(selectedAestheticGoals),
+                            multiSelect: true
+                        ) { val in
+                            if selectedAestheticGoals.contains(val) { selectedAestheticGoals.remove(val) }
+                            else { selectedAestheticGoals.insert(val) }
+                        }
+                    }
+                    contextSection(title: "Body areas of interest") {
+                        chipGrid(
+                            options: ["Face", "Nose", "Eyes / Brow", "Lips", "Neck / Jawline",
+                                      "Breasts", "Abdomen / Waist", "Arms", "Thighs / Buttocks", "Full body"],
+                            selected: Array(selectedBodyAreas),
+                            multiSelect: true
+                        ) { val in
+                            if selectedBodyAreas.contains(val) { selectedBodyAreas.remove(val) }
+                            else { selectedBodyAreas.insert(val) }
+                        }
+                    }
+                    contextSection(title: "Procedures you're considering") {
+                        chipGrid(
+                            options: ["Rhinoplasty", "Facelift / Mini facelift", "Eyelid surgery",
+                                      "Breast augmentation", "Breast reduction / Lift",
+                                      "Body contouring / BBL", "Tummy tuck", "Botox / Fillers / Lasers",
+                                      "Not sure yet"],
+                            selected: Array(selectedProceduresOfInterest),
+                            multiSelect: true
+                        ) { val in
+                            if selectedProceduresOfInterest.contains(val) { selectedProceduresOfInterest.remove(val) }
+                            else { selectedProceduresOfInterest.insert(val) }
+                        }
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 18)
+            }
+
+            primaryButton(label: "Continue →", enabled: true, gradient: false) {
+                withAnimation { screen = 3 }
+            }
+            Button { withAnimation { screen = 3 } } label: {
+                Text("Skip for now")
+                    .font(.custom("Outfit-Light", size: 11))
+                    .foregroundColor(Color(hex: "#B8A9AB"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 8)
+            }
+            Spacer().frame(height: 14)
+        }
+    }
+
+    // MARK: - Screen 8: Health & History
+
+    private var healthHistoryScreen: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            questionTopBar(step: 3, total: 4)
+
+            Text("Health & history")
+                .font(.custom("Outfit-SemiBold", size: 9))
+                .foregroundColor(Color(hex: "#C4929A"))
+                .tracking(3)
+                .textCase(.uppercase)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 8)
+
+            (
+                Text("A few quick\n")
+                    .font(.system(size: 23, weight: .regular, design: .serif))
+                +
+                Text("context questions.")
+                    .font(.system(size: 23, weight: .light, design: .serif))
+                    .italic()
+                    .foregroundColor(Color(hex: "#8E4C5C"))
+            )
+            .foregroundColor(Color(hex: "#3D2B2E"))
+            .lineSpacing(2)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 6)
+
+            Text("Not a diagnosis — just helps Rena personalise your recovery guidance.")
+                .font(.custom("Outfit-Light", size: 11))
+                .foregroundColor(Color(hex: "#B8A9AB"))
+                .lineSpacing(3)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 22)
+
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    contextSection(title: "Procedures you've already had") {
+                        chipGrid(
+                            options: ["None yet", "Rhinoplasty", "Facial surgery", "Breast surgery",
+                                      "Body contouring", "Botox / Fillers", "Other surgical"],
+                            selected: Array(selectedPreviousProcedures),
+                            multiSelect: true
+                        ) { val in
+                            if selectedPreviousProcedures.contains(val) { selectedPreviousProcedures.remove(val) }
+                            else { selectedPreviousProcedures.insert(val) }
+                        }
+                    }
+                    contextSection(title: "Any health considerations?") {
+                        chipGrid(
+                            options: ["No known sensitivities", "History of keloid scarring",
+                                      "Sensitive / eczema-prone skin", "Latex sensitivity",
+                                      "Blood thinners or clotting concerns", "Slower healing than average",
+                                      "Prefer not to say"],
+                            selected: Array(selectedHealthFlags),
+                            multiSelect: true
+                        ) { val in
+                            if selectedHealthFlags.contains(val) { selectedHealthFlags.remove(val) }
+                            else { selectedHealthFlags.insert(val) }
+                        }
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 18)
+            }
+
+            primaryButton(label: "Continue →", enabled: true, gradient: true) {
+                OnboardingStore.saveUserContext(
+                    gender: selectedGender,
+                    ageRange: selectedAgeRange,
+                    raceEthnicity: selectedRaceEthnicity,
+                    aestheticGoals: Array(selectedAestheticGoals),
+                    proceduresOfInterest: Array(selectedProceduresOfInterest),
+                    previousProcedures: Array(selectedPreviousProcedures),
+                    healthFlags: Array(selectedHealthFlags),
+                    bodyAreas: Array(selectedBodyAreas)
+                )
+                withAnimation { screen = 4 }
+            }
+            Button {
+                OnboardingStore.saveUserContext(
+                    gender: selectedGender,
+                    ageRange: selectedAgeRange,
+                    raceEthnicity: selectedRaceEthnicity,
+                    aestheticGoals: Array(selectedAestheticGoals),
+                    proceduresOfInterest: Array(selectedProceduresOfInterest),
+                    previousProcedures: Array(selectedPreviousProcedures),
+                    healthFlags: Array(selectedHealthFlags),
+                    bodyAreas: Array(selectedBodyAreas)
+                )
+                withAnimation { screen = 4 }
+            } label: {
+                Text("Skip for now")
+                    .font(.custom("Outfit-Light", size: 11))
+                    .foregroundColor(Color(hex: "#B8A9AB"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 8)
+            }
+            Spacer().frame(height: 14)
+        }
+    }
+
+    // MARK: - Context Quiz Helpers
+
+    private func contextSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.custom("Outfit-SemiBold", size: 10.5))
+                .foregroundColor(Color(hex: "#3D2B2E"))
+                .tracking(0.3)
+            content()
+        }
+    }
+
+    private func chipGrid(options: [String], selected: [String], multiSelect: Bool, onTap: @escaping (String) -> Void) -> some View {
+        var rows: [[String]] = [[]]
+        for option in options {
+            let approxWidth = CGFloat(option.count) * 7.5 + 24
+            let currentRowWidth = rows.last!.reduce(CGFloat(0)) { $0 + CGFloat($1.count) * 7.5 + 32 }
+            if currentRowWidth + approxWidth > UIScreen.main.bounds.width - 36 && !rows.last!.isEmpty {
+                rows.append([option])
+            } else {
+                rows[rows.count - 1].append(option)
+            }
+        }
+        return VStack(alignment: .leading, spacing: 7) {
+            ForEach(rows.indices, id: \.self) { rowIdx in
+                HStack(spacing: 7) {
+                    ForEach(rows[rowIdx], id: \.self) { option in
+                        let isSelected = selected.contains(option)
+                        Button { onTap(option) } label: {
+                            Text(option)
+                                .font(.custom("Outfit-Regular", size: 11.5))
+                                .foregroundColor(isSelected ? Color(hex: "#6B3346") : Color(hex: "#3D2B2E").opacity(0.7))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(
+                                    isSelected
+                                        ? LinearGradient(colors: [Color(hex: "#f8e9ef"), Color(hex: "#f0d4dc")],
+                                                         startPoint: .topLeading, endPoint: .bottomTrailing)
+                                        : LinearGradient(colors: [.white, .white],
+                                                         startPoint: .topLeading, endPoint: .bottomTrailing)
+                                )
+                                .cornerRadius(20)
+                                .overlay(
+                                    Capsule()
+                                        .stroke(isSelected ? Color(hex: "#8E4C5C").opacity(0.5) : Color(hex: "#C4929A").opacity(0.22), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }

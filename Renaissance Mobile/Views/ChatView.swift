@@ -12,6 +12,21 @@ import Supabase
 import Auth
 import Network
 
+private enum CC {
+    static let shell = Color(hex: "#EEF1E8")
+    static let bg = Color(hex: "#F6F7F2")
+    static let surface = Color(hex: "#FBFCF8")
+    static let card = Color(hex: "#EDF1E8")
+    static let cardStrong = Color(hex: "#E1E7DA")
+    static let text = Color(hex: "#1F261D")
+    static let muted = Color(hex: "#687064")
+    static let primary = Color(hex: "#516048")
+    static let primaryInk = Color(hex: "#314030")
+    static let primarySoft = Color(hex: "#D9E3CE")
+    static let border = Color.black.opacity(0.05)
+    static let shadow = Color(red: 90/255, green: 103/255, blue: 80/255).opacity(0.10)
+}
+
 struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel = ChatViewModel()
@@ -22,44 +37,72 @@ struct ChatView: View {
     @State private var showQuotaExceeded = false
     @State private var subscriptionViewModel = SubscriptionViewModel()
     @State private var paymentViewModel = PaymentViewModel()
+    @State private var onboardingPaymentViewModel = OnboardingPaymentViewModel()
     @State private var showPaymentError = false
     @State private var paymentErrorMessage = ""
     @State private var hasCheckedSubscription = false
     @FocusState private var isTextFieldFocused: Bool
     @State private var isOnline = true
+    @State private var hasInitialized = false
     private let networkMonitor = NWPathMonitor()
 
     var initialMessage: String?
+    var procedureContext: Procedure?
+    var savedProcedureId: UUID?
+    var conversationIdToLoad: UUID?
     var onBackButtonTapped: (() -> Void)?
 
-    init(initialMessage: String? = nil, onBackButtonTapped: (() -> Void)? = nil) {
+    init(
+        initialMessage: String? = nil,
+        procedureContext: Procedure? = nil,
+        savedProcedureId: UUID? = nil,
+        conversationIdToLoad: UUID? = nil,
+        onBackButtonTapped: (() -> Void)? = nil
+    ) {
         self.initialMessage = initialMessage
+        self.procedureContext = procedureContext
+        self.savedProcedureId = savedProcedureId
+        self.conversationIdToLoad = conversationIdToLoad
         self.onBackButtonTapped = onBackButtonTapped
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            chatHeader
-            messagesList
-            disclaimer
+        ZStack {
+            CC.shell.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                chatHeader
+                messagesList
+                disclaimer
+                    .padding(.bottom, 96)
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             messageInput
         }
         .navigationBarHidden(true)
         .sheet(isPresented: $showQuotaExceeded) {
             QuotaExceededView(
                 reason: viewModel.quotaExceededReason ?? "You've exceeded your quota",
+                silverPrice: onboardingPaymentViewModel.silverPriceInfo?.displayPrice ?? "...",
+                goldPrice: onboardingPaymentViewModel.goldPriceInfo?.displayPrice ?? "...",
+                annualPrice: onboardingPaymentViewModel.annualPriceInfo?.displayPrice ?? "...",
                 onUpgrade: { tier in
                     await handleUpgrade(tier: tier)
                 },
                 onDismiss: {
                     showQuotaExceeded = false
-                    hasCheckedSubscription = false  // Reset so it checks again next time
-                    viewModel.quotaExceeded = false  // Reset quota exceeded state so onChange can trigger again
+                    hasCheckedSubscription = false
+                    viewModel.quotaExceeded = false
                     viewModel.quotaExceededReason = nil
                     viewModel.errorMessage = nil
                 }
             )
-            .interactiveDismissDisabled()
+            .task {
+                if onboardingPaymentViewModel.silverPriceInfo == nil {
+                    await onboardingPaymentViewModel.fetchPrices()
+                }
+            }
         }
         .alert("Payment Error", isPresented: $showPaymentError) {
             Button("OK", role: .cancel) {}
@@ -72,6 +115,8 @@ struct ChatView: View {
             }
         }
         .onAppear {
+            guard !hasInitialized else { return }
+            hasInitialized = true
             handleInitialMessage()
             startNetworkMonitoring()
         }
@@ -79,11 +124,20 @@ struct ChatView: View {
 
     // MARK: - Initial Message Handler
     private func handleInitialMessage() {
-        guard let initialMessage = initialMessage, !initialMessage.isEmpty else { return }
-
-        // Auto-send the initial message through the ViewModel
         Task {
-            await viewModel.sendMessage(initialMessage)
+            if let conversationId = conversationIdToLoad {
+                // Re-open an existing research session conversation
+                await viewModel.loadExistingConversation(conversationId)
+            } else if let procedure = procedureContext, let msg = initialMessage, !msg.isEmpty {
+                // Deep-link with procedure context: full setup + send in one path
+                await viewModel.startChatWithProcedure(procedure, initialMessage: msg, savedProcedureId: savedProcedureId)
+            } else {
+                // Always initialize the conversation first (creates greeting)
+                await viewModel.initialize()
+                if let msg = initialMessage, !msg.isEmpty {
+                    await viewModel.sendMessage(msg)
+                }
+            }
         }
     }
 
@@ -154,16 +208,16 @@ struct ChatView: View {
         let priceId: String
         switch tier {
         case .silver:
-            priceId = EnvironmentConfig.stripeSilverPriceId
+            priceId = AppConfig.stripeSilverPriceId
         case .gold:
-            priceId = EnvironmentConfig.stripeGoldPriceId
+            priceId = AppConfig.stripeGoldPriceId
         case .annual:
-            priceId = EnvironmentConfig.stripeAnnualPriceId
+            priceId = AppConfig.stripeAnnualPriceId
         }
 
         // Validate price ID is configured
         guard !priceId.contains("REPLACE_WITH_YOUR") else {
-            paymentErrorMessage = "Subscription plan not configured. Please add Stripe price IDs to EnvironmentConfig."
+            paymentErrorMessage = "Subscription plan not configured. Please add Stripe price IDs to AppConfig."
             showPaymentError = true
             return
         }
@@ -207,7 +261,7 @@ struct ChatView: View {
 
         // Enable Apple Pay for subscriptions
         configuration.applePay = PaymentSheet.ApplePayConfiguration(
-            merchantId: EnvironmentConfig.appleMerchantId,
+            merchantId: AppConfig.appleMerchantId,
             merchantCountryCode: "US"
         )
 
@@ -295,7 +349,7 @@ struct ChatView: View {
 
     // MARK: - Subviews
     private var chatHeader: some View {
-        VStack(spacing: Theme.Spacing.xs) {
+        ZStack {
             HStack {
                 Button(action: {
                     if let onBackButtonTapped = onBackButtonTapped {
@@ -305,20 +359,15 @@ struct ChatView: View {
                     }
                 }) {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(Theme.Colors.textChatPrimary)
-                }
-
-                Spacer()
-
-                VStack(spacing: 2) {
-                    Text("Your Concierge")
-                        .font(Theme.Typography.chatHeader)
-                        .foregroundColor(Theme.Colors.textChatPrimary)
-
-                    Text(isOnline ? "Online" : "Offline")
-                        .font(Theme.Typography.statusText)
-                        .foregroundColor(isOnline ? Theme.Colors.online : Theme.Colors.textChatSecondary)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(CC.primaryInk)
+                        .frame(width: 42, height: 42)
+                        .background(CC.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(CC.border, lineWidth: 1)
+                        )
                 }
 
                 Spacer()
@@ -330,19 +379,38 @@ struct ChatView: View {
                     }
                 }) {
                     Image(systemName: "square.and.pencil")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(Theme.Colors.textChatPrimary)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(CC.primaryInk)
+                        .frame(width: 42, height: 42)
+                        .background(CC.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(CC.border, lineWidth: 1)
+                        )
                 }
                 .disabled(viewModel.isLoading || viewModel.isTyping)
             }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.vertical, Theme.Spacing.md)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+
+            VStack(spacing: 3) {
+                Text(viewModel.chatTitle)
+                    .font(.custom("Manrope", size: 25))
+                    .fontWeight(.heavy)
+                    .foregroundColor(CC.text)
+
+                Text(isOnline ? viewModel.chatSubtitle : "Offline")
+                    .font(.custom("PlusJakartaSans-Regular", size: 11))
+                    .foregroundColor(isOnline ? CC.primary : CC.muted)
+            }
         }
-        .background(Theme.Colors.backgroundChat)
+        .padding(.top, 52)
+        .background(CC.bg)
         .overlay(
             Rectangle()
                 .frame(height: 1)
-                .foregroundColor(Theme.Colors.iconCircleBackground),
+                .foregroundColor(CC.border),
             alignment: .bottom
         )
     }
@@ -350,7 +418,11 @@ struct ChatView: View {
     private var messagesList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(spacing: Theme.Spacing.xl) {
+                VStack(spacing: 18) {
+                    if !viewModel.starterPrompts.isEmpty {
+                        promptStarterRow
+                    }
+
                     dateDivider
 
                     ForEach(viewModel.messages) { message in
@@ -358,23 +430,42 @@ struct ChatView: View {
                             .id(message.id)
                     }
 
+                    // Consultation Prep offer — appears after 2nd AI reply in procedure context
+                    if viewModel.consultationPrepOffered,
+                       let procedure = viewModel.procedureContext {
+                        ConsultationPrepOfferCard(procedureName: procedure.name) {
+                            let prompt = """
+                            Please give me a personalized Consultation Prep for \(procedure.name), formatted as three sections: \
+                            1) A checklist of questions to ask my surgeon, \
+                            2) Things I should proactively disclose to my provider, \
+                            3) What to look for when evaluating a provider for this procedure.
+                            """
+                            Task { await viewModel.sendMessage(prompt) }
+                        }
+                        .id("consultationPrepOffer")
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
+
                     if viewModel.isTyping {
                         TypingIndicatorView()
                             .id("typing")
                     }
                 }
-                .padding(.horizontal, Theme.Spacing.lg)
-                .padding(.bottom, Theme.Spacing.lg)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 18)
                 .onChange(of: viewModel.messages.count) { _, _ in
-                    // Auto-scroll to the latest message
-                    if let lastMessage = viewModel.messages.last {
+                    if viewModel.checkAndOfferConsultationPrep() {
+                        // Consultation prep offer just appeared — scroll to it
+                        withAnimation {
+                            proxy.scrollTo("consultationPrepOffer", anchor: .bottom)
+                        }
+                    } else if let lastMessage = viewModel.messages.last {
                         withAnimation {
                             proxy.scrollTo(lastMessage.id, anchor: .bottom)
                         }
                     }
                 }
                 .onChange(of: viewModel.isTyping) { _, isTyping in
-                    // Auto-scroll when typing indicator appears
                     if isTyping {
                         withAnimation {
                             proxy.scrollTo("typing", anchor: .bottom)
@@ -382,30 +473,34 @@ struct ChatView: View {
                     }
                 }
             }
-            .background(Theme.Colors.backgroundChat)
+            .background(CC.bg)
         }
     }
 
     private var dateDivider: some View {
         Text("Today")
-            .font(Theme.Typography.dateDivider)
-            .foregroundColor(Theme.Colors.textChatSecondary)
-            .padding(.horizontal, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.xs)
-            .background(Theme.Colors.iconCircleBackground)
-            .cornerRadius(Theme.CornerRadius.medium)
-            .padding(.top, Theme.Spacing.lg)
+            .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+            .foregroundColor(CC.muted)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(CC.surface)
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(CC.border, lineWidth: 1)
+            )
+            .padding(.top, 6)
     }
 
     private var disclaimer: some View {
         Text("AI can make mistakes. Always consult with a board-certified plastic surgeon for medical advice.")
-            .font(.caption2)
-            .foregroundColor(Theme.Colors.textChatSecondary)
+            .font(.custom("PlusJakartaSans-Regular", size: 11))
+            .foregroundColor(CC.muted)
             .multilineTextAlignment(.center)
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.vertical, Theme.Spacing.sm)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 10)
             .frame(maxWidth: .infinity)
-            .background(Theme.Colors.backgroundChat)
+            .background(CC.bg)
     }
 
     private var messageInput: some View {
@@ -420,8 +515,8 @@ struct ChatView: View {
                         .foregroundColor(.orange)
                     Spacer()
                 }
-                .padding(.horizontal, Theme.Spacing.lg)
-                .padding(.vertical, Theme.Spacing.sm)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
                 .background(Color.orange.opacity(0.1))
             }
 
@@ -449,16 +544,19 @@ struct ChatView: View {
                         )
                     Spacer()
                 }
-                .padding(.horizontal, Theme.Spacing.lg)
-                .padding(.vertical, Theme.Spacing.sm)
-                .background(Theme.Colors.backgroundChat)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .background(CC.bg)
             }
 
-            HStack(spacing: Theme.Spacing.md) {
+            HStack(alignment: .bottom, spacing: 12) {
                 PhotosPicker(selection: $selectedImage, matching: .images) {
-                    Image(systemName: "plus.circle")
-                        .font(.system(size: Theme.IconSize.medium))
-                        .foregroundColor(Theme.Colors.textChatSecondary)
+                    Image(systemName: "image")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(CC.primary)
+                        .frame(width: 40, height: 40)
+                        .background(CC.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
                 .onChange(of: selectedImage) { _, newValue in
                     Task {
@@ -469,9 +567,9 @@ struct ChatView: View {
                 }
 
                 HStack {
-                    TextField("Type your message...", text: $messageText)
-                        .font(Theme.Typography.inputText)
-                        .foregroundColor(Theme.Colors.textChatPrimary)
+                    TextField("Ask about this photo or your recovery...", text: $messageText)
+                        .font(.custom("PlusJakartaSans-Regular", size: 14))
+                        .foregroundColor(CC.text)
                         .disabled(viewModel.isLoading)
                         .focused($isTextFieldFocused)
                         .onSubmit {
@@ -488,33 +586,87 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 14)
-                .background(Theme.Colors.inputBackground)
-                .cornerRadius(Theme.CornerRadius.xlarge)
+                .background(CC.surface)
+                .cornerRadius(28)
                 .overlay(
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.xlarge)
-                        .stroke(Theme.Colors.iconCircleBackground, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 28)
+                        .stroke(CC.border, lineWidth: 1)
                 )
 
                 Button(action: sendMessage) {
-                    Image(systemName: "paperplane.fill")
-                        .font(.system(size: 20))
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 18, weight: .bold))
                         .foregroundColor(.white)
-                        .frame(width: 48, height: 48)
-                        .background((messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedImageData == nil) ? Theme.Colors.iconCircleBackground : Theme.Colors.primaryChat)
-                        .clipShape(Circle())
+                        .frame(width: 46, height: 46)
+                        .background((messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedImageData == nil) ? CC.cardStrong : CC.primary)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
                 .disabled((messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedImageData == nil) || viewModel.isLoading)
             }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.vertical, Theme.Spacing.md)
-            .background(Theme.Colors.backgroundChat)
-            .overlay(
-                Rectangle()
-                    .frame(height: 1)
-                    .foregroundColor(Theme.Colors.iconCircleBackground),
-                alignment: .top
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 28)
+                    .fill(CC.surface.opacity(0.92))
+                    .shadow(color: CC.shadow, radius: 20, x: 0, y: 6)
             )
+            .padding(.horizontal, 14)
+            .padding(.top, 6)
+            .padding(.bottom, 8)
+            .background(CC.bg)
         }
+    }
+
+    private var promptStarterRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Prompt Starters")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                        .foregroundColor(CC.muted)
+                        .textCase(.uppercase)
+                        .tracking(2)
+                    Text("Fast ways to ask")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                        .foregroundColor(CC.primaryInk)
+                }
+                Spacer()
+                Image(systemName: "sparkles")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(CC.primary)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(viewModel.starterPrompts, id: \.self) { prompt in
+                        Button {
+                            Task { await viewModel.sendMessage(prompt) }
+                        } label: {
+                            Text(prompt)
+                                .font(.custom("PlusJakartaSans-SemiBold", size: 13))
+                                .foregroundColor(CC.primaryInk)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 12)
+                                .background(CC.surface)
+                                .clipShape(Capsule())
+                                .overlay(
+                                    Capsule()
+                                        .stroke(CC.border, lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+        }
+        .padding(15)
+        .background(CC.card)
+        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22)
+                .stroke(CC.border, lineWidth: 1)
+        )
     }
 
 }

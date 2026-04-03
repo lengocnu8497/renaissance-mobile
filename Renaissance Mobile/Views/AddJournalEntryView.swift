@@ -32,6 +32,7 @@ struct AddJournalEntryView: View {
     // Entry fields
     @State private var entryDate = Date()
     @State private var notes = ""
+    @State private var painLevel = 0
     @State private var bruisingLevel = 0
     @State private var swellingLevel = 0
     @State private var rednessLevel = 0
@@ -399,6 +400,12 @@ struct AddJournalEntryView: View {
             Spacer()
 
             VStack(spacing: 12) {
+                metricRow(
+                    label: "Pain",
+                    icon: "bolt.fill",
+                    value: $painLevel,
+                    color: Color(hex: "#8E4C5C")
+                )
                 metricRow(
                     label: "Bruising",
                     icon: "drop.fill",
@@ -871,6 +878,7 @@ struct AddJournalEntryView: View {
                 entryDate: entryDate,
                 notes: trimmedNotes.isEmpty ? nil : trimmedNotes,
                 photoData: photoData,
+                painLevel: painLevel > 0 ? painLevel : nil,
                 bruisingLevel: bruisingLevel > 0 ? bruisingLevel : nil,
                 swellingLevel: swellingLevel > 0 ? swellingLevel : nil,
                 rednessLevel: rednessLevel > 0 ? rednessLevel : nil

@@ -129,12 +129,10 @@ struct SetReminderSheet: View {
                         retreatmentContent
                     }
                 }
-
-                Spacer(minLength: 0)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    footer
+                }
             }
-
-            // Pinned footer
-            footer
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.hidden)
@@ -201,7 +199,7 @@ struct SetReminderSheet: View {
         .animation(.easeInOut(duration: 0.2), value: reminderEnabled)
         .padding(.horizontal, 24)
         .padding(.top, 20)
-        .padding(.bottom, 100)
+        .padding(.bottom, 24)
     }
 
     // MARK: - Surgical Content
@@ -294,7 +292,7 @@ struct SetReminderSheet: View {
         }
         .padding(.horizontal, 24)
         .padding(.top, 20)
-        .padding(.bottom, 100)
+        .padding(.bottom, 24)
     }
 
     // MARK: - Footer

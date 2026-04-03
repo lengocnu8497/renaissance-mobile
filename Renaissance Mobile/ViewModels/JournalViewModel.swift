@@ -7,6 +7,44 @@ import Foundation
 import Observation
 import Supabase
 
+struct RecoveryScoreSnapshot {
+    let score: Int
+    let consistencyRate: Int
+    let symptomTrend: TrendDirection
+    let dayNumber: Int
+}
+
+struct SmartRecoveryAlert: Identifiable {
+    let id: String
+    let severity: FlagSeverity
+    let title: String
+    let message: String
+}
+
+struct JournalAlertSnapshot: Identifiable {
+    let id: String
+    let severity: FlagSeverity
+    let title: String
+    let body: String
+    let metric: String?
+    let source: Source
+
+    enum Source {
+        case weeklySummary
+        case localHeuristic
+    }
+}
+
+struct JournalWeeklyReportPreview {
+    let weekNumber: Int
+    let title: String
+    let subtitle: String
+    let statusLabel: String
+    let progress: Int
+    let actionTitle: String
+    let summary: WeeklySummary?
+}
+
 @Observable
 class JournalViewModel {
 
@@ -49,6 +87,8 @@ class JournalViewModel {
     var pendingProcedureName: String?
     /// Procedure ID bootstrapped from onboarding — used to show check-ins before the first journal entry exists
     var bootstrappedProcedureId: String?
+    /// Display name for the bootstrapped procedure (mirrors bootstrappedProcedureId)
+    var bootstrappedProcedureName: String?
     var hasGivenConsent: Bool {
         get { UserDefaults.standard.bool(forKey: "journal_photo_consent") }
         set { UserDefaults.standard.set(newValue, forKey: "journal_photo_consent") }
@@ -74,6 +114,7 @@ class JournalViewModel {
 
     /// Keys currently being generated
     var weeklySummaryGenerating: Set<String> = []
+    var weeklyStates: [String: [WeeklyCheckIn]] = [:]
 
     // MARK: - Services
 
@@ -99,11 +140,35 @@ class JournalViewModel {
 
         do {
             entries = try await journalService.fetchEntries(for: selectedProcedureId)
-            // Cache is loaded separately in loadCachedInsights(), called only after
-            // insightsEnabled is set to true by the subscription check.
             await bootstrapCheckInsIfNeeded()
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    func bootstrapWeeklyState(
+        procedureId: String,
+        procedureName: String,
+        startDate: Date
+    ) async {
+        if let existing = weeklyStates[procedureId], !existing.isEmpty {
+            return
+        }
+
+        do {
+            let states = try await weeklySummaryService.bootstrapWeeks(
+                procedureId: procedureId,
+                procedureName: procedureName,
+                startDate: startDate
+            )
+            weeklyStates[procedureId] = states
+            await WeeklyCheckInService.shared.scheduleNotifications(
+                for: states,
+                procedureName: procedureName
+            )
+        } catch {
+            print("Weekly state bootstrap failed for \(procedureName): \(error)")
         }
     }
 
@@ -140,6 +205,7 @@ class JournalViewModel {
         entryDate: Date,
         notes: String?,
         photoData: Data?,
+        painLevel: Int? = nil,
         bruisingLevel: Int? = nil,
         swellingLevel: Int? = nil,
         rednessLevel: Int? = nil
@@ -152,35 +218,47 @@ class JournalViewModel {
                 entryDate: entryDate,
                 notes: notes,
                 photoData: photoData,
+                painLevel: painLevel,
                 bruisingLevel: bruisingLevel,
                 swellingLevel: swellingLevel,
                 rednessLevel: rednessLevel
             )
             entries.insert(entry, at: 0)
             if !hasEverLoggedEntry { hasEverLoggedEntry = true }
+            // Once the user has a real journal entry, the persisted bootstrap is no longer needed.
+            if bootstrappedProcedureId == entry.procedureId {
+                bootstrappedProcedureId   = nil
+                bootstrappedProcedureName = nil
+                OnboardingStore.clearBootstrappedProcedure()
+            }
 
-            // Bootstrap weekly check-ins if this is the first entry for this procedure
-            let isFirstEntry = entries.filter { $0.procedureId == entry.procedureId }.count == 1
-            if isFirstEntry {
-                let checkIns = WeeklyCheckInService.shared.generateCheckIns(
+            let procedureEntries = entries.filter { $0.procedureId == entry.procedureId }
+            if procedureEntries.count == 1 {
+                await bootstrapWeeklyState(
                     procedureId: entry.procedureId,
                     procedureName: entry.procedureName,
                     startDate: entry.entryDateAsDate
                 )
-                WeeklyCheckInService.shared.saveCheckIns(checkIns)
-                Task {
-                    await WeeklyCheckInService.shared.scheduleNotifications(
-                        for: checkIns, procedureName: entry.procedureName
-                    )
-                }
             }
-            // Auto-fulfill any pending check-in for this procedure
-            if let pending = WeeklyCheckInService.shared.firstIncompleteCheckIn(for: entry.procedureId) {
-                WeeklyCheckInService.shared.markCompleted(
-                    weekNumber: pending.weekNumber,
-                    procedureId: entry.procedureId,
-                    entryId: entry.id
-                )
+
+            if let pending = firstIncompleteWeeklyState(for: entry.procedureId) {
+                do {
+                    try await weeklySummaryService.updateCompletion(
+                        procedureId: entry.procedureId,
+                        weekNumber: pending.weekNumber,
+                        entryId: entry.id
+                    )
+                    weeklyStates[entry.procedureId] = try await weeklySummaryService.fetchWeeklyStates(procedureId: entry.procedureId)
+                    if insightsEnabled {
+                        await refreshWeeklySummary(
+                            for: entry.procedureId,
+                            procedureName: entry.procedureName,
+                            weekNumber: pending.weekNumber
+                        )
+                    }
+                } catch {
+                    print("Weekly completion sync failed for \(entry.procedureName): \(error)")
+                }
             }
             return true
         } catch {
@@ -310,13 +388,224 @@ class JournalViewModel {
 
     /// AI insights for the procedure with the most entries.
     var primaryInsights: RecoveryInsights? {
-        guard let primaryId = groupedByProcedure.max(by: { $0.entries.count < $1.entries.count })?.entries.first?.procedureId else { return nil }
+        guard let primaryId = primaryProcedureId else { return nil }
         return insights[primaryId]
     }
 
     var isPrimaryGenerating: Bool {
-        guard let primaryId = groupedByProcedure.max(by: { $0.entries.count < $1.entries.count })?.entries.first?.procedureId else { return false }
+        guard let primaryId = primaryProcedureId else { return false }
         return insightsGenerating.contains(primaryId)
+    }
+
+    var hasLoggedToday: Bool {
+        let today = Self.isoDateFormatter.string(from: Date())
+        return entries.contains { $0.entryDate == today }
+    }
+
+    var primaryProcedureId: String? {
+        groupedByProcedure.max(by: { $0.entries.count < $1.entries.count })?.entries.first?.procedureId
+            ?? bootstrappedProcedureId
+    }
+
+    var primaryProcedureName: String? {
+        groupedByProcedure.max(by: { $0.entries.count < $1.entries.count })?.key
+            ?? bootstrappedProcedureName
+    }
+
+    var primaryProcedureEntries: [JournalEntry] {
+        guard let primaryProcedureId else { return [] }
+        return entries
+            .filter { $0.procedureId == primaryProcedureId }
+            .sorted { $0.dayNumber < $1.dayNumber }
+    }
+
+    var primaryRecoveryScore: RecoveryScoreSnapshot? {
+        let procedureEntries = primaryProcedureEntries
+        guard !procedureEntries.isEmpty else { return nil }
+
+        let allMetrics = procedureEntries.flatMap {
+            [$0.painLevel, $0.swellingLevel, $0.bruisingLevel, $0.rednessLevel]
+        }
+        .compactMap { $0 }
+        let burden = allMetrics.isEmpty ? 4.0 : allMetrics.reduce(0, +) / Double(allMetrics.count)
+        let consistencyRate = min(100, max(0, Int((Double(streak) / 7.0) * 100)))
+        let symptomScore = max(0, min(100, Int((10 - burden) * 10)))
+        let score = max(0, min(100, Int((Double(symptomScore) * 0.75) + (Double(consistencyRate) * 0.25))))
+
+        return RecoveryScoreSnapshot(
+            score: score,
+            consistencyRate: consistencyRate,
+            symptomTrend: trendDirection(for: procedureEntries),
+            dayNumber: procedureEntries.last?.dayNumber ?? 0
+        )
+    }
+
+    var primarySmartAlerts: [SmartRecoveryAlert] {
+        smartAlerts(for: primaryProcedureEntries)
+    }
+
+    var primaryPhotoTimeline: [JournalEntry] {
+        let photoEntries = primaryProcedureEntries.filter { $0.photoUrl != nil || $0.photoPath != nil }
+        guard !photoEntries.isEmpty else { return [] }
+
+        let sorted = photoEntries.sorted { $0.dayNumber < $1.dayNumber }
+        if sorted.count <= 3 { return sorted }
+
+        let middleIndex = sorted.count / 2
+        return [sorted.first, sorted[middleIndex], sorted.last].compactMap { $0 }
+    }
+
+    var primaryPainSeries: [Int] {
+        primaryProcedureEntries.compactMap { entry in
+            entry.painLevel.map { Int($0.rounded()) }
+        }
+    }
+
+    var latestEntry: JournalEntry? {
+        primaryProcedureEntries.max(by: { $0.entryDateAsDate < $1.entryDateAsDate })
+    }
+
+    func recentEntries(limit: Int = 3) -> [JournalEntry] {
+        Array(
+            primaryProcedureEntries
+                .sorted { $0.entryDateAsDate > $1.entryDateAsDate }
+                .prefix(limit)
+        )
+    }
+
+    var latestPainLevel: Int? {
+        latestEntry?.painLevel.map { Int($0.rounded()) }
+    }
+
+    var latestSwellingLevel: Int? {
+        latestEntry?.swellingLevel.map { Int($0.rounded()) }
+    }
+
+    var latestBruisingLevel: Int? {
+        latestEntry?.bruisingLevel.map { Int($0.rounded()) }
+    }
+
+    var latestRednessLevel: Int? {
+        latestEntry?.rednessLevel.map { Int($0.rounded()) }
+    }
+
+    func photoReelEntries(limit: Int = 6) -> [JournalEntry] {
+        Array(
+            primaryProcedureEntries
+                .filter { $0.photoUrl != nil || $0.photoPath != nil }
+                .sorted { $0.entryDateAsDate > $1.entryDateAsDate }
+                .prefix(limit)
+        )
+    }
+
+    var journalAlert: JournalAlertSnapshot? {
+        if let remoteAlert = bestWeeklyAlert {
+            return JournalAlertSnapshot(
+                id: remoteAlert.id,
+                severity: remoteAlert.severity,
+                title: remoteAlert.title,
+                body: [remoteAlert.explanation, remoteAlert.recommendedNextStep]
+                    .compactMap { $0 }
+                    .joined(separator: " "),
+                metric: remoteAlert.metric,
+                source: .weeklySummary
+            )
+        }
+
+        if let localAlert = primarySmartAlerts.sorted(by: Self.alertSeverityRank).first {
+            return JournalAlertSnapshot(
+                id: localAlert.id,
+                severity: localAlert.severity,
+                title: localAlert.title,
+                body: localAlert.message,
+                metric: nil,
+                source: .localHeuristic
+            )
+        }
+
+        return nil
+    }
+
+    var weeklyReportProgress: Int {
+        guard let previewWeekNumber else { return 0 }
+        if weeklySummary(for: previewWeekNumber) != nil { return 100 }
+
+        let entries = entries(forWeekNumber: previewWeekNumber)
+        guard let targetCheckIn = previewCheckIn else { return 0 }
+
+        if targetCheckIn.isCompleted {
+            return 90
+        }
+        guard !entries.isEmpty else { return 0 }
+
+        var progress = 0
+
+        progress += min(entries.count, 3) >= 3 ? 35 : Int((Double(entries.count) / 3.0) * 35.0)
+
+        let metricsLogs = entries.filter { $0.hasRecoveryMetrics }.count
+        progress += min(metricsLogs, 2) >= 2 ? 25 : Int((Double(metricsLogs) / 2.0) * 25.0)
+
+        let photoLogs = entries.contains { $0.photoUrl != nil || $0.photoPath != nil }
+        if photoLogs { progress += 20 }
+
+        let noteLogs = entries.filter {
+            guard let notes = $0.notes?.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+            return !notes.isEmpty
+        }.count
+        progress += min(noteLogs, 2) >= 2 ? 20 : Int((Double(noteLogs) / 2.0) * 20.0)
+
+        return min(progress, 100)
+    }
+
+    var weeklyReportPreview: JournalWeeklyReportPreview? {
+        guard let weekNumber = previewWeekNumber else { return nil }
+
+        if let readySummary = weeklySummary(for: weekNumber) {
+            return JournalWeeklyReportPreview(
+                weekNumber: readySummary.weekNumber,
+                title: "Week \(readySummary.weekNumber) report ready",
+                subtitle: readySummary.headline,
+                statusLabel: "Ready",
+                progress: 100,
+                actionTitle: "Open report",
+                summary: readySummary
+            )
+        }
+
+        let progress = weeklyReportProgress
+        let statusLabel: String
+        let title: String
+        let subtitle: String
+        let actionTitle: String
+
+        if let previewCheckIn, previewCheckIn.isCompleted {
+            statusLabel = "Processing"
+            title = "Week \(weekNumber) report is generating"
+            subtitle = "Your check-in is complete. We're turning this week's logs into a report now."
+            actionTitle = "View progress"
+        } else {
+            switch progress {
+            case 80...99:
+                statusLabel = "Almost ready"
+            case 40...79:
+                statusLabel = "Building"
+            default:
+                statusLabel = "Getting started"
+            }
+            title = "Week \(weekNumber) report \(statusLabel.lowercased())"
+            subtitle = "Your daily logs are shaping this week's recovery summary automatically."
+            actionTitle = "View progress"
+        }
+
+        return JournalWeeklyReportPreview(
+            weekNumber: weekNumber,
+            title: title,
+            subtitle: subtitle,
+            statusLabel: statusLabel,
+            progress: progress,
+            actionTitle: actionTitle,
+            summary: nil
+        )
     }
 
     // MARK: - Weekly Check-In
@@ -324,17 +613,13 @@ class JournalViewModel {
     /// Pending check-in for the primary procedure (most entries), if any.
     /// Falls back to bootstrappedProcedureId when no journal entries exist yet.
     var primaryPendingCheckIn: WeeklyCheckIn? {
-        let primaryId = groupedByProcedure
-            .max(by: { $0.entries.count < $1.entries.count })?
-            .entries.first?.procedureId
-            ?? bootstrappedProcedureId
-        guard let primaryId else { return nil }
-        return WeeklyCheckInService.shared.pendingCheckIn(for: primaryId)
+        guard let primaryId = primaryProcedureId else { return nil }
+        return firstIncompleteWeeklyState(for: primaryId)
     }
 
     /// All check-ins for a given procedure (for the progress strip).
     func checkIns(for procedureId: String) -> [WeeklyCheckIn] {
-        WeeklyCheckInService.shared.loadCheckIns(for: procedureId)
+        weeklyStates[procedureId] ?? []
     }
 
     /// Bootstrap check-ins for any procedure that has entries but no schedule yet.
@@ -342,17 +627,11 @@ class JournalViewModel {
     @MainActor
     func bootstrapCheckInsIfNeeded() async {
         for group in groupedByProcedure {
-            guard let earliest = group.entries.min(by: { $0.entryDateAsDate < $1.entryDateAsDate }),
-                  WeeklyCheckInService.shared.loadCheckIns(for: earliest.procedureId).isEmpty
-            else { continue }
-            let checkIns = WeeklyCheckInService.shared.generateCheckIns(
+            guard let earliest = group.entries.min(by: { $0.entryDateAsDate < $1.entryDateAsDate }) else { continue }
+            await bootstrapWeeklyState(
                 procedureId: earliest.procedureId,
                 procedureName: group.key,
                 startDate: earliest.entryDateAsDate
-            )
-            WeeklyCheckInService.shared.saveCheckIns(checkIns)
-            await WeeklyCheckInService.shared.scheduleNotifications(
-                for: checkIns, procedureName: group.key
             )
         }
     }
@@ -366,10 +645,9 @@ class JournalViewModel {
     /// Restores cached weekly summaries for all completed check-ins.
     /// Call after insightsEnabled is confirmed true.
     func loadCachedWeeklySummaries() {
-        guard insightsEnabled else { return }
         for group in groupedByProcedure {
             guard let procedureId = group.entries.first?.procedureId else { continue }
-            let checkIns = WeeklyCheckInService.shared.loadCheckIns(for: procedureId)
+            let checkIns = checkIns(for: procedureId)
             for checkIn in checkIns where checkIn.isCompleted {
                 let key = weeklySummaryKey(procedureId, checkIn.weekNumber)
                 if let cached = weeklySummaryService.fetchCached(
@@ -377,6 +655,22 @@ class JournalViewModel {
                 ) {
                     weeklySummaries[key] = cached
                 }
+            }
+        }
+    }
+
+    @MainActor
+    func loadRemoteWeeklySummaries() async {
+        for group in groupedByProcedure {
+            guard let procedureId = group.entries.first?.procedureId else { continue }
+            do {
+                let summaries = try await weeklySummaryService.fetchRemoteSummaries(procedureId: procedureId)
+                for summary in summaries {
+                    weeklySummaries[weeklySummaryKey(procedureId, summary.weekNumber)] = summary
+                }
+                weeklyStates[procedureId] = try await weeklySummaryService.fetchWeeklyStates(procedureId: procedureId)
+            } catch {
+                print("Remote weekly summary load failed for \(group.key): \(error)")
             }
         }
     }
@@ -394,15 +688,19 @@ class JournalViewModel {
 
         let procedureEntries = entries.filter { $0.procedureId == procedureId }
         guard !procedureEntries.isEmpty else { return }
+        guard let checkIn = checkIns(for: procedureId).first(where: { $0.weekNumber == weekNumber }) else { return }
 
         do {
             let summary = try await weeklySummaryService.generateSummary(
                 procedureId: procedureId,
                 procedureName: procedureName,
                 weekNumber: weekNumber,
+                scheduledDate: checkIn.scheduledDate,
+                completedEntryId: checkIn.completedEntryId,
                 entries: procedureEntries
             )
             weeklySummaries[key] = summary
+            weeklyStates[procedureId] = try await weeklySummaryService.fetchWeeklyStates(procedureId: procedureId)
         } catch {
             print("WeeklySummary generation failed wk\(weekNumber) \(procedureName): \(error)")
         }
@@ -446,6 +744,192 @@ class JournalViewModel {
             showAddEntry = true
         } else {
             showConsentBanner = true
+        }
+    }
+
+    func weeklySatisfaction(for procedureId: String, weekNumber: Int) -> Int? {
+        checkIns(for: procedureId)
+            .first(where: { $0.weekNumber == weekNumber })?
+            .satisfactionRating
+    }
+
+    func setWeeklySatisfaction(_ rating: Int, for procedureId: String, weekNumber: Int) {
+        Task { @MainActor in
+            do {
+                try await weeklySummaryService.updateSatisfaction(
+                    procedureId: procedureId,
+                    weekNumber: weekNumber,
+                    rating: rating
+                )
+                weeklyStates[procedureId] = try await weeklySummaryService.fetchWeeklyStates(procedureId: procedureId)
+                if let summary = weeklySummaries[weeklySummaryKey(procedureId, weekNumber)] {
+                    weeklySummaries[weeklySummaryKey(procedureId, weekNumber)] = WeeklySummary(
+                        weekNumber: summary.weekNumber,
+                        headline: summary.headline,
+                        observation: summary.observation,
+                        improvement: summary.improvement,
+                        concern: summary.concern,
+                        painTrend: summary.painTrend,
+                        swellingStatus: summary.swellingStatus,
+                        bruisingStatus: summary.bruisingStatus,
+                        rednessStatus: summary.rednessStatus,
+                        recoveryScore: summary.recoveryScore,
+                        consistencyRate: summary.consistencyRate,
+                        alerts: summary.alerts,
+                        metricPoints: summary.metricPoints,
+                        scheduledDate: summary.scheduledDate,
+                        completedEntryId: summary.completedEntryId,
+                        isCompleted: summary.isCompleted,
+                        satisfactionRating: rating,
+                        procedureId: summary.procedureId,
+                        generatedAt: summary.generatedAt
+                    )
+                }
+            } catch {
+                print("Weekly satisfaction sync failed: \(error)")
+            }
+        }
+    }
+
+    private func smartAlerts(for entries: [JournalEntry]) -> [SmartRecoveryAlert] {
+        guard !entries.isEmpty else { return [] }
+
+        var alerts: [SmartRecoveryAlert] = []
+
+        let recentPain = entries.compactMap(\.painLevel)
+        if isIncreasingThreeDays(recentPain) {
+            alerts.append(
+                SmartRecoveryAlert(
+                    id: "pain-rise",
+                    severity: .warning,
+                    title: "Pain is climbing",
+                    message: "Your pain has increased across your last 3 logs. This can happen during a tougher stretch, but if it rises again tomorrow, consider contacting your provider."
+                )
+            )
+        }
+
+        let recentSwelling = entries.compactMap(\.swellingLevel)
+        if isIncreasingThreeDays(recentSwelling) {
+            alerts.append(
+                SmartRecoveryAlert(
+                    id: "swelling-rise",
+                    severity: .warning,
+                    title: "Swelling is trending up",
+                    message: "Swelling has increased for 3 straight logs. If it worsens again tomorrow or feels sudden, check in with your provider."
+                )
+            )
+        }
+
+        let recentBruising = entries.compactMap(\.bruisingLevel)
+        if let last = recentBruising.last, last >= 7 {
+            alerts.append(
+                SmartRecoveryAlert(
+                    id: "bruising-high",
+                    severity: .info,
+                    title: "Bruising is still elevated",
+                    message: "Bruising is still on the higher side in your latest log. Keep tracking it so Rena can tell whether it is settling or lingering."
+                )
+            )
+        }
+
+        return alerts
+    }
+
+    private func isIncreasingThreeDays(_ values: [Double]) -> Bool {
+        guard values.count >= 3 else { return false }
+        let recent = Array(values.suffix(3))
+        return recent[0] < recent[1] && recent[1] < recent[2]
+    }
+
+    private func firstIncompleteWeeklyState(for procedureId: String) -> WeeklyCheckIn? {
+        checkIns(for: procedureId)
+            .filter { !$0.isCompleted && $0.scheduledDate <= Date() }
+            .sorted { $0.weekNumber < $1.weekNumber }
+            .first
+    }
+
+    private var previewCheckIn: WeeklyCheckIn? {
+        if let primaryProcedureId {
+            let states = checkIns(for: primaryProcedureId).sorted { $0.weekNumber < $1.weekNumber }
+            return states.first(where: { !$0.isCompleted && $0.scheduledDate <= Date() })
+                ?? states.first(where: { !$0.isCompleted })
+                ?? states.last(where: { $0.isCompleted })
+        }
+        return nil
+    }
+
+    private var previewWeekNumber: Int? {
+        previewCheckIn?.weekNumber
+    }
+
+    private var latestWeeklySummary: WeeklySummary? {
+        guard let primaryProcedureId else { return nil }
+
+        return weeklySummaries
+            .values
+            .filter { $0.procedureId == primaryProcedureId }
+            .sorted { lhs, rhs in
+                if lhs.weekNumber == rhs.weekNumber {
+                    return lhs.generatedAt > rhs.generatedAt
+                }
+                return lhs.weekNumber > rhs.weekNumber
+            }
+            .first
+    }
+
+    private var bestWeeklyAlert: RecoveryAlert? {
+        if let previewWeekNumber, let activeSummary = weeklySummary(for: previewWeekNumber) {
+            return activeSummary.alerts.sorted(by: Self.alertSeverityRank).first
+        }
+        return latestWeeklySummary?.alerts.sorted(by: Self.alertSeverityRank).first
+    }
+
+    private func weeklySummary(for weekNumber: Int) -> WeeklySummary? {
+        guard let primaryProcedureId else { return nil }
+        return weeklySummaries[weeklySummaryKey(primaryProcedureId, weekNumber)]
+    }
+
+    private func entries(forWeekNumber weekNumber: Int) -> [JournalEntry] {
+        let startDay = max(0, (weekNumber - 1) * 7)
+        let endDay = (weekNumber * 7) - 1
+        return primaryProcedureEntries.filter { $0.dayNumber >= startDay && $0.dayNumber <= endDay }
+    }
+
+    private func trendDirection(for entries: [JournalEntry]) -> TrendDirection {
+        let latestBurden = metricBurden(for: entries.suffix(2))
+        let earlyBurden = metricBurden(for: entries.prefix(2))
+        let delta = latestBurden - earlyBurden
+        if delta <= -0.75 { return .improving }
+        if delta >= 0.75 { return .concerning }
+        return .stable
+    }
+
+    private func metricBurden<C: Collection>(for entries: C) -> Double where C.Element == JournalEntry {
+        let metrics = entries.flatMap { [$0.painLevel, $0.swellingLevel, $0.bruisingLevel, $0.rednessLevel] }
+            .compactMap { $0 }
+        guard !metrics.isEmpty else { return 4.0 }
+        return metrics.reduce(0, +) / Double(metrics.count)
+    }
+
+    private static let isoDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    private static func alertSeverityRank(_ lhs: RecoveryAlert, _ rhs: RecoveryAlert) -> Bool {
+        severityRank(lhs.severity) > severityRank(rhs.severity)
+    }
+
+    private static func alertSeverityRank(_ lhs: SmartRecoveryAlert, _ rhs: SmartRecoveryAlert) -> Bool {
+        severityRank(lhs.severity) > severityRank(rhs.severity)
+    }
+
+    private static func severityRank(_ severity: FlagSeverity) -> Int {
+        switch severity {
+        case .urgent: return 3
+        case .warning: return 2
+        case .info: return 1
         }
     }
 }
