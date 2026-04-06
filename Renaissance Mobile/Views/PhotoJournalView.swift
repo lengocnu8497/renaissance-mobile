@@ -11,33 +11,32 @@ import Supabase
 // MARK: - Design tokens — sourced directly from rena-journal-ai-insights.html
 
 private enum J {
-    static let pageBg        = Color(hex: "#FFF8F6")
-    static let primary       = Color(hex: "#8E4C5C")   // Mauve Berry – positive / progress
-    static let gradA         = Color(hex: "#6B3346")   // Hero gradient dark end
-    static let gradMid       = Color(hex: "#8E4C5C")   // Hero gradient mid stop (52%)
-    static let gradB         = Color(hex: "#B76E79")   // Rose Gold – concern / flag
-    static let accent        = Color(hex: "#C4929A")   // Dusty Rose – reminder / calendar active
-    static let textHi        = Color(hex: "#3D2B2E")
-    static let textLo        = Color(hex: "#B8A9AB")
-    static let card          = Color(hex: "#F8EDF0")
+    static let pageBg        = Color(hex: "#F6F7F2")
+    static let primary       = Color(hex: "#516048")   // green accent for actions / progress
+    static let gradA         = Color(hex: "#B07B7A")
+    static let gradMid       = Color(hex: "#C4929A")
+    static let gradB         = Color(hex: "#D8AAA8")
+    static let accent        = Color(hex: "#B07B7A")   // pink emphasis
+    static let roseSoft      = Color(hex: "#F1DDDA")
+    static let textHi        = Color(hex: "#1F261D")
+    static let textLo        = Color(hex: "#687064")
+    static let card          = Color(hex: "#EDF1E8")
     static let cardWhite     = Color.white
-    static let border        = Color(hex: "#C4929A").opacity(0.18)
+    static let border        = Color.black.opacity(0.05)
     // AI card tints
-    static let concernTint   = Color(hex: "#FEF0F2")
-    static let reminderTint  = Color(hex: "#FDF5F6")
-    static let positiveTint  = Color(hex: "#F8EDF0")
+    static let concernTint   = Color(hex: "#F7E6E3")
+    static let reminderTint  = Color(hex: "#F4E8E7")
+    static let positiveTint  = Color(hex: "#EDF1E8")
     // Dimmed primary (badges, arrow buttons)
-    static let primaryDim    = Color(hex: "#8E4C5C").opacity(0.10)
+    static let primaryDim    = Color(hex: "#516048").opacity(0.10)
     // Shadows  (blur values in HTML → SwiftUI radius ≈ blur/2)
-    static let shadowS       = (color: Color(hex: "#8E4C5C").opacity(0.07), radius: CGFloat(7),  x: CGFloat(0), y: CGFloat(2))
-    static let shadowHero    = (color: Color(hex: "#6B3346").opacity(0.30), radius: CGFloat(14), x: CGFloat(0), y: CGFloat(8))
+    static let shadowS       = (color: Color(red: 90/255, green: 103/255, blue: 80/255).opacity(0.08), radius: CGFloat(7),  x: CGFloat(0), y: CGFloat(2))
+    static let shadowHero    = (color: Color(red: 90/255, green: 103/255, blue: 80/255).opacity(0.12), radius: CGFloat(14), x: CGFloat(0), y: CGFloat(8))
     static let streakRadius: CGFloat = 999
     static let cardRadius: CGFloat = 18
     static let heroRadius: CGFloat = 24
     static let strokeWidth: CGFloat = 1
 }
-
-private struct AllEntriesRoute: Hashable {}
 
 /// Drives the SetReminderSheet presentation from an insights urgent-flag prompt.
 private struct ReminderPromptItem: Identifiable {
@@ -225,7 +224,8 @@ struct PhotoJournalView: View {
         ZStack {
             // Centered title
             Text("My Journal")
-                .font(.system(size: 22, weight: .regular, design: .serif))
+                .font(.custom("Manrope", size: 24))
+                .fontWeight(.bold)
                 .foregroundColor(J.textHi)
                 .frame(maxWidth: .infinity, alignment: .center)
 
@@ -289,30 +289,28 @@ struct PhotoJournalView: View {
                         .padding(.top, 2)
                 }
 
+                JournalWeeklyReportCard(
+                    preview: resolvedWeeklyPreview,
+                    onOpenReport: {
+                        guard let procedureId = vm.primaryProcedureId,
+                              let procedureName = vm.primaryProcedureName else { return }
+                        insightPresentation = InsightsPresentation(
+                            procedureId: procedureId,
+                            procedureName: procedureName,
+                            scrollAnchor: nil
+                        )
+                    }
+                )
+                .padding(.horizontal, 18)
+                .padding(.top, 10)
+
                 if vm.entries.isEmpty {
                     emptyEntriesSection
                         .padding(.horizontal, 18)
-                        .padding(.top, 10)
+                        .padding(.top, 12)
                 } else {
                     recentEntriesSection
-                        .padding(.top, 10)
-                }
-
-                if let preview = vm.weeklyReportPreview {
-                    JournalWeeklyReportCard(
-                        preview: preview,
-                        onOpenReport: {
-                            guard let procedureId = vm.primaryProcedureId,
-                                  let procedureName = vm.primaryProcedureName else { return }
-                            insightPresentation = InsightsPresentation(
-                                procedureId: procedureId,
-                                procedureName: procedureName,
-                                scrollAnchor: nil
-                            )
-                        }
-                    )
-                    .padding(.horizontal, 18)
-                    .padding(.top, 12)
+                        .padding(.top, 12)
                 }
 
                 JournalCalendarStrip(
@@ -329,13 +327,11 @@ struct PhotoJournalView: View {
                 .padding(.horizontal, 18)
                 .padding(.top, 4)
 
-                if !vm.photoReelEntries().isEmpty {
-                    JournalPhotoReelSection(entries: vm.photoReelEntries())
-                        .padding(.horizontal, 18)
-                        .padding(.top, 12)
-                }
+                JournalPhotoReelSection(entries: vm.photoReelEntries())
+                    .padding(.horizontal, 18)
+                    .padding(.top, 12)
 
-                Color.clear.frame(height: 40)
+                Color.clear.frame(height: 124)
             }
             .padding(.top, 2)
         }
@@ -352,7 +348,8 @@ struct PhotoJournalView: View {
 
             VStack(spacing: 6) {
                 Text(isNewUser ? "Your story starts here." : "Welcome back.")
-                    .font(.system(size: 18, weight: .regular, design: .serif))
+                    .font(.custom("Manrope", size: 22))
+                    .fontWeight(.bold)
                     .foregroundColor(J.textHi)
                     .multilineTextAlignment(.center)
 
@@ -361,28 +358,21 @@ struct PhotoJournalView: View {
                         ? "Log your first entry to begin tracking your recovery journey."
                         : "Ready to continue your story? Log an entry to keep your journey going."
                 )
-                .font(.custom("Outfit-Light", size: 13))
+                .font(.custom("PlusJakartaSans-Regular", size: 13))
                 .foregroundColor(J.textLo)
                 .multilineTextAlignment(.center)
-                .lineSpacing(3)
+                .lineSpacing(4)
             }
 
             // Primary CTA
             Button { vm.tapAddEntry() } label: {
                 Text(isNewUser ? "Begin Your Journey" : "Add Entry")
-                    .font(.custom("Outfit-SemiBold", size: 14))
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 14))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
                     .background(J.primary)
                     .cornerRadius(100)
-            }
-
-            // Secondary CTA
-            Button { } label: {
-                Text(isNewUser ? "Explore sample insights" : "Learn how it works")
-                    .font(.custom("Outfit-Regular", size: 13))
-                    .foregroundColor(J.accent)
             }
         }
         .frame(maxWidth: .infinity)
@@ -397,33 +387,47 @@ struct PhotoJournalView: View {
     // MARK: - Recent Entries Section
 
     private var recentEntriesSection: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HStack {
-                Text("Recent Entries")
-                    .font(.custom("Outfit-Regular", size: 10))
-                    .kerning(2.1)
-                    .foregroundColor(J.textHi)
-                    .textCase(.uppercase)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Recent Entries")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+                        .kerning(2.1)
+                        .foregroundColor(J.textLo)
+                        .textCase(.uppercase)
+
+                    Text("Latest logs")
+                        .font(.custom("Manrope", size: 20))
+                        .fontWeight(.bold)
+                        .foregroundColor(J.textHi)
+                }
+
                 Spacer()
+
                 NavigationLink(value: AllEntriesRoute()) {
                     Text("See all")
-                        .font(.custom("Outfit-SemiBold", size: 11))
-                        .foregroundColor(J.accent)
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 13))
+                        .foregroundColor(J.primary)
                 }
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 18)
 
-            VStack(spacing: 7) {
-                ForEach(sortedEntries) { entry in
+            VStack(spacing: 12) {
+                ForEach(Array(sortedEntries.enumerated()), id: \.element.id) { index, entry in
                     NavigationLink(value: entry.id) {
-                        CompactEntryRow(entry: entry)
+                        CompactEntryRow(entry: entry, isEmphasized: index == 0)
                     }
                     .buttonStyle(.plain)
                     .contextMenu { deleteGroupButton(for: entry) }
                 }
             }
-            .padding(.horizontal, 18)
         }
+        .padding(18)
+        .background(Color.white.opacity(0.72))
+        .cornerRadius(28)
+        .overlay(RoundedRectangle(cornerRadius: 28).stroke(J.border, lineWidth: J.strokeWidth))
+        .shadow(color: J.shadowS.color, radius: J.shadowS.radius, x: J.shadowS.x, y: J.shadowS.y)
+        .padding(.horizontal, 18)
     }
 
     // MARK: - Helpers
@@ -441,6 +445,25 @@ struct PhotoJournalView: View {
 
     private var sortedEntries: [JournalEntry] {
         vm.recentEntries()
+    }
+
+    private var resolvedWeeklyPreview: JournalWeeklyReportPreview {
+        if let preview = vm.weeklyReportPreview {
+            return preview
+        }
+
+        let hasEntries = !vm.entries.isEmpty
+        return JournalWeeklyReportPreview(
+            weekNumber: 1,
+            title: hasEntries ? "Week 1 is almost ready." : "Week 1 is getting started.",
+            subtitle: hasEntries
+                ? "Add one more detailed log and your weekly report will auto-fill with trends and insights."
+                : "Keep logging daily and your weekly report will auto-fill with trends and insights.",
+            statusLabel: hasEntries ? "Building" : "Starting",
+            progress: hasEntries ? max(68, vm.weeklyReportProgress) : 18,
+            actionTitle: hasEntries ? "See preview" : "Keep logging",
+            summary: nil
+        )
     }
 
     private func isoDate(_ date: Date) -> String {
@@ -461,7 +484,7 @@ struct PhotoJournalView: View {
                 .single()
                 .execute()
                 .value
-            let subscribed = profile.billingPlan == .silver || profile.billingPlan == .gold
+            let subscribed = profile.billingPlan == .silver || profile.billingPlan == .gold || profile.billingPlan == .annual
             isSubscribed = subscribed
             vm.insightsEnabled = subscribed
 
@@ -627,378 +650,6 @@ struct PhotoJournalView: View {
                     trigger: trigger
                 )
                 center.add(request, withCompletionHandler: nil)
-            }
-        }
-    }
-}
-
-private struct JournalStreakStrip: View {
-    let streak: Int
-    let dayNumber: Int
-    let procedureName: String?
-
-    var body: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "flame.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(J.gradB)
-                Text(streak > 0 ? "\(streak)-day streak" : "Start your streak")
-                    .font(.custom("Outfit-SemiBold", size: 11))
-                    .foregroundColor(J.textHi)
-            }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 8)
-            .background(J.cardWhite)
-            .overlay(Capsule().stroke(J.border, lineWidth: J.strokeWidth))
-            .clipShape(Capsule())
-
-            Text(dayNumber > 0 ? "Day \(dayNumber)" : (procedureName ?? "Recovery journal"))
-                .font(.custom("Outfit-Regular", size: 11))
-                .foregroundColor(J.textLo)
-
-            Spacer()
-        }
-    }
-}
-
-private struct JournalTodayCard: View {
-    let latestEntry: JournalEntry?
-    let procedureName: String?
-    let onLogToday: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            Text("TODAY'S JOURNAL")
-                .font(.custom("Outfit-Regular", size: 9))
-                .kerning(2.2)
-                .foregroundColor(J.textLo)
-
-            Text(headline)
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundColor(J.textHi)
-                .lineSpacing(0)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text(subtitle)
-                .font(.custom("Outfit-Regular", size: 13))
-                .foregroundColor(J.textHi.opacity(0.72))
-                .lineSpacing(3)
-
-            HStack(spacing: 12) {
-                if let latestEntry, let notes = latestEntry.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty {
-                    Text(notes)
-                        .font(.custom("Outfit-Regular", size: 11))
-                        .foregroundColor(J.textLo)
-                        .lineLimit(2)
-                } else {
-                    Text("Add a photo, symptoms, or a quick note.")
-                        .font(.custom("Outfit-Regular", size: 11))
-                        .foregroundColor(J.textLo)
-                }
-
-                Spacer(minLength: 8)
-
-                Button(action: onLogToday) {
-                    Text("Log today")
-                        .font(.custom("Outfit-SemiBold", size: 12))
-                        .foregroundColor(J.textHi)
-                        .padding(.horizontal, 15)
-                        .padding(.vertical, 10)
-                        .background(J.cardWhite)
-                        .overlay(Capsule().stroke(J.border, lineWidth: J.strokeWidth))
-                        .clipShape(Capsule())
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 13)
-            .background(J.reminderTint)
-            .clipShape(RoundedRectangle(cornerRadius: J.cardRadius))
-        }
-        .padding(20)
-        .background(J.cardWhite)
-        .cornerRadius(J.heroRadius)
-        .overlay(RoundedRectangle(cornerRadius: J.heroRadius).stroke(J.border, lineWidth: J.strokeWidth))
-        .shadow(color: J.shadowS.color, radius: J.shadowS.radius, x: J.shadowS.x, y: J.shadowS.y)
-    }
-
-    private var headline: String {
-        if latestEntry != nil {
-            return "How are you healing today?"
-        }
-        return "Start today's recovery note."
-    }
-
-    private var subtitle: String {
-        if let procedureName {
-            return "Keep your \(procedureName.lowercased()) report building with one quick check-in."
-        }
-        return "A quick entry helps Rena track your healing rhythm over time."
-    }
-}
-
-private struct JournalPainTrendCard: View {
-    let painSeries: [Int]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Pain Trend")
-                .font(.custom("Outfit-Regular", size: 10))
-                .kerning(2.0)
-                .foregroundColor(J.textHi)
-                .textCase(.uppercase)
-
-            HStack(alignment: .bottom, spacing: 7) {
-                ForEach(chartValues.indices, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(index == chartValues.count - 1 ? J.primary : J.primary.opacity(0.22))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: max(CGFloat(chartValues[index]) * 10, 14))
-                }
-            }
-            .frame(height: 92, alignment: .bottom)
-            .padding(.top, 2)
-
-            Text(trendLabel)
-                .font(.custom("Outfit-Regular", size: 11))
-                .foregroundColor(J.textLo)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(15)
-        .background(J.cardWhite)
-        .cornerRadius(J.cardRadius)
-        .overlay(RoundedRectangle(cornerRadius: J.cardRadius).stroke(J.border, lineWidth: J.strokeWidth))
-    }
-
-    private var chartValues: [Int] {
-        let values = Array(painSeries.suffix(5))
-        return values.isEmpty ? [2, 4, 3, 2, 1] : values
-    }
-
-    private var trendLabel: String {
-        guard painSeries.count >= 2 else { return "Keep logging to reveal a trend." }
-        let recent = Array(painSeries.suffix(2))
-        if recent[1] < recent[0] { return "Pain is easing in your latest logs." }
-        if recent[1] > recent[0] { return "Pain is slightly higher in your latest logs." }
-        return "Pain is holding steady right now."
-    }
-}
-
-private struct JournalTodaySignalsCard: View {
-    let pain: Int?
-    let swelling: Int?
-    let bruising: Int?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Today's Signals")
-                .font(.custom("Outfit-Regular", size: 10))
-                .kerning(2.0)
-                .foregroundColor(J.textHi)
-                .textCase(.uppercase)
-
-            VStack(alignment: .leading, spacing: 12) {
-                signalRow("Pain", value: pain)
-                signalRow("Swelling", value: swelling)
-                signalRow("Bruising", value: bruising)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(15)
-        .background(J.cardWhite)
-        .cornerRadius(J.cardRadius)
-        .overlay(RoundedRectangle(cornerRadius: J.cardRadius).stroke(J.border, lineWidth: J.strokeWidth))
-    }
-
-    private func signalRow(_ label: String, value: Int?) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(label)
-                    .font(.custom("Outfit-Regular", size: 11))
-                    .foregroundColor(J.textLo)
-                Spacer()
-                Text(value.map { "\($0)/10" } ?? "--")
-                    .font(.custom("Outfit-SemiBold", size: 12))
-                    .foregroundColor(J.textHi)
-            }
-
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.9))
-                        .frame(height: 6)
-                    Capsule()
-                        .fill(progressColor(for: label))
-                        .frame(width: proxy.size.width * CGFloat((value ?? 0)) / 10.0, height: 6)
-                }
-            }
-            .frame(height: 6)
-        }
-    }
-
-    private func progressColor(for label: String) -> Color {
-        switch label {
-        case "Pain":
-            return Color(hex: "#4D7A58")
-        case "Swelling":
-            return J.gradB
-        default:
-            return J.primary
-        }
-    }
-}
-
-private struct JournalAlertCard: View {
-    let alert: JournalAlertSnapshot
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: alert.severity.systemImage)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(alert.severity == .warning || alert.severity == .urgent ? J.gradB : J.primary)
-                Text("Smart Recovery Alert")
-                    .font(.custom("Outfit-Regular", size: 10))
-                    .kerning(2.0)
-                    .foregroundColor(alert.severity == .warning || alert.severity == .urgent ? J.gradB : J.textHi)
-                    .textCase(.uppercase)
-            }
-
-            Text(alert.title)
-                .font(.custom("Outfit-SemiBold", size: 14))
-                .foregroundColor(J.textHi)
-
-            Text(alert.body)
-                .font(.custom("Outfit-Regular", size: 12))
-                .foregroundColor(J.textHi.opacity(0.72))
-                .lineSpacing(3)
-
-            if let metric = alert.metric {
-                Text(metric)
-                    .font(.custom("Outfit-SemiBold", size: 11))
-                    .foregroundColor(J.primary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(J.primaryDim)
-                    .clipShape(Capsule())
-            }
-        }
-        .padding(15)
-        .background(alert.severity == .warning || alert.severity == .urgent ? J.concernTint : J.positiveTint)
-        .cornerRadius(J.cardRadius)
-        .overlay(RoundedRectangle(cornerRadius: J.cardRadius).stroke(J.border, lineWidth: J.strokeWidth))
-    }
-}
-
-private struct JournalWeeklyReportCard: View {
-    let preview: JournalWeeklyReportPreview
-    let onOpenReport: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Weekly Report")
-                    .font(.custom("Outfit-Regular", size: 10))
-                    .kerning(2.0)
-                    .foregroundColor(J.textHi)
-                    .textCase(.uppercase)
-                Spacer()
-                Text(preview.statusLabel)
-                    .font(.custom("Outfit-SemiBold", size: 10))
-                    .foregroundColor(J.primary)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(J.primaryDim)
-                    .clipShape(Capsule())
-            }
-
-            Text(preview.title)
-                .font(.system(size: 26, weight: .bold, design: .rounded))
-                .foregroundColor(J.textHi)
-
-            Text(preview.subtitle)
-                .font(.custom("Outfit-Regular", size: 13))
-                .foregroundColor(J.textHi.opacity(0.72))
-                .lineSpacing(3)
-
-            VStack(alignment: .leading, spacing: 8) {
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(J.primary.opacity(0.12))
-                        .frame(height: 8)
-                    GeometryReader { proxy in
-                        Capsule()
-                            .fill(J.primary)
-                            .frame(width: proxy.size.width * CGFloat(preview.progress) / 100.0, height: 8)
-                    }
-                    .frame(height: 8)
-                }
-                .frame(height: 8)
-
-                Text("\(preview.progress)% built")
-                    .font(.custom("Outfit-Regular", size: 11))
-                    .foregroundColor(J.textLo)
-            }
-
-            Button(action: onOpenReport) {
-                HStack(spacing: 8) {
-                    Text(preview.actionTitle)
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 11, weight: .semibold))
-                }
-                .font(.custom("Outfit-SemiBold", size: 13))
-                .foregroundColor(.white)
-                .padding(.horizontal, 15)
-                .padding(.vertical, 10)
-                .background(J.primary)
-                .clipShape(Capsule())
-            }
-        }
-        .padding(17)
-        .background(J.cardWhite)
-        .cornerRadius(J.cardRadius)
-        .overlay(RoundedRectangle(cornerRadius: J.cardRadius).stroke(J.border, lineWidth: J.strokeWidth))
-        .shadow(color: J.shadowS.color, radius: J.shadowS.radius, x: J.shadowS.x, y: J.shadowS.y)
-    }
-}
-
-private struct JournalPhotoReelSection: View {
-    let entries: [JournalEntry]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Photo Reel")
-                .font(.custom("Outfit-Regular", size: 10))
-                .kerning(2.0)
-                .foregroundColor(J.textHi)
-                .textCase(.uppercase)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(entries) { entry in
-                        VStack(alignment: .leading, spacing: 8) {
-                            RoundedRectangle(cornerRadius: 18)
-                                .fill(J.card.opacity(0.9))
-                                .frame(width: 164, height: 146)
-                                .overlay(
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        Text("Day \(entry.dayNumber)")
-                                            .font(.custom("Outfit-SemiBold", size: 13))
-                                            .foregroundColor(J.textHi)
-                                        Text(entry.entryDate)
-                                            .font(.custom("Outfit-Regular", size: 11))
-                                            .foregroundColor(J.textLo)
-                                        Spacer()
-                                        Image(systemName: "photo.on.rectangle.angled")
-                                            .font(.system(size: 19, weight: .medium))
-                                            .foregroundColor(J.primary.opacity(0.55))
-                                    }
-                                    .padding(14)
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                                )
-                        }
-                    }
-                }
             }
         }
     }
@@ -1601,16 +1252,42 @@ private struct JournalCalendarStrip: View {
     }()
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(weekDates, id: \.self) { date in
-                dayCell(date: date)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Recovery calendar")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+                        .kerning(2.0)
+                        .foregroundColor(J.textLo)
+                        .textCase(.uppercase)
+                    Text("Your check-in rhythm")
+                        .font(.custom("Manrope", size: 24))
+                        .fontWeight(.bold)
+                        .foregroundColor(Color(hex: "#314030"))
+                }
+                Spacer()
+
+                Text("This week")
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+                    .foregroundColor(J.primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.white.opacity(0.82))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(J.border.opacity(0.7), lineWidth: J.strokeWidth))
+            }
+
+            HStack(spacing: 8) {
+                ForEach(weekDates, id: \.self) { date in
+                    dayCell(date: date)
+                }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 11)
+        .padding(18)
         .background(J.card)
-        .cornerRadius(14)
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(J.border.opacity(0.72), lineWidth: J.strokeWidth))
+        .cornerRadius(28)
+        .overlay(RoundedRectangle(cornerRadius: 28).stroke(J.border, lineWidth: J.strokeWidth))
+        .shadow(color: J.shadowS.color, radius: J.shadowS.radius, x: J.shadowS.x, y: J.shadowS.y)
     }
 
     private func dayCell(date: Date) -> some View {
@@ -1623,41 +1300,30 @@ private struct JournalCalendarStrip: View {
         let dayName = String(Self.dayNameFormatter.string(from: date).prefix(3))
         let isTappable = !isFuture
 
-        return VStack(alignment: .center, spacing: 5) {
-            // Day name (e.g. "Mon")
+        return VStack(alignment: .center, spacing: 8) {
             Text(dayName)
-                .font(.custom("Outfit-Regular", size: 9))
-                .foregroundColor(isToday ? J.primary : (isFuture ? J.textLo.opacity(0.4) : J.textLo))
-                .fontWeight(isToday ? .semibold : .regular)
+                .font(.custom("PlusJakartaSans-Regular", size: 10))
+                .foregroundColor(isToday && !hasEntry ? Color(hex: "#A85555") : (hasEntry ? J.primary : (isFuture ? J.textLo.opacity(0.4) : J.textLo)))
+                .fontWeight((isToday || hasEntry) ? .semibold : .regular)
 
-            // Day number — rounded square (borderRadius: 9) when active
-            ZStack {
-                if isToday {
-                    RoundedRectangle(cornerRadius: 9)
-                        .fill(J.accent)
-                        .frame(width: 30, height: 30)
-                        .shadow(color: J.accent.opacity(0.24), radius: 4, x: 0, y: 2)
-                } else if isTappable && hasEntry {
-                    // Past day with entry — subtle filled background
-                    RoundedRectangle(cornerRadius: 9)
-                        .fill(J.accent.opacity(0.12))
-                        .frame(width: 30, height: 30)
-                }
+            VStack(spacing: 8) {
                 Text("\(dayNum)")
-                    .font(.system(size: 13, weight: isToday ? .bold : .regular))
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 13))
                     .foregroundColor(
-                        isToday ? .white
+                        isToday && !hasEntry ? J.textHi
                         : isFuture ? J.textLo.opacity(0.35)
                         : hasEntry ? J.primary
                         : J.textLo
                     )
-            }
-            .frame(width: 30, height: 30)
 
-            // Entry dot
-            Circle()
-                .fill(hasEntry ? J.gradB : Color.clear)
-                .frame(width: 4, height: 4)
+                Circle()
+                    .fill(hasEntry ? J.primary : Color.clear)
+                    .frame(width: 4, height: 4)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 11)
+            .background(cellBackground(isToday: isToday, hasEntry: hasEntry, isFuture: isFuture))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
@@ -1666,69 +1332,92 @@ private struct JournalCalendarStrip: View {
             onDateTap?(date)
         }
     }
+
+    private func cellBackground(isToday: Bool, hasEntry: Bool, isFuture: Bool) -> Color {
+        if isToday && !hasEntry { return J.roseSoft }
+        if hasEntry { return Color.white.opacity(0.95) }
+        if isFuture { return Color.white.opacity(0.56) }
+        return Color.white.opacity(0.8)
+    }
 }
 
 // MARK: - Compact Entry Row
 
 private struct CompactEntryRow: View {
     let entry: JournalEntry
+    var isEmphasized: Bool = false
 
     private static let entryKeyFormatter: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "EEE · MMM d"; return f
+        let f = DateFormatter(); f.dateFormat = "MMM d"; return f
     }()
 
+    private var notePreview: String {
+        let trimmed = entry.notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "Your latest recovery notes will appear here." : trimmed
+    }
+
     var body: some View {
-        HStack(spacing: 0) {
-            // Left accent bar (clips to card corners via clipShape below)
-            Rectangle()
-                .fill(accentColor)
-                .frame(width: 4)
-
-            // Entry body
-            HStack(alignment: .center, spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Self.entryKeyFormatter.string(from: entry.entryDateAsDate) + (entry.dayNumber > 0 ? " · " + entry.dayLabel : ""))
-                        .font(.custom("Outfit-Regular", size: 8.5))
-                        .foregroundColor(J.textLo)
-
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(entry.procedureName)
-                        .font(.custom("Outfit-SemiBold", size: 13))
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 14))
                         .foregroundColor(J.textHi)
                         .lineLimit(1)
 
-                    if let notes = entry.notes, !notes.isEmpty {
-                        Text(notes)
-                            .font(.custom("Outfit-Regular", size: 10.5))
-                            .foregroundColor(J.textLo)
-                            .lineLimit(1)
-                    }
+                    Text("\(entry.dayLabel) • \(Self.entryKeyFormatter.string(from: entry.entryDateAsDate))")
+                        .font(.custom("PlusJakartaSans-Regular", size: 11))
+                        .foregroundColor(J.textLo)
                 }
 
                 Spacer()
 
-                // Circular arrow button (#8E4C5C dimmed bg)
-                ZStack {
-                    Circle()
-                        .fill(J.primaryDim)
-                        .frame(width: 24, height: 24)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(J.primary)
+                if let badgeText {
+                    Text(badgeText)
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+                        .foregroundColor(Color(hex: "#314030"))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(badgeBackground)
+                        .clipShape(Capsule())
                 }
             }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 12)
-            .background(J.cardWhite)
+
+            Text(notePreview)
+                .font(.custom("PlusJakartaSans-Regular", size: 13))
+                .foregroundColor(J.textLo)
+                .lineSpacing(4)
+                .lineLimit(3)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 13))
-        .overlay(RoundedRectangle(cornerRadius: 13).stroke(J.border, lineWidth: J.strokeWidth))
+        .padding(16)
+        .background(cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 26))
+        .overlay(RoundedRectangle(cornerRadius: 26).stroke(J.border.opacity(0.75), lineWidth: J.strokeWidth))
         .shadow(color: J.shadowS.color, radius: J.shadowS.radius, x: J.shadowS.x, y: J.shadowS.y)
     }
 
-    private var accentColor: Color {
-        // Cycle accent bar through brand colors by procedure name hash
-        let colors: [Color] = [J.gradB, J.primary, J.accent, Color(hex: "#D4C4C6")]
-        return colors[abs(entry.procedureName.hashValue) % colors.count]
+    private var badgeText: String? {
+        if Calendar.current.isDateInToday(entry.entryDateAsDate) {
+            return "today"
+        }
+        if entry.photoUrl != nil || entry.photoPath != nil {
+            return "photo saved"
+        }
+        return nil
+    }
+
+    private var badgeBackground: Color {
+        if badgeText == "photo saved" {
+            return J.roseSoft
+        }
+        return Color.white.opacity(0.92)
+    }
+
+    private var cardBackground: Color {
+        if entry.photoUrl != nil || entry.photoPath != nil {
+            return Color(hex: "#E1E7DA")
+        }
+        return isEmphasized ? J.card : Color.white
     }
 }
 

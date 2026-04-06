@@ -31,6 +31,7 @@ class ChatViewModel {
 
     // Personalization context injected on the first AI call for procedure-context sessions
     private var userContextNote: String? = nil
+    private var shouldResetModelContext = false
 
     // Services
     private let databaseService: ChatDatabaseService
@@ -62,14 +63,11 @@ class ChatViewModel {
     }
 
     var chatTitle: String {
-        procedureContext?.name ?? "Ask Rena"
+        "Ask Rena"
     }
 
     var chatSubtitle: String {
-        if let procedure = procedureContext {
-            return "Questions and guidance for \(procedure.name.lowercased())"
-        }
-        return "Beauty concierge"
+        ""
     }
 
     var starterPrompts: [String] {
@@ -99,6 +97,7 @@ class ChatViewModel {
         procedureContext = nil
         consultationPrepOffered = false
         userContextNote = nil
+        shouldResetModelContext = false
 
         await createNewConversation()
     }
@@ -117,6 +116,7 @@ class ChatViewModel {
         quotaExceeded = false
         quotaExceededReason = nil
         userContextNote = nil
+        shouldResetModelContext = false
 
         // Fetch profile + most recent insight in parallel for context injection
         async let profileFetch: UserProfile? = try? profileService.getUserProfile()
@@ -149,6 +149,7 @@ class ChatViewModel {
         procedureContext = nil
         consultationPrepOffered = true  // don't offer prep again on existing sessions
         userContextNote = nil
+        shouldResetModelContext = false
 
         do {
             if let conversation = try await databaseService.getConversation(id: conversationId) {
@@ -252,7 +253,8 @@ class ChatViewModel {
 
         do {
             // Get the previous response ID from the last AI message
-            let previousResponseId = messages.last(where: { !$0.isFromUser })?.responseId
+            let ignoreConversationHistory = shouldResetModelContext
+            let previousResponseId = ignoreConversationHistory ? nil : messages.last(where: { !$0.isFromUser })?.responseId
 
             // On the first message of a procedure-context session, prepend the user's
             // personalization context to what the AI receives. The bubble still shows
@@ -273,9 +275,11 @@ class ChatViewModel {
             let response = try await callAIFunction(
                 userMessage: aiMessageText,
                 previousResponseId: previousResponseId,
+                ignoreConversationHistory: ignoreConversationHistory,
                 imageData: imageData,
                 conversationId: conversation.id
             )
+            shouldResetModelContext = response.resetContext
 
             let responseTime = Int(Date().timeIntervalSince(startTime) * 1000) // milliseconds
 
@@ -505,13 +509,16 @@ class ChatViewModel {
     private func callAIFunction(
         userMessage: String,
         previousResponseId: String?,
+        ignoreConversationHistory: Bool = false,
         imageData: Data? = nil,
         conversationId: UUID
     ) async throws -> ChatAIResponse {
         // Only send conversation history if we don't have a previousResponseId
         // (OpenAI maintains context via response ID, so history is redundant and wastes TPM)
         let conversationHistory: [ConversationMessage]?
-        if previousResponseId != nil {
+        if ignoreConversationHistory {
+            conversationHistory = nil
+        } else if previousResponseId != nil {
             conversationHistory = nil
         } else {
             // Trim to last 6 messages to avoid unbounded payload growth
@@ -600,8 +607,9 @@ class ChatViewModel {
         let model = json["model"] as? String
         let tokensUsed = json["tokens_used"] as? Int
         let generatedImageUrl = json["generated_image_url"] as? String
+        let resetContext = json["reset_context"] as? Bool ?? false
 
-        return ChatAIResponse(reply: fullText, responseId: finalResponseId, model: model, tokensUsed: tokensUsed, generatedImageUrl: generatedImageUrl, streamingMessageId: nil)
+        return ChatAIResponse(reply: fullText, responseId: finalResponseId, model: model, tokensUsed: tokensUsed, generatedImageUrl: generatedImageUrl, streamingMessageId: nil, resetContext: resetContext)
     }
 
     private func getCurrentTimestamp() -> String {
@@ -633,6 +641,7 @@ struct ChatAIResponse {
     let tokensUsed: Int?
     let generatedImageUrl: String? // DALL-E generated image URL
     let streamingMessageId: UUID? // ID of message created during delta streaming
+    let resetContext: Bool
 }
 
 // MARK: - Streaming Event Model

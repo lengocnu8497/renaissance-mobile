@@ -42,25 +42,6 @@ struct EditProfileView: View {
     // Service
     private let profileService = UserProfileService(supabase: supabase)
 
-    // Option lists mirroring onboarding
-    private let genderOptions     = ["Woman", "Man", "Non-binary", "Prefer not to say"]
-    private let ageRangeOptions   = ["Under 25", "25–34", "35–44", "45–54", "55+"]
-    private let raceOptions       = ["Asian", "Black / African American", "Hispanic / Latino",
-                                     "Middle Eastern", "White / Caucasian", "Multiracial", "Prefer not to say"]
-    private let goalOptions       = ["Look more refreshed", "Look younger", "Change a specific feature",
-                                     "Enhance my confidence", "Explore non-surgical first", "Just researching options"]
-    private let bodyAreaOptions   = ["Face", "Nose", "Eyes / Brow", "Lips", "Neck / Jawline",
-                                     "Breasts", "Abdomen / Waist", "Arms", "Thighs / Buttocks", "Full body"]
-    private let procedureOptions  = ["Rhinoplasty", "Facelift / Mini facelift", "Eyelid surgery",
-                                     "Breast augmentation", "Breast reduction / Lift",
-                                     "Body contouring / BBL", "Tummy tuck", "Botox / Fillers / Lasers", "Not sure yet"]
-    private let previousProcOpts  = ["None yet", "Rhinoplasty", "Facial surgery", "Breast surgery",
-                                     "Body contouring", "Botox / Fillers", "Other surgical"]
-    private let healthFlagOptions = ["No known sensitivities", "History of keloid scarring",
-                                     "Sensitive / eczema-prone skin", "Latex sensitivity",
-                                     "Blood thinners or clotting concerns", "Slower healing than average",
-                                     "Prefer not to say"]
-
     var body: some View {
         NavigationStack {
             ZStack {
@@ -167,19 +148,19 @@ struct EditProfileView: View {
                                 profileSectionHeader("About You")
                                     .padding(.horizontal, Theme.Spacing.xl)
 
-                                profileChipGroup(title: "Gender identity", options: genderOptions,
+                                profileChipGroup(title: "Gender identity", options: ProfileSelectionCatalog.genderOptions,
                                                  selected: gender.map { [$0] } ?? [], multiSelect: false) { val in
                                     gender = gender == val ? nil : val
                                 }
                                 .padding(.horizontal, Theme.Spacing.xl)
 
-                                profileChipGroup(title: "Age range", options: ageRangeOptions,
+                                profileChipGroup(title: "Age range", options: ProfileSelectionCatalog.ageRangeOptions,
                                                  selected: ageRange.map { [$0] } ?? [], multiSelect: false) { val in
                                     ageRange = ageRange == val ? nil : val
                                 }
                                 .padding(.horizontal, Theme.Spacing.xl)
 
-                                profileChipGroup(title: "Race / Ethnicity", options: raceOptions,
+                                profileChipGroup(title: "Race / Ethnicity", options: ProfileSelectionCatalog.raceOptions,
                                                  selected: raceEthnicity.map { [$0] } ?? [], multiSelect: false) { val in
                                     raceEthnicity = raceEthnicity == val ? nil : val
                                 }
@@ -189,21 +170,21 @@ struct EditProfileView: View {
                                     .padding(.horizontal, Theme.Spacing.xl)
 
                                 profileChipGroup(title: "What I'm hoping to achieve",
-                                                 options: goalOptions, selected: Array(aestheticGoals),
+                                                 options: ProfileSelectionCatalog.goalOptions, selected: Array(aestheticGoals),
                                                  multiSelect: true) { val in
                                     if aestheticGoals.contains(val) { aestheticGoals.remove(val) } else { aestheticGoals.insert(val) }
                                 }
                                 .padding(.horizontal, Theme.Spacing.xl)
 
                                 profileChipGroup(title: "Body areas of interest",
-                                                 options: bodyAreaOptions, selected: Array(bodyAreas),
+                                                 options: ProfileSelectionCatalog.bodyAreaOptions, selected: Array(bodyAreas),
                                                  multiSelect: true) { val in
                                     if bodyAreas.contains(val) { bodyAreas.remove(val) } else { bodyAreas.insert(val) }
                                 }
                                 .padding(.horizontal, Theme.Spacing.xl)
 
                                 profileChipGroup(title: "Procedures I'm considering",
-                                                 options: procedureOptions, selected: Array(proceduresOfInterest),
+                                                 options: ProfileSelectionCatalog.procedureOptions, selected: Array(proceduresOfInterest),
                                                  multiSelect: true) { val in
                                     if proceduresOfInterest.contains(val) { proceduresOfInterest.remove(val) } else { proceduresOfInterest.insert(val) }
                                 }
@@ -213,14 +194,14 @@ struct EditProfileView: View {
                                     .padding(.horizontal, Theme.Spacing.xl)
 
                                 profileChipGroup(title: "Procedures I've already had",
-                                                 options: previousProcOpts, selected: Array(previousProcedures),
+                                                 options: ProfileSelectionCatalog.previousProcedureOptions, selected: Array(previousProcedures),
                                                  multiSelect: true) { val in
                                     if previousProcedures.contains(val) { previousProcedures.remove(val) } else { previousProcedures.insert(val) }
                                 }
                                 .padding(.horizontal, Theme.Spacing.xl)
 
                                 profileChipGroup(title: "Health considerations",
-                                                 options: healthFlagOptions, selected: Array(healthFlags),
+                                                 options: ProfileSelectionCatalog.healthFlagOptions, selected: Array(healthFlags),
                                                  multiSelect: true) { val in
                                     if healthFlags.contains(val) { healthFlags.remove(val) } else { healthFlags.insert(val) }
                                 }
@@ -242,15 +223,9 @@ struct EditProfileView: View {
             }
             .navigationTitle("Edit Profile")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(Theme.Colors.textProfilePrimary)
-                    }
-                }
-            }
+            .navigationBarBackButtonHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
+            .forceUIKitNavigationBarHidden()
             .alert("Error", isPresented: $showError) {
                 Button("OK", role: .cancel) { }
             } message: {

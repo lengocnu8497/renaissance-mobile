@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 // MARK: - Color Extension for Hex Support
 extension Color {
@@ -53,5 +54,62 @@ struct RoundedCorner: Shape {
             cornerRadii: CGSize(width: radius, height: radius)
         )
         return Path(path.cgPath)
+    }
+}
+
+// MARK: - UIKit Navigation Bar Hiding
+private struct NavigationBarVisibilityController: UIViewControllerRepresentable {
+    let hidden: Bool
+
+    func makeUIViewController(context: Context) -> Controller {
+        Controller(hidden: hidden)
+    }
+
+    func updateUIViewController(_ uiViewController: Controller, context: Context) {
+        uiViewController.hidden = hidden
+        uiViewController.applyNavigationBarVisibility()
+    }
+
+    final class Controller: UIViewController {
+        var hidden: Bool
+
+        init(hidden: Bool) {
+            self.hidden = hidden
+            super.init(nibName: nil, bundle: nil)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated)
+            applyNavigationBarVisibility()
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            applyNavigationBarVisibility()
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            navigationController?.setNavigationBarHidden(false, animated: false)
+        }
+
+        func applyNavigationBarVisibility() {
+            navigationController?.setNavigationBarHidden(hidden, animated: false)
+            navigationController?.navigationBar.isHidden = hidden
+        }
+    }
+}
+
+extension View {
+    func forceUIKitNavigationBarHidden(_ hidden: Bool = true) -> some View {
+        background(
+            NavigationBarVisibilityController(hidden: hidden)
+                .frame(width: 0, height: 0)
+        )
     }
 }

@@ -8,9 +8,9 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @Environment(\.dismiss) private var dismiss
     @State private var userProfile: UserProfile?
     @State private var isLoadingProfile = true
+    @State private var usageViewModel = UsageViewModel()
     @State private var showCancelConfirmation = false
     @State private var isCanceling = false
     @State private var showCancelSuccess = false
@@ -41,15 +41,9 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(Theme.Colors.textProfilePrimary)
-                    }
-                }
-            }
+            .navigationBarBackButtonHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
+            .forceUIKitNavigationBarHidden()
             .alert("Cancel Subscription", isPresented: $showCancelConfirmation) {
                 Button("Cancel", role: .cancel) {}
                 Button("Confirm", role: .destructive) {
@@ -58,11 +52,16 @@ struct SettingsView: View {
             } message: {
                 Text("Are you sure you want to cancel your subscription? You will lose access to premium features at the end of your billing period.")
             }
-            .task { await loadProfile() }
+            .task { await loadData() }
         }
     }
 
     // MARK: - Profile Loading
+    private func loadData() async {
+        await loadProfile()
+        await usageViewModel.fetchUsage()
+    }
+
     private func loadProfile() async {
         isLoadingProfile = true
         defer { isLoadingProfile = false }
@@ -80,59 +79,73 @@ struct SettingsView: View {
     // MARK: - Subscription Section
     private var subscriptionSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            sectionHeader(title: "SUBSCRIPTION")
+            sectionHeader(title: "SETTINGS")
 
-            VStack(spacing: Theme.Spacing.lg) {
+            VStack(spacing: Theme.Spacing.md) {
                 if isLoadingProfile {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, Theme.Spacing.xl)
                 } else {
-                    // Current Plan
                     HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Current Plan")
-                                .font(.system(size: 14))
-                                .foregroundColor(Theme.Colors.textSecondary)
-
-                            Text(planDisplayName)
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundColor(Theme.Colors.textProfilePrimary)
-                        }
+                        Text(planDisplayName)
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(Theme.Colors.textProfilePrimary)
 
                         Spacer()
 
-                        if userProfile?.billingPlan == .silver || userProfile?.billingPlan == .gold || userProfile?.billingPlan == .annual {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 24))
-                                .foregroundColor(.green)
+                        if let status = userProfile?.subscriptionStatus, isPaidPlan {
+                            Text(statusDisplayName(for: status))
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(statusColor(for: status))
+                                .padding(.horizontal, Theme.Spacing.md)
+                                .padding(.vertical, Theme.Spacing.xs)
+                                .background(statusColor(for: status).opacity(0.12))
+                                .cornerRadius(Theme.CornerRadius.medium)
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.lg)
                     .padding(.vertical, Theme.Spacing.md)
 
-                    // Plan Details
-                    if let plan = userProfile?.billingPlan, plan == .silver || plan == .gold || plan == .annual {
+                    if !planHighlights.isEmpty {
                         Divider()
                             .padding(.horizontal, Theme.Spacing.lg)
 
-                        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                            planDetailRow(icon: "message.fill", text: planMessages)
-                            planDetailRow(icon: "photo.fill", text: planImages)
-                            planDetailRow(icon: "sparkles", text: planCredits)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: Theme.Spacing.sm) {
+                                ForEach(planHighlights, id: \.self) { highlight in
+                                    Text(highlight)
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(Theme.Colors.textProfilePrimary)
+                                        .padding(.horizontal, Theme.Spacing.md)
+                                        .padding(.vertical, Theme.Spacing.sm)
+                                        .background(Theme.Colors.backgroundProfile)
+                                        .cornerRadius(Theme.CornerRadius.medium)
+                                }
+                            }
+                            .padding(.horizontal, Theme.Spacing.lg)
+                        }
+                        .padding(.bottom, Theme.Spacing.md)
+                    }
+
+                    if isPaidPlan, usageViewModel.currentUsage != nil {
+                        Divider()
+                            .padding(.horizontal, Theme.Spacing.lg)
+
+                        usageSummaryRow
+                            .padding(.horizontal, Theme.Spacing.lg)
+                            .padding(.bottom, Theme.Spacing.md)
+                    } else if usageViewModel.isLoading, isPaidPlan {
+                        Divider()
+                            .padding(.horizontal, Theme.Spacing.lg)
+
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                            Spacer()
                         }
                         .padding(.horizontal, Theme.Spacing.lg)
                         .padding(.bottom, Theme.Spacing.md)
-
-                        // Subscription Status
-                        if let status = userProfile?.subscriptionStatus {
-                            Divider()
-                                .padding(.horizontal, Theme.Spacing.lg)
-
-                            subscriptionStatusView(status: status)
-                                .padding(.horizontal, Theme.Spacing.lg)
-                                .padding(.bottom, Theme.Spacing.md)
-                        }
                     }
                 }
             }
@@ -149,25 +162,7 @@ struct SettingsView: View {
     private var cancelSubscriptionButton: some View {
         VStack(spacing: Theme.Spacing.md) {
             // Only show cancel button for active paid subscriptions (not already canceled)
-            if (userProfile?.billingPlan == .silver || userProfile?.billingPlan == .gold || userProfile?.billingPlan == .annual) &&
-                userProfile?.subscriptionStatus != .canceled {
-                // Disclaimer note
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    HStack(alignment: .top, spacing: Theme.Spacing.sm) {
-                        Image(systemName: "info.circle")
-                            .font(.system(size: 14))
-                            .foregroundColor(Theme.Colors.textSecondary)
-
-                        Text("If AI credits have been used, your subscription cancellation will take effect at the end of your current billing period.")
-                            .font(.system(size: 13))
-                            .foregroundColor(Theme.Colors.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(Theme.Spacing.md)
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(Theme.CornerRadius.small)
-                }
-
+            if isPaidPlan && userProfile?.subscriptionStatus != .canceled {
                 Button(action: {
                     showCancelConfirmation = true
                 }) {
@@ -203,53 +198,23 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Helper Views
-    private func planDetailRow(icon: String, text: String) -> some View {
+    private var usageSummaryRow: some View {
         HStack(spacing: Theme.Spacing.sm) {
-            Image(systemName: icon)
+            Image(systemName: "sparkles")
                 .font(.system(size: 16))
-                .foregroundColor(Theme.Colors.textSecondary)
-                .frame(width: 20)
+                .foregroundColor(Theme.Colors.gold)
 
-            Text(text)
-                .font(.system(size: 14))
-                .foregroundColor(Theme.Colors.textSecondary)
-        }
-    }
-
-    @ViewBuilder
-    private func subscriptionStatusView(status: SubscriptionStatus) -> some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            Image(systemName: statusIcon(for: status))
-                .font(.system(size: 14))
-                .foregroundColor(statusColor(for: status))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Status: \(statusDisplayName(for: status))")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(statusColor(for: status))
-
-                if status == .canceled, let endDate = userProfile?.subscriptionCurrentPeriodEnd {
-                    Text("Access until \(formatDate(endDate))")
-                        .font(.system(size: 12))
-                        .foregroundColor(Theme.Colors.textSecondary)
-                }
-            }
+            Text(usageSummaryText)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(Theme.Colors.textProfilePrimary)
 
             Spacer()
-        }
-    }
 
-    private func statusIcon(for status: SubscriptionStatus) -> String {
-        switch status {
-        case .active:
-            return "checkmark.circle.fill"
-        case .canceled:
-            return "clock.fill"
-        case .pastDue:
-            return "exclamationmark.triangle.fill"
-        default:
-            return "questionmark.circle.fill"
+            if usageViewModel.daysUntilReset > 0 {
+                Text("\(usageViewModel.daysUntilReset)d")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Theme.Colors.textSecondary)
+            }
         }
     }
 
@@ -271,7 +236,7 @@ struct SettingsView: View {
         case .active:
             return "Active"
         case .canceled:
-            return "Cancels at end of billing period"
+            return "Canceled"
         case .pastDue:
             return "Past Due"
         case .trialing:
@@ -285,52 +250,50 @@ struct SettingsView: View {
         }
     }
 
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .long
-        formatter.timeStyle = .none
-        return formatter.string(from: date)
-    }
-
     // MARK: - Computed Properties
     private var planDisplayName: String {
-        guard let plan = userProfile?.billingPlan else { return "Free" }
+        userProfile?.billingPlan.displayName ?? "Free"
+    }
+
+    private var isPaidPlan: Bool {
+        guard let plan = userProfile?.billingPlan else { return false }
+        return plan == .silver || plan == .gold || plan == .annual
+    }
+
+    private var currentLimits: TierQuotaLimits? {
+        if let usage = usageViewModel.currentUsage {
+            return TierQuotaLimits(
+                messagesLimit: usage.messagesLimit,
+                imagesLimit: usage.imagesLimit,
+                creditsLimit: usage.creditsLimit
+            )
+        }
+
+        guard let plan = userProfile?.billingPlan else { return nil }
         switch plan {
-        case .free:   return "Free"
-        case .silver: return "Silver Plan"
-        case .gold:   return "Gold Plan"
-        case .annual: return "Annual Plan"
+        case .free:
+            return nil
+        case .silver:
+            return TierQuotaLimits.limits(for: .silver)
+        case .gold:
+            return TierQuotaLimits.limits(for: .gold)
+        case .annual:
+            return TierQuotaLimits.limits(for: .annual)
         }
     }
 
-    private var planMessages: String {
-        guard let plan = userProfile?.billingPlan else { return "Limited messages" }
-        switch plan {
-        case .free:   return "Limited messages"
-        case .silver: return "30 messages per month"
-        case .gold:   return "75 messages per month"
-        case .annual: return "75 messages per month"
-        }
+    private var planHighlights: [String] {
+        guard let limits = currentLimits else { return [] }
+        return [
+            "\(limits.messagesLimit) Messages",
+            "\(limits.imagesLimit) Images",
+            "\(limits.creditsLimit) Credits"
+        ]
     }
 
-    private var planImages: String {
-        guard let plan = userProfile?.billingPlan else { return "No image uploads" }
-        switch plan {
-        case .free:   return "No image uploads"
-        case .silver: return "5 images per month"
-        case .gold:   return "15 images per month"
-        case .annual: return "15 images per month"
-        }
-    }
-
-    private var planCredits: String {
-        guard let plan = userProfile?.billingPlan else { return "No AI credits" }
-        switch plan {
-        case .free:   return "No AI credits"
-        case .silver: return "80 AI credits per month"
-        case .gold:   return "210 AI credits per month"
-        case .annual: return "300 AI credits per month"
-        }
+    private var usageSummaryText: String {
+        guard let usage = usageViewModel.currentUsage else { return "" }
+        return "\(usage.creditsRemaining) Credits Remaining"
     }
 
     // MARK: - Cancel Subscription
@@ -343,7 +306,7 @@ struct SettingsView: View {
         if result.success {
             subscriptionEndDate = result.periodEndDate
             // Reload profile to reflect the updated status
-            await loadProfile()
+            await loadData()
             showCancelSuccess = true
         } else {
             cancelErrorMessage = subscriptionViewModel.errorMessage ?? "Failed to cancel subscription. Please try again."

@@ -27,6 +27,11 @@ class OnboardingPaymentViewModel {
     var monthlyPriceInfo: OnboardingPriceInfo?
     var weeklyPriceInfo: OnboardingPriceInfo?
 
+    // Current paywall surfaces use Silver / Gold / Annual naming.
+    var silverPriceInfo: OnboardingPriceInfo? { weeklyPriceInfo }
+    var goldPriceInfo: OnboardingPriceInfo? { monthlyPriceInfo }
+    var annualPriceInfo: OnboardingPriceInfo? { yearlyPriceInfo }
+
     // Set after a successful subscription creation — read by the view on .completed
     private(set) var lastCustomerId: String?
     private(set) var lastSubscriptionId: String?

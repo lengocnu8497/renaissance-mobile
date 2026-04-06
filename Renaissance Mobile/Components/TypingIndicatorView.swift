@@ -9,38 +9,42 @@ import SwiftUI
 
 struct TypingIndicatorView: View {
     var body: some View {
-        HStack(alignment: .bottom, spacing: Theme.Spacing.md) {
-            avatarView
-            thinkingBubble
+        HStack(alignment: .bottom, spacing: 10) {
+            RenaissanceAgentAvatar(size: 34)
+
+            HStack(spacing: 7) {
+                ForEach(0..<3, id: \.self) { index in
+                    Circle()
+                        .fill(Color(hex: "#7E8778").opacity(index == 1 ? 0.55 : 0.32))
+                        .frame(width: 7, height: 7)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 15)
+            .background(
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(Color.white)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .stroke(Color.black.opacity(0.05), lineWidth: 1)
+                    )
+            )
+            .clipShape(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 26,
+                    bottomLeadingRadius: 10,
+                    bottomTrailingRadius: 26,
+                    topTrailingRadius: 26
+                )
+            )
+
             Spacer()
         }
-    }
-
-    // MARK: - Subviews
-    private var avatarView: some View {
-        Circle()
-            .fill(Theme.Colors.primaryChat.opacity(0.3))
-            .frame(width: Theme.IconSize.avatar, height: Theme.IconSize.avatar)
-            .overlay(
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: Theme.IconSize.small))
-                    .foregroundColor(Theme.Colors.primaryChat)
-            )
-    }
-
-    private var thinkingBubble: some View {
-        Text("Thinking...")
-            .font(Theme.Typography.messageText)
-            .foregroundColor(Theme.Colors.textChatSecondary)
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.vertical, 14)
-            .background(Theme.Colors.conciergeBubble)
-            .cornerRadius(Theme.CornerRadius.medium)
-            .cornerRadius(2, corners: [.bottomLeft])
     }
 }
 
 #Preview {
     TypingIndicatorView()
         .padding()
+        .background(Color(hex: "#F6F7F2"))
 }

@@ -7,6 +7,17 @@
 
 import SwiftUI
 
+private enum PLV {
+    static let text = Color(hex: "#1F261D")
+    static let muted = Color(hex: "#687064")
+    static let primary = Color(hex: "#516048")
+    static let primaryInk = Color(hex: "#314030")
+    static let lightGlass = Color.white.opacity(0.78)
+    static let lightGlassStrong = Color(hex: "#FBFCF8").opacity(0.94)
+    static let stroke = Color.white.opacity(0.72)
+    static let shadow = Color(red: 90/255, green: 103/255, blue: 80/255).opacity(0.10)
+}
+
 struct ProceduresListView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
@@ -43,7 +54,6 @@ struct ProceduresListView: View {
 
             VStack(spacing: 0) {
                 header
-                searchBar
                 filterChips
                 proceduresList
                 Spacer()
@@ -68,7 +78,8 @@ struct ProceduresListView: View {
                     }
                     onSaveProcedure?(proc)
                 },
-                isSaved: savedProcedureIds.contains(procedure.id)
+                isSaved: savedProcedureIds.contains(procedure.id),
+                isSavedProcedure: { savedProcedureIds.contains($0) }
             )
         }
     }
@@ -83,41 +94,32 @@ struct ProceduresListView: View {
                     dismiss()
                 }
             }) {
-                Image(systemName: "arrow.left")
-                    .font(.system(size: 24))
-                    .foregroundColor(Theme.Colors.textProceduresPrimary)
-                    .frame(width: 48, height: 48)
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(PLV.primaryInk)
+                    .frame(width: 44, height: 44)
+                    .background(PLV.lightGlass, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(PLV.stroke, lineWidth: 1)
+                    )
             }
+            .buttonStyle(.plain)
 
             Spacer()
 
             Text("Explore Procedures")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(Theme.Colors.textProceduresPrimary)
+                .font(.custom("Manrope", size: 26))
+                .fontWeight(.heavy)
+                .foregroundColor(PLV.text)
 
             Spacer()
 
-            Color.clear.frame(width: 48, height: 48)
+            Color.clear.frame(width: 44, height: 44)
         }
         .padding(.horizontal, Theme.Spacing.lg)
         .padding(.top, Theme.Spacing.sm)
-    }
-
-    private var searchBar: some View {
-        HStack(spacing: 0) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 20))
-                .foregroundColor(Theme.Colors.textProceduresSubtle)
-                .frame(width: 48, height: 56)
-
-            TextField("Search for treatments...", text: $searchText)
-                .font(.system(size: 16))
-                .foregroundColor(Theme.Colors.textProceduresPrimary)
-        }
-        .background(Theme.Colors.cardBackground)
-        .cornerRadius(Theme.CornerRadius.medium)
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.vertical, Theme.Spacing.md)
+        .padding(.bottom, Theme.Spacing.sm)
     }
 
     private var filterChips: some View {
@@ -175,15 +177,24 @@ struct ProceduresListView: View {
                 ScrollView {
                     VStack(spacing: Theme.Spacing.lg) {
                         ForEach(displayedProcedures) { procedure in
-                            Button {
-                                selectedProcedure = procedure
-                            } label: {
-                                ProcedureListItemView(procedure: procedure)
-                                    .background(Theme.Colors.cardBackground)
-                                    .cornerRadius(Theme.CornerRadius.medium)
-                                    .shadow(color: Theme.Shadow.card.color, radius: Theme.Shadow.card.radius, x: Theme.Shadow.card.x, y: Theme.Shadow.card.y)
-                            }
-                            .buttonStyle(.plain)
+                            ProcedureListItemView(
+                                procedure: procedure,
+                                isSaved: savedProcedureIds.contains(procedure.id),
+                                onOpenDetails: {
+                                    selectedProcedure = procedure
+                                },
+                                onAskRena: {
+                                    onNavigateToChat?("Help me explore \(procedure.name) and decide whether it fits my goals.", procedure)
+                                },
+                                onToggleSave: {
+                                    if savedProcedureIds.contains(procedure.id) {
+                                        savedProcedureIds.remove(procedure.id)
+                                    } else {
+                                        savedProcedureIds.insert(procedure.id)
+                                    }
+                                    onSaveProcedure?(procedure)
+                                }
+                            )
                         }
                     }
                     .padding(.horizontal, Theme.Spacing.lg)
@@ -200,17 +211,17 @@ struct ProceduresListView: View {
                 onNavigateToChat?("I'd like help exploring procedures and finding the right treatment for me.", nil)
             } label: {
                 HStack(spacing: Theme.Spacing.md) {
-                    Image(systemName: "message.fill")
-                        .font(.system(size: 20))
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 18, weight: .semibold))
                     Text("Chat with a Concierge")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 15))
                 }
                 .foregroundColor(.white)
                 .padding(.horizontal, Theme.Spacing.xl)
                 .padding(.vertical, Theme.Spacing.lg)
-                .background(Theme.Colors.textProceduresPrimary)
+                .background(PLV.primary)
                 .cornerRadius(28)
-                .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                .shadow(color: PLV.shadow, radius: 14, x: 0, y: 8)
             }
             .padding(.bottom, 24)
         }

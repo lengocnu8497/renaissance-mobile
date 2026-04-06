@@ -30,6 +30,7 @@ struct OnboardingStore {
 
     // AI personalization context
     private static let genderKey               = "rena_onboarding_gender"
+    private static let zipCodeKey              = "rena_onboarding_zip_code"
     private static let ageRangeKey             = "rena_onboarding_age_range"
     private static let raceEthnicityKey        = "rena_onboarding_race_ethnicity"
     private static let aestheticGoalsKey       = "rena_onboarding_aesthetic_goals"
@@ -132,6 +133,7 @@ struct OnboardingStore {
     // MARK: - Pending User Context (AI personalization)
 
     static var pendingGender: String? { UserDefaults.standard.string(forKey: genderKey) }
+    static var pendingZipCode: String? { UserDefaults.standard.string(forKey: zipCodeKey) }
     static var pendingAgeRange: String? { UserDefaults.standard.string(forKey: ageRangeKey) }
     static var pendingRaceEthnicity: String? { UserDefaults.standard.string(forKey: raceEthnicityKey) }
     static var pendingAestheticGoals: [String] {
@@ -152,6 +154,7 @@ struct OnboardingStore {
 
     static func saveUserContext(
         gender: String?,
+        zipCode: String?,
         ageRange: String?,
         raceEthnicity: String?,
         aestheticGoals: [String],
@@ -162,6 +165,7 @@ struct OnboardingStore {
     ) {
         let ud = UserDefaults.standard
         if let v = gender { ud.set(v, forKey: genderKey) }
+        if let v = zipCode, !v.isEmpty { ud.set(v, forKey: zipCodeKey) }
         if let v = ageRange { ud.set(v, forKey: ageRangeKey) }
         if let v = raceEthnicity { ud.set(v, forKey: raceEthnicityKey) }
         ud.set(aestheticGoals, forKey: aestheticGoalsKey)
@@ -175,6 +179,7 @@ struct OnboardingStore {
     /// Safe to call on every sign-in — no-ops if nothing is pending.
     static func syncUserContextIfNeeded(using profileService: UserProfileService) async {
         let hasData = pendingGender != nil
+            || pendingZipCode != nil
             || pendingAgeRange != nil
             || pendingRaceEthnicity != nil
             || !pendingAestheticGoals.isEmpty
@@ -188,6 +193,7 @@ struct OnboardingStore {
         do {
             var profile = try await profileService.getUserProfile()
             if let v = pendingGender { profile.gender = v }
+            if let v = pendingZipCode { profile.zipCode = v }
             if let v = pendingAgeRange { profile.ageRange = v }
             if let v = pendingRaceEthnicity { profile.raceEthnicity = v }
             if !pendingAestheticGoals.isEmpty { profile.aestheticGoals = pendingAestheticGoals }
@@ -205,7 +211,7 @@ struct OnboardingStore {
 
     private static func clearUserContext() {
         let ud = UserDefaults.standard
-        [genderKey, ageRangeKey, raceEthnicityKey,
+        [genderKey, zipCodeKey, ageRangeKey, raceEthnicityKey,
          aestheticGoalsKey, proceduresOfInterestKey, previousProceduresKey,
          healthFlagsKey, bodyAreasKey].forEach { ud.removeObject(forKey: $0) }
     }

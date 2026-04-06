@@ -8,7 +8,6 @@
 import SwiftUI
 
 struct PasswordSecurityView: View {
-    @Environment(\.dismiss) private var dismiss
     @State private var showChangePassword = false
 
     var body: some View {
@@ -33,15 +32,9 @@ struct PasswordSecurityView: View {
             }
             .navigationTitle("Password & Security")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(Theme.Colors.textProfilePrimary)
-                    }
-                }
-            }
+            .navigationBarBackButtonHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
+            .forceUIKitNavigationBarHidden()
             .sheet(isPresented: $showChangePassword) {
                 ChangePasswordView()
             }

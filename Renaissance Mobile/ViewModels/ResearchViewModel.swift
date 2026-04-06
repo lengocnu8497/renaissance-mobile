@@ -166,13 +166,15 @@ class ResearchViewModel {
 
     // MARK: - Notes
 
-    func updateNotes(_ notes: String, for savedId: UUID) async {
-        guard let idx = savedProcedures.firstIndex(where: { $0.id == savedId }) else { return }
+    func updateNotes(_ notes: String, for savedId: UUID) async -> Bool {
+        guard let idx = savedProcedures.firstIndex(where: { $0.id == savedId }) else { return false }
         savedProcedures[idx].notes = notes
         do {
             try await savedService.updateNotes(notes, for: savedId)
+            return true
         } catch {
             print("Failed to update notes: \(error)")
+            return false
         }
     }
 

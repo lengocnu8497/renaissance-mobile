@@ -243,16 +243,16 @@ struct UserProfile: Identifiable, Codable {
 // MARK: - Billing Plan Enum
 enum BillingPlan: String, Codable {
     case free = "free"
-    case weekly = "weekly"
-    case monthly = "monthly"
-    case yearly = "yearly"
+    case silver = "silver"
+    case gold = "gold"
+    case annual = "annual"
 
     var displayName: String {
         switch self {
-        case .free:    return "Free"
-        case .weekly:  return "Weekly"
-        case .monthly: return "Monthly"
-        case .yearly:  return "Yearly"
+        case .free:   return "Free"
+        case .silver: return "Silver"
+        case .gold:   return "Gold"
+        case .annual: return "Annual"
         }
     }
 
@@ -270,6 +270,14 @@ struct Procedure: Identifiable, Codable, Hashable {
     let sortOrder: Int
 
     // Extended detail fields (Pre-Procedure Research)
+    var editorialSummary: String?
+    var defaultConsultQuestions: [String]?
+    var heroImageURL: String?
+    var thumbnailImageURL: String?
+    var mediaSource: String?
+    var mediaLicenseType: String?
+    var mediaAltText: String?
+    var usageRightsConfirmed: Bool?
     var whoItsFor: String?
     var recoveryOverview: String?
     var whatIsNormal: String?
@@ -287,6 +295,14 @@ struct Procedure: Identifiable, Codable, Hashable {
         case recoveryDurationLabel = "recovery_duration_label"
         case isSurgical = "is_surgical"
         case sortOrder = "sort_order"
+        case editorialSummary = "editorial_summary"
+        case defaultConsultQuestions = "default_consult_questions"
+        case heroImageURL = "hero_image_url"
+        case thumbnailImageURL = "thumbnail_image_url"
+        case mediaSource = "media_source"
+        case mediaLicenseType = "media_license_type"
+        case mediaAltText = "media_alt_text"
+        case usageRightsConfirmed = "usage_rights_confirmed"
         case whoItsFor = "who_its_for"
         case recoveryOverview = "recovery_overview"
         case whatIsNormal = "what_is_normal"
@@ -329,6 +345,18 @@ struct SavedProcedure: Identifiable, Codable, Hashable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        userId = try container.decode(UUID.self, forKey: .userId)
+        procedureId = try container.decode(UUID.self, forKey: .procedureId)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        questions = try container.decodeIfPresent([String].self, forKey: .questions) ?? []
+        conversationIds = try container.decodeIfPresent([UUID].self, forKey: .conversationIds) ?? []
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    }
 }
 
 // MARK: - Subscription Models
@@ -357,9 +385,9 @@ enum SubscriptionStatus: String, Codable {
 }
 
 enum SubscriptionTier: String, Codable {
-    case weekly
-    case monthly
-    case yearly
+    case silver
+    case gold
+    case annual
 }
 
 // MARK: - Transaction Model

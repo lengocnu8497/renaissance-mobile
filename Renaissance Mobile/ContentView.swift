@@ -44,9 +44,6 @@ struct ContentView: View {
             )
             .tag(1)
 
-            Color.clear
-                .tag(2)
-
             PhotoJournalView(addEntryTrigger: $journalAddTrigger, onBackButtonTapped: {
                 selectedTab = 0
             })
@@ -75,13 +72,9 @@ struct ContentView: View {
             ProfileTabView(selectedTab: $selectedTab)
                 .tag(5)
         }
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
         .buttonStyle(TickButtonStyle())
-        .onChange(of: selectedTab) { _, newTab in
-            if newTab == 2 {
-                selectedTab = 3
-                journalAddTrigger = true
-            }
-        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if selectedTab != 1 && selectedTab != 5 {
                 customTabBar
@@ -105,21 +98,26 @@ struct ContentView: View {
 
     private var customTabBar: some View {
         HStack(spacing: 0) {
-            navItem(icon: selectedTab == 0 ? "house.fill" : "house", label: "Home", tag: 0)
+            navItem(icon: "house", label: "Home", tag: 0)
             navItem(icon: "bubble.left", label: "Chats", tag: 1)
-            navItem(icon: selectedTab == 3 ? "doc.text.fill" : "doc.text", label: "Journal", tag: 3)
-            navItem(icon: selectedTab == 4 ? "bookmark.fill" : "bookmark", label: "Research", tag: 4)
+            navItem(icon: "doc.text", label: "Journal", tag: 3)
             navItem(icon: "person", label: "Profile", tag: 5)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 28))
-        .overlay(
-            RoundedRectangle(cornerRadius: 28)
-                .stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 1)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+        .background(
+            LinearGradient(
+                colors: [Color.white.opacity(0.95), Color(hex: "#F8F9F4").opacity(0.98)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
         )
-        .shadow(color: Color(hex: "#3D2B2E").opacity(0.13), radius: 16, x: 0, y: 4)
+        .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 34, style: .continuous)
+                .stroke(Color.white.opacity(0.72), lineWidth: 1)
+        )
+        .shadow(color: Color(hex: "#3D2B2E").opacity(0.12), radius: 18, x: 0, y: 4)
     }
 
     private func navItem(icon: String, label: String, tag: Int) -> some View {
@@ -127,16 +125,27 @@ struct ContentView: View {
         return Button {
             selectedTab = tag
         } label: {
-            VStack(spacing: 3) {
+            VStack(spacing: 5) {
                 Image(systemName: icon)
-                    .font(.system(size: 20, weight: isActive ? .semibold : .regular))
-                    .foregroundColor(isActive ? Color(hex: "#8E4C5C") : Color(hex: "#B8A9AB"))
+                    .font(.system(size: 20, weight: isActive ? .medium : .regular))
+                    .foregroundColor(isActive ? Color(hex: "#976769") : Color(hex: "#8D9288"))
                 Text(label)
-                    .font(.system(size: 9, weight: isActive ? .semibold : .regular))
-                    .foregroundColor(isActive ? Color(hex: "#8E4C5C") : Color(hex: "#B8A9AB"))
+                    .font(.system(size: 11, weight: isActive ? .semibold : .medium))
+                    .foregroundColor(isActive ? Color(hex: "#976769") : Color(hex: "#8D9288"))
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 11)
+            .background(
+                isActive
+                    ? LinearGradient(
+                        colors: [Color(hex: "#F4E2DF"), Color(hex: "#F8EFED")],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    : LinearGradient(colors: [.clear, .clear], startPoint: .top, endPoint: .bottom)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
-        .frame(maxWidth: .infinity)
         .buttonStyle(.plain)
     }
 }
@@ -179,9 +188,13 @@ struct ProfileTabView: View {
     @Binding var selectedTab: Int
 
     var body: some View {
-        ProfileView(onBackButtonTapped: {
-            selectedTab = 0
-        })
+        NavigationStack {
+            ProfileView(onBackButtonTapped: {
+                selectedTab = 0
+            })
+        }
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
     }
 }
 

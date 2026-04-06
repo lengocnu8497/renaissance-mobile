@@ -23,6 +23,8 @@ private enum CC {
     static let primary = Color(hex: "#516048")
     static let primaryInk = Color(hex: "#314030")
     static let primarySoft = Color(hex: "#D9E3CE")
+    static let rose = Color(hex: "#B07B7A")
+    static let roseSoft = Color(hex: "#F1DDDA")
     static let border = Color.black.opacity(0.05)
     static let shadow = Color(red: 90/255, green: 103/255, blue: 80/255).opacity(0.10)
 }
@@ -33,10 +35,8 @@ struct ChatView: View {
     @State private var messageText = ""
     @State private var selectedImage: PhotosPickerItem?
     @State private var selectedImageData: Data?
-    @State private var showImagePicker = false
     @State private var showQuotaExceeded = false
     @State private var subscriptionViewModel = SubscriptionViewModel()
-    @State private var paymentViewModel = PaymentViewModel()
     @State private var onboardingPaymentViewModel = OnboardingPaymentViewModel()
     @State private var showPaymentError = false
     @State private var paymentErrorMessage = ""
@@ -189,8 +189,8 @@ struct ChatView: View {
                 .execute()
                 .value
 
-            // If user doesn't have silver or gold, show subscription modal
-            if profile.billingPlan != .silver && profile.billingPlan != .gold {
+            // If user doesn't have an active paid tier, show subscription modal
+            if profile.billingPlan != .silver && profile.billingPlan != .gold && profile.billingPlan != .annual {
                 viewModel.quotaExceeded = true
                 viewModel.quotaExceededReason = "Subscribe to unlock AI chat and get personalized beauty recommendations"
                 viewModel.errorMessage = viewModel.quotaExceededReason
@@ -361,7 +361,7 @@ struct ChatView: View {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(CC.primaryInk)
-                        .frame(width: 42, height: 42)
+                        .frame(width: 44, height: 44)
                         .background(CC.surface)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                         .overlay(
@@ -372,16 +372,15 @@ struct ChatView: View {
 
                 Spacer()
 
-                // New Chat button
                 Button(action: {
                     Task {
                         await viewModel.startNewChat()
                     }
                 }) {
                     Image(systemName: "square.and.pencil")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 18, weight: .semibold))
                         .foregroundColor(CC.primaryInk)
-                        .frame(width: 42, height: 42)
+                        .frame(width: 44, height: 44)
                         .background(CC.surface)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                         .overlay(
@@ -392,20 +391,17 @@ struct ChatView: View {
                 .disabled(viewModel.isLoading || viewModel.isTyping)
             }
             .padding(.horizontal, 18)
-            .padding(.vertical, 14)
+            .padding(.top, 10)
+            .padding(.bottom, 14)
 
-            VStack(spacing: 3) {
-                Text(viewModel.chatTitle)
+            VStack(spacing: 4) {
+                Text("Ask Rena")
                     .font(.custom("Manrope", size: 25))
                     .fontWeight(.heavy)
                     .foregroundColor(CC.text)
-
-                Text(isOnline ? viewModel.chatSubtitle : "Offline")
-                    .font(.custom("PlusJakartaSans-Regular", size: 11))
-                    .foregroundColor(isOnline ? CC.primary : CC.muted)
             }
         }
-        .padding(.top, 52)
+        .padding(.top, 38)
         .background(CC.bg)
         .overlay(
             Rectangle()
@@ -418,7 +414,7 @@ struct ChatView: View {
     private var messagesList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(spacing: 18) {
+                VStack(spacing: 20) {
                     if !viewModel.starterPrompts.isEmpty {
                         promptStarterRow
                     }
@@ -452,7 +448,8 @@ struct ChatView: View {
                     }
                 }
                 .padding(.horizontal, 18)
-                .padding(.bottom, 18)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
                 .onChange(of: viewModel.messages.count) { _, _ in
                     if viewModel.checkAndOfferConsultationPrep() {
                         // Consultation prep offer just appeared — scroll to it
@@ -481,26 +478,18 @@ struct ChatView: View {
         Text("Today")
             .font(.custom("PlusJakartaSans-SemiBold", size: 10))
             .foregroundColor(CC.muted)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(CC.surface)
-            .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(CC.border, lineWidth: 1)
-            )
-            .padding(.top, 6)
+            .tracking(1.8)
+            .textCase(.uppercase)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(CC.surface.opacity(0.88))
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(CC.border, lineWidth: 1))
+            .padding(.top, 2)
     }
 
     private var disclaimer: some View {
-        Text("AI can make mistakes. Always consult with a board-certified plastic surgeon for medical advice.")
-            .font(.custom("PlusJakartaSans-Regular", size: 11))
-            .foregroundColor(CC.muted)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity)
-            .background(CC.bg)
+        EmptyView()
     }
 
     private var messageInput: some View {
@@ -545,69 +534,82 @@ struct ChatView: View {
                     Spacer()
                 }
                 .padding(.horizontal, 18)
-                .padding(.vertical, 10)
+                .padding(.top, 12)
+                .padding(.bottom, 2)
                 .background(CC.bg)
             }
 
-            HStack(alignment: .bottom, spacing: 12) {
-                PhotosPicker(selection: $selectedImage, matching: .images) {
-                    Image(systemName: "image")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundColor(CC.primary)
-                        .frame(width: 40, height: 40)
-                        .background(CC.card)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                }
-                .onChange(of: selectedImage) { _, newValue in
-                    Task {
-                        if let data = try? await newValue?.loadTransferable(type: Data.self) {
-                            selectedImageData = data
-                        }
+            VStack(spacing: 10) {
+                HStack(alignment: .bottom, spacing: 12) {
+                    PhotosPicker(selection: $selectedImage, matching: .images) {
+                        Image(systemName: "photo")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundColor(CC.primary)
+                            .frame(width: 46, height: 46)
+                            .background(CC.card)
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
-                }
-
-                HStack {
-                    TextField("Ask about this photo or your recovery...", text: $messageText)
-                        .font(.custom("PlusJakartaSans-Regular", size: 14))
-                        .foregroundColor(CC.text)
-                        .disabled(viewModel.isLoading)
-                        .focused($isTextFieldFocused)
-                        .onSubmit {
-                            sendMessage()
-                        }
-                        .onChange(of: isTextFieldFocused) { _, isFocused in
-                            if isFocused {
-                                // User tapped in the input box - check subscription
-                                Task {
-                                    await checkSubscriptionStatus()
-                                }
+                    .onChange(of: selectedImage) { _, newValue in
+                        Task {
+                            if let data = try? await newValue?.loadTransferable(type: Data.self) {
+                                selectedImageData = data
                             }
                         }
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 14)
-                .background(CC.surface)
-                .cornerRadius(28)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 28)
-                        .stroke(CC.border, lineWidth: 1)
-                )
+                    }
 
-                Button(action: sendMessage) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 46, height: 46)
-                        .background((messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedImageData == nil) ? CC.cardStrong : CC.primary)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                    HStack {
+                        TextField("Ask about this photo or your recovery...", text: $messageText)
+                            .font(.custom("PlusJakartaSans-Regular", size: 14))
+                            .foregroundColor(CC.text)
+                            .disabled(viewModel.isLoading)
+                            .focused($isTextFieldFocused)
+                            .onSubmit {
+                                sendMessage()
+                            }
+                            .onChange(of: isTextFieldFocused) { _, isFocused in
+                                if isFocused {
+                                    Task {
+                                        await checkSubscriptionStatus()
+                                    }
+                                }
+                            }
+                    }
+                    .padding(.horizontal, 18)
+                    .frame(height: 46)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(CC.border, lineWidth: 1)
+                    )
+
+                    Button(action: sendMessage) {
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 46, height: 46)
+                            .background((messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedImageData == nil) ? CC.cardStrong : CC.primary)
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+                    .disabled((messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedImageData == nil) || viewModel.isLoading)
                 }
-                .disabled((messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedImageData == nil) || viewModel.isLoading)
+
+                Text("Rena offers supportive guidance, not a diagnosis. Contact your provider for urgent concerns.")
+                    .font(.custom("PlusJakartaSans-Regular", size: 11))
+                    .foregroundColor(CC.muted)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 12)
             .background(
-                RoundedRectangle(cornerRadius: 28)
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .fill(CC.surface.opacity(0.92))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .stroke(Color.white.opacity(0.65), lineWidth: 1)
+                    )
                     .shadow(color: CC.shadow, radius: 20, x: 0, y: 6)
             )
             .padding(.horizontal, 14)
@@ -626,14 +628,9 @@ struct ChatView: View {
                         .foregroundColor(CC.muted)
                         .textCase(.uppercase)
                         .tracking(2)
-                    Text("Fast ways to ask")
-                        .font(.custom("PlusJakartaSans-SemiBold", size: 14))
-                        .foregroundColor(CC.primaryInk)
                 }
                 Spacer()
-                Image(systemName: "sparkles")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(CC.primary)
+                RenaissanceAgentAvatar(size: 26)
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -645,9 +642,9 @@ struct ChatView: View {
                             Text(prompt)
                                 .font(.custom("PlusJakartaSans-SemiBold", size: 13))
                                 .foregroundColor(CC.primaryInk)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 12)
-                                .background(CC.surface)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 13)
+                                .background(Color.white)
                                 .clipShape(Capsule())
                                 .overlay(
                                     Capsule()
@@ -660,7 +657,7 @@ struct ChatView: View {
                 .padding(.vertical, 1)
             }
         }
-        .padding(15)
+        .padding(16)
         .background(CC.card)
         .clipShape(RoundedRectangle(cornerRadius: 22))
         .overlay(

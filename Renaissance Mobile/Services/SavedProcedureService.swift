@@ -28,10 +28,19 @@ struct SavedProcedureService {
                           userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
         }
 
-        let body: [String: String] = [
-            "user_id": userId.uuidString.lowercased(),
-            "procedure_id": procedureId.uuidString.lowercased()
-        ]
+        struct SavePayload: Encodable {
+            let user_id: String
+            let procedure_id: String
+            let questions: [String]
+            let conversation_ids: [String]
+        }
+
+        let body = SavePayload(
+            user_id: userId.uuidString.lowercased(),
+            procedure_id: procedureId.uuidString.lowercased(),
+            questions: [],
+            conversation_ids: []
+        )
         return try await supabase.database
             .from("saved_procedures")
             .insert(body)

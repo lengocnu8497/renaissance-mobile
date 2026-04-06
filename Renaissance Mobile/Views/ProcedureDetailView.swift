@@ -5,12 +5,29 @@
 
 import SwiftUI
 
+private enum PDC {
+    static let shell = Color(hex: "#EEF1E8")
+    static let bg = Color(hex: "#F6F7F2")
+    static let surface = Color(hex: "#FBFCF8")
+    static let card = Color(hex: "#EDF1E8")
+    static let cardStrong = Color(hex: "#E1E7DA")
+    static let text = Color(hex: "#1F261D")
+    static let muted = Color(hex: "#687064")
+    static let primary = Color(hex: "#516048")
+    static let primaryInk = Color(hex: "#314030")
+    static let primarySoft = Color(hex: "#D9E3CE")
+    static let roseSoft = Color(hex: "#F1DDDA")
+    static let shadow = Color(red: 90/255, green: 103/255, blue: 80/255).opacity(0.10)
+    static let border = Color.black.opacity(0.05)
+}
+
 struct ProcedureDetailView: View {
     let procedure: Procedure
     var allProcedures: [Procedure] = []
     var onNavigateToChat: ((String, Procedure) -> Void)?
     var onSaveProcedure: ((Procedure) -> Void)?
     var isSaved: Bool = false
+    var isSavedProcedure: ((UUID) -> Bool)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var showShareSheet = false
@@ -18,30 +35,62 @@ struct ProcedureDetailView: View {
     @State private var selectedRelated: Procedure?
 
     var body: some View {
-        ZStack(alignment: .top) {
-            Theme.Colors.pageBg.ignoresSafeArea()
+        ZStack {
+            PDC.shell.ignoresSafeArea()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    heroHeader
-                    contentSections
+                VStack(alignment: .leading, spacing: 18) {
+                    heroSection
+                        .padding(.horizontal, 18)
+                        .padding(.top, 18)
+
+                    if procedure.whoItsFor != nil || procedure.recoveryOverview != nil {
+                        overviewSection
+                            .padding(.horizontal, 18)
+                    }
+
+                    if !procedure.description.isEmpty {
+                        contentCard(title: "What It Is") {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(procedure.description)
+                                    .font(.custom("PlusJakartaSans-Regular", size: 14))
+                                    .foregroundColor(PDC.text.opacity(0.78))
+                                    .lineSpacing(4)
+                            }
+                        }
+                        .padding(.horizontal, 18)
+                    }
+
+                    if procedure.whatIsNormal != nil || procedure.whatToWatchFor != nil {
+                        expectationSection
+                            .padding(.horizontal, 18)
+                    }
+
                     relatedProcedures
-                    actionButtons
-                        .padding(.bottom, 40)
+                        .padding(.horizontal, 18)
+
+                    ctaButtons
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 24)
                 }
             }
-
-            // Floating nav bar
-            navBar
         }
         .navigationBarHidden(true)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            detailNavBar
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear
+                .frame(height: 112)
+        }
         .navigationDestination(item: $selectedRelated) { related in
             ProcedureDetailView(
                 procedure: related,
                 allProcedures: allProcedures,
                 onNavigateToChat: onNavigateToChat,
                 onSaveProcedure: onSaveProcedure,
-                isSaved: false
+                isSaved: isSavedProcedure?(related.id) ?? false,
+                isSavedProcedure: isSavedProcedure
             )
         }
         .sheet(isPresented: $showShareSheet) {
@@ -49,255 +98,266 @@ struct ProcedureDetailView: View {
         }
     }
 
-    // MARK: - Nav Bar
+    private var detailNavBar: some View {
+        ZStack {
+            HStack {
+                Button(action: { dismiss() }) {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color.white.opacity(0.96))
+                        .frame(width: 42, height: 42)
+                        .overlay(
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(PDC.primaryInk)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(PDC.border, lineWidth: 1)
+                        )
+                        .shadow(color: PDC.shadow, radius: 8, x: 0, y: 2)
+                }
+                .buttonStyle(.plain)
 
-    private var navBar: some View {
-        HStack {
-            Button { dismiss() } label: {
-                Circle()
-                    .fill(Color.white.opacity(0.92))
-                    .frame(width: 38, height: 38)
-                    .overlay(
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(Theme.Colors.textPrimary)
-                    )
-                    .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 2)
+                Spacer()
+
+                Button {
+                    shareText = sharePayloadText
+                    showShareSheet = true
+                } label: {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color.white.opacity(0.96))
+                        .frame(width: 42, height: 42)
+                        .overlay(
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(PDC.primaryInk)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(PDC.border, lineWidth: 1)
+                        )
+                        .shadow(color: PDC.shadow, radius: 8, x: 0, y: 2)
+                }
+                .buttonStyle(.plain)
             }
 
-            Spacer()
-
-            Button {
-                onSaveProcedure?(procedure)
-            } label: {
-                Circle()
-                    .fill(Color.white.opacity(0.92))
-                    .frame(width: 38, height: 38)
-                    .overlay(
-                        Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(isSaved ? Theme.Colors.primary : Theme.Colors.textPrimary)
-                    )
-                    .shadow(color: Color.black.opacity(0.08), radius: 6, x: 0, y: 2)
+            VStack(spacing: 2) {
+                Text("Open details")
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                    .tracking(2.1)
+                    .foregroundColor(PDC.muted)
+                    .textCase(.uppercase)
+                Text(procedure.name)
+                    .font(.custom("Manrope", size: 24))
+                    .fontWeight(.heavy)
+                    .foregroundColor(PDC.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
             }
+            .padding(.horizontal, 56)
         }
         .padding(.horizontal, 18)
-        .padding(.top, 56)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
+        .background(PDC.bg)
     }
 
-    // MARK: - Hero Header
-
-    private var heroHeader: some View {
-        ZStack(alignment: .bottomLeading) {
-            // Gradient background
-            Theme.Gradients.hero
-                .frame(height: 240)
-
-            // Decorative ring
-            Circle()
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                .frame(width: 200, height: 200)
-                .offset(x: 260, y: -40)
-
-            Circle()
-                .stroke(Color.white.opacity(0.05), lineWidth: 1)
-                .frame(width: 140, height: 140)
-                .offset(x: 290, y: 20)
-
-            VStack(alignment: .leading, spacing: 8) {
-                // Surgical / non-surgical badge
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(procedure.isSurgical ? Color(hex: "#EF4444").opacity(0.8) : Color(hex: "#10B981").opacity(0.8))
-                        .frame(width: 6, height: 6)
-                    Text(procedure.isSurgical ? "Surgical" : "Non-Surgical")
-                        .font(.custom("Outfit-SemiBold", size: 10))
-                        .tracking(1.5)
-                        .foregroundColor(.white.opacity(0.85))
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Color.white.opacity(0.12))
-                .clipShape(Capsule())
+    private var heroSection: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(procedure.category.uppercased())
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                    .tracking(2)
+                    .foregroundColor(PDC.muted)
 
                 Text(procedure.name)
-                    .font(.system(size: 30, weight: .light, design: .serif))
-                    .foregroundColor(.white)
+                    .font(.custom("Manrope", size: 34))
+                    .fontWeight(.heavy)
+                    .foregroundColor(PDC.text)
                     .fixedSize(horizontal: false, vertical: true)
 
-                // Category chip
-                Text(procedure.category)
-                    .font(.custom("Outfit-Regular", size: 12))
-                    .foregroundColor(.white.opacity(0.7))
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 24)
-        }
-    }
-
-    // MARK: - Content Sections
-
-    private var contentSections: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Description
-            detailSection(icon: "text.alignleft", title: "What It Is") {
-                Text(procedure.description)
-                    .font(.custom("Outfit-Light", size: 14))
-                    .foregroundColor(Theme.Colors.textPrimary)
+                Text(editorialSubtitle)
+                    .font(.custom("PlusJakartaSans-Regular", size: 15))
+                    .foregroundColor(PDC.text.opacity(0.78))
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            divider
-
-            // Who it's for
-            if let who = procedure.whoItsFor {
-                detailSection(icon: "person.fill", title: "Who It's For") {
-                    Text(who)
-                        .font(.custom("Outfit-Light", size: 14))
-                        .foregroundColor(Theme.Colors.textPrimary)
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                divider
-            }
-
-            // Recovery overview
-            if let recovery = procedure.recoveryOverview {
-                detailSection(icon: "calendar", title: "Recovery Timeline") {
-                    Text(recovery)
-                        .font(.custom("Outfit-Light", size: 14))
-                        .foregroundColor(Theme.Colors.textPrimary)
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    // Duration badge
-                    if !procedure.recoveryDurationLabel.isEmpty {
-                        HStack(spacing: 6) {
-                            Image(systemName: "clock")
-                                .font(.system(size: 11))
-                            Text(procedure.recoveryDurationLabel)
-                                .font(.custom("Outfit-SemiBold", size: 12))
-                        }
-                        .foregroundColor(Theme.Colors.primary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Theme.Colors.primary.opacity(0.08))
-                        .clipShape(Capsule())
-                        .padding(.top, 6)
-                    }
-                }
-                divider
-            }
-
-            // What's normal vs watch for — two-column style card
-            if procedure.whatIsNormal != nil || procedure.whatToWatchFor != nil {
-                normalVsWatchCard
-                divider
-            }
-
-            // Cost range
-            if let cost = procedure.costRangeDisplay {
-                detailSection(icon: "dollarsign.circle", title: "Typical Cost Range") {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(cost)
-                            .font(.system(size: 22, weight: .light, design: .serif))
-                            .foregroundColor(Theme.Colors.textPrimary)
-                        Text("Estimates vary by provider, location, and procedure scope. Always get multiple consultations.")
-                            .font(.custom("Outfit-Light", size: 12))
-                            .foregroundColor(Theme.Colors.textSecondary)
-                            .lineSpacing(3)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                divider
-            }
-        }
-        .background(Color.white)
-    }
-
-    // MARK: - Normal vs Watch For Card
-
-    private var normalVsWatchCard: some View {
-        VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: "list.clipboard")
-                    .font(.system(size: 13))
-                    .foregroundColor(Theme.Colors.primary)
-                Text("What to Expect")
-                    .font(.custom("Outfit-SemiBold", size: 14))
-                    .foregroundColor(Theme.Colors.textPrimary)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 14)
-
-            VStack(spacing: 12) {
-                // What's normal
-                if let normal = procedure.whatIsNormal {
-                    expectationBlock(
-                        icon: "checkmark.circle.fill",
-                        iconColor: Color(hex: "#10B981"),
-                        label: "WHAT'S NORMAL",
-                        tint: Color(hex: "#10B981").opacity(0.06),
-                        borderColor: Color(hex: "#10B981").opacity(0.18),
-                        text: normal
-                    )
+                if !procedure.recoveryDurationLabel.isEmpty {
+                    heroPill(procedure.recoveryDurationLabel)
                 }
-
-                // What to watch for
-                if let watch = procedure.whatToWatchFor {
-                    expectationBlock(
-                        icon: "exclamationmark.triangle.fill",
-                        iconColor: Color(hex: "#F59E0B"),
-                        label: "WHAT TO WATCH FOR",
-                        tint: Color(hex: "#F59E0B").opacity(0.06),
-                        borderColor: Color(hex: "#F59E0B").opacity(0.18),
-                        text: watch
-                    )
+                heroPill(procedure.isSurgical ? "Surgical" : "Non-Surgical")
+                if let cost = procedure.costRangeDisplay {
+                    heroPill(cost)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
+
+            HStack(spacing: 10) {
+                heroMetric("Status", isSaved ? "Saved" : "Unsaved")
+                heroMetric("Recovery", procedure.recoveryDurationLabel.isEmpty ? "Varies" : procedure.recoveryDurationLabel)
+                heroMetric("Type", procedure.isSurgical ? "Surgical" : "Non-Surgical")
+            }
+        }
+        .padding(24)
+        .background(Color.white)
+        .cornerRadius(30)
+        .overlay(RoundedRectangle(cornerRadius: 30).stroke(PDC.border, lineWidth: 1))
+        .shadow(color: PDC.shadow, radius: 10, x: 0, y: 3)
+    }
+
+    private func heroPill(_ text: String) -> some View {
+        Text(text)
+            .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+            .foregroundColor(PDC.primaryInk)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(PDC.card)
+            .clipShape(Capsule())
+    }
+
+    private func heroMetric(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased())
+                .font(.custom("PlusJakartaSans-SemiBold", size: 9))
+                .tracking(1.5)
+                .foregroundColor(PDC.muted)
+            Text(value)
+                .font(.custom("PlusJakartaSans-SemiBold", size: 15))
+                .foregroundColor(PDC.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .padding(.vertical, 11)
+        .padding(.horizontal, 12)
+        .background(PDC.card)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
+    private var overviewSection: some View {
+        HStack(alignment: .top, spacing: 12) {
+            if let whoItsFor = procedure.whoItsFor, !whoItsFor.isEmpty {
+                contentMiniCard(title: "Who It's For", tint: PDC.card) {
+                    Text(whoItsFor)
+                        .font(.custom("PlusJakartaSans-Regular", size: 13))
+                        .foregroundColor(PDC.text.opacity(0.78))
+                        .lineSpacing(3)
+                }
+            }
+
+            if let recoveryOverview = procedure.recoveryOverview, !recoveryOverview.isEmpty {
+                contentMiniCard(title: "Recovery Lens", tint: PDC.cardStrong) {
+                    Text(recoveryOverview)
+                        .font(.custom("PlusJakartaSans-Regular", size: 13))
+                        .foregroundColor(PDC.text.opacity(0.78))
+                        .lineSpacing(3)
+                }
+            }
         }
     }
 
-    private func expectationBlock(icon: String, iconColor: Color, label: String, tint: Color, borderColor: Color, text: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 12))
-                    .foregroundColor(iconColor)
-                Text(label)
-                    .font(.custom("Outfit-SemiBold", size: 9))
-                    .tracking(2)
-                    .foregroundColor(iconColor)
-            }
-            Text(text)
-                .font(.custom("Outfit-Light", size: 13))
-                .foregroundColor(Theme.Colors.textPrimary)
-                .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
+    private func contentMiniCard<Content: View>(
+        title: String,
+        tint: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                .tracking(2.1)
+                .foregroundColor(PDC.muted)
+                .textCase(.uppercase)
+
+            content()
         }
-        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
         .background(tint)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(borderColor, lineWidth: 1))
-        .cornerRadius(12)
+        .cornerRadius(24)
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(PDC.border, lineWidth: 1))
+        .shadow(color: PDC.shadow.opacity(0.7), radius: 8, x: 0, y: 2)
     }
 
-    // MARK: - Related Procedures
+    private func contentCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title)
+                .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                .tracking(2.1)
+                .foregroundColor(PDC.muted)
+                .textCase(.uppercase)
+
+            content()
+        }
+        .padding(20)
+        .background(Color.white)
+        .cornerRadius(26)
+        .overlay(RoundedRectangle(cornerRadius: 26).stroke(PDC.border, lineWidth: 1))
+        .shadow(color: PDC.shadow, radius: 10, x: 0, y: 3)
+    }
+
+    private var expectationSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("What To Expect")
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                    .tracking(2.1)
+                    .foregroundColor(PDC.muted)
+                    .textCase(.uppercase)
+
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                if let normal = procedure.whatIsNormal {
+                    expectationCard(
+                        title: "Normal",
+                        text: normal,
+                        tint: PDC.card,
+                        accent: Color(hex: "#4D7A58")
+                    )
+                }
+                if let watch = procedure.whatToWatchFor {
+                    expectationCard(
+                        title: "Watch For",
+                        text: watch,
+                        tint: PDC.roseSoft,
+                        accent: Color(hex: "#A85555")
+                    )
+                }
+            }
+        }
+    }
+
+    private func expectationCard(title: String, text: String, tint: Color, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title.uppercased())
+                .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                .tracking(1.8)
+                .foregroundColor(accent)
+
+            Text(text)
+                .font(.custom("PlusJakartaSans-Regular", size: 13))
+                .foregroundColor(PDC.text.opacity(0.78))
+                .lineSpacing(3)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(tint)
+        .cornerRadius(24)
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(PDC.border, lineWidth: 1))
+    }
 
     @ViewBuilder
     private var relatedProcedures: some View {
         let related = relatedProcs
         if !related.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Related Procedures")
-                    .font(.custom("Outfit-SemiBold", size: 14))
-                    .foregroundColor(Theme.Colors.textPrimary)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 24)
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Related Procedures")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                        .tracking(2.1)
+                        .foregroundColor(PDC.muted)
+                        .textCase(.uppercase)
+                }
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
@@ -308,11 +368,8 @@ struct ProcedureDetailView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(.horizontal, 20)
                 }
-                .padding(.bottom, 8)
             }
-            .background(Theme.Colors.pageBg)
         }
     }
 
@@ -322,40 +379,39 @@ struct ProcedureDetailView: View {
     }
 
     private func relatedChip(_ proc: Procedure) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(proc.category)
-                .font(.custom("Outfit-Regular", size: 9))
-                .tracking(1)
-                .foregroundColor(Theme.Colors.textSecondary)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(proc.category.uppercased())
+                .font(.custom("PlusJakartaSans-SemiBold", size: 9))
+                .tracking(1.8)
+                .foregroundColor(PDC.muted)
 
             Text(proc.name)
-                .font(.custom("Outfit-SemiBold", size: 13))
-                .foregroundColor(Theme.Colors.textPrimary)
+                .font(.custom("Manrope", size: 21))
+                .fontWeight(.bold)
+                .foregroundColor(PDC.text)
                 .lineLimit(2)
 
             if !proc.recoveryDurationLabel.isEmpty {
-                HStack(spacing: 3) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 9))
-                    Text(proc.recoveryDurationLabel)
-                        .font(.custom("Outfit-Light", size: 11))
-                }
-                .foregroundColor(Theme.Colors.textSecondary)
+                Text(proc.recoveryDurationLabel)
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+                    .foregroundColor(PDC.primaryInk)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(PDC.card)
+                    .clipShape(Capsule())
             }
         }
-        .frame(width: 140, alignment: .leading)
-        .padding(14)
+        .frame(width: 210)
+        .frame(minHeight: 136, alignment: .leading)
+        .padding(18)
         .background(Color.white)
-        .cornerRadius(14)
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.Colors.border, lineWidth: 1))
-        .shadow(color: Theme.Shadow.card.color, radius: Theme.Shadow.card.radius, x: 0, y: 2)
+        .cornerRadius(26)
+        .overlay(RoundedRectangle(cornerRadius: 26).stroke(PDC.border, lineWidth: 1))
+        .shadow(color: PDC.shadow, radius: 10, x: 0, y: 3)
     }
 
-    // MARK: - Action Buttons
-
-    private var actionButtons: some View {
+    private var ctaButtons: some View {
         VStack(spacing: 12) {
-            // Ask About This Procedure
             Button {
                 let context = "I want to learn more about \(procedure.name). Can you give me an overview?"
                 onNavigateToChat?(context, procedure)
@@ -363,18 +419,39 @@ struct ProcedureDetailView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "bubble.left.fill")
                         .font(.system(size: 16))
-                    Text("Ask About This Procedure")
-                        .font(.custom("Outfit-SemiBold", size: 15))
+                    Text("Ask Rena About \(procedure.name)")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 15))
                 }
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(Theme.Gradients.hero)
-                .cornerRadius(16)
-                .shadow(color: Theme.Shadow.button.color, radius: Theme.Shadow.button.radius, x: 0, y: 4)
+                .background(PDC.primary)
+                .cornerRadius(18)
+                .shadow(color: PDC.shadow, radius: 10, x: 0, y: 4)
             }
+            .buttonStyle(.plain)
 
-            // Consultation Prep Flow
+            Button {
+                onSaveProcedure?(procedure)
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
+                        .font(.system(size: 16))
+                    Text(isSaved ? "Remove From Saved Research" : "Save To Research")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 15))
+                }
+                .foregroundColor(PDC.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(PDC.primarySoft)
+                .cornerRadius(18)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(PDC.border, lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+
             Button {
                 let context = consultationPrepPrompt
                 onNavigateToChat?(context, procedure)
@@ -383,18 +460,39 @@ struct ProcedureDetailView: View {
                     Image(systemName: "checklist")
                         .font(.system(size: 16))
                     Text("Consultation Prep Flow")
-                        .font(.custom("Outfit-SemiBold", size: 15))
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 15))
                 }
-                .foregroundColor(Theme.Colors.primary)
+                .foregroundColor(PDC.primaryInk)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(Theme.Colors.primary.opacity(0.08))
-                .cornerRadius(16)
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.Colors.primary.opacity(0.2), lineWidth: 1))
+                .background(Color.white)
+                .cornerRadius(18)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(PDC.border, lineWidth: 1)
+                )
             }
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 24)
+    }
+
+    private var editorialSubtitle: String {
+        if let editorialSummary = procedure.editorialSummary, !editorialSummary.isEmpty {
+            return editorialSummary
+        }
+        if let overview = procedure.recoveryOverview, !overview.isEmpty {
+            return overview
+        }
+        if let whoItsFor = procedure.whoItsFor, !whoItsFor.isEmpty {
+            return whoItsFor
+        }
+        let trimmed = procedure.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "A refined plan for comparing results, recovery, and consultation fit." }
+        if trimmed.count > 120 {
+            let cutoff = trimmed.index(trimmed.startIndex, offsetBy: 120)
+            return String(trimmed[..<cutoff]).trimmingCharacters(in: .whitespacesAndNewlines) + "..."
+        }
+        return trimmed
     }
 
     private var consultationPrepPrompt: String {
@@ -408,29 +506,20 @@ struct ProcedureDetailView: View {
         """
     }
 
-    // MARK: - Helpers
-
-    private var divider: some View {
-        Rectangle()
-            .fill(Theme.Colors.border)
-            .frame(height: 1)
-            .padding(.horizontal, 20)
-    }
-
-    private func detailSection<Content: View>(icon: String, title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 13))
-                    .foregroundColor(Theme.Colors.primary)
-                Text(title)
-                    .font(.custom("Outfit-SemiBold", size: 14))
-                    .foregroundColor(Theme.Colors.textPrimary)
-            }
-            content()
+    private var sharePayloadText: String {
+        var parts: [String] = [procedure.name]
+        if let summary = procedure.editorialSummary, !summary.isEmpty {
+            parts.append(summary)
+        } else if !procedure.description.isEmpty {
+            parts.append(procedure.description)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 20)
+        if let recovery = procedure.recoveryOverview, !recovery.isEmpty {
+            parts.append("Recovery: \(recovery)")
+        }
+        if let cost = procedure.costRangeDisplay {
+            parts.append("Typical cost: \(cost)")
+        }
+        return parts.joined(separator: "\n\n")
     }
 }
 
@@ -449,15 +538,15 @@ struct ShareSheet: UIViewControllerRepresentable {
         procedure: Procedure(
             id: UUID(),
             name: "Rhinoplasty",
-            description: "Surgical reshaping of the nose to improve appearance or correct breathing issues.",
+            description: "Surgical reshaping of the nose to improve appearance or correct breathing issues. Bruising and swelling peak in the first week; a splint is worn for 7-10 days. Final results settle over 12 months as residual swelling gradually subsides.",
             category: "Face",
             recoveryDurationDays: 14,
-            recoveryDurationLabel: "1–2 weeks",
+            recoveryDurationLabel: "1-2 weeks",
             isSurgical: true,
             sortOrder: 10,
             whoItsFor: "Adults in good health who are unhappy with the size, shape, or proportion of their nose.",
-            recoveryOverview: "Splint worn for 7–10 days. Most bruising resolves by week 2.",
-            whatIsNormal: "Significant swelling and bruising around the eyes and nose for the first 1–2 weeks.",
+            recoveryOverview: "Splint worn for 7-10 days. Most bruising resolves by week 2.",
+            whatIsNormal: "Significant swelling and bruising around the eyes and nose for the first 1-2 weeks.",
             whatToWatchFor: "Heavy bleeding that doesn't stop, fever over 101°F, or increasing pain after day 3.",
             costRangeMin: 7000,
             costRangeMax: 15000

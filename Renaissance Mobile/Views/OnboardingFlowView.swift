@@ -6,6 +6,73 @@
 import SwiftUI
 import StripePaymentSheet
 
+private enum OnboardingPaywallUI {
+    static let shell = Color(hex: "#EEF1E8")
+    static let bg = Color(hex: "#F6F7F2")
+    static let surface = Color(hex: "#FBFCF8")
+    static let card = Color(hex: "#EDF1E8")
+    static let cardStrong = Color(hex: "#E1E7DA")
+    static let text = Color(hex: "#1F261D")
+    static let muted = Color(hex: "#687064")
+    static let primary = Color(hex: "#516048")
+    static let primaryInk = Color(hex: "#314030")
+    static let primarySoft = Color(hex: "#D9E3CE")
+    static let rose = Color(hex: "#B07B7A")
+    static let roseSoft = Color(hex: "#F1DDDA")
+    static let roseTint = Color(hex: "#EAD3D0")
+    static let roseDeep = Color(hex: "#976769")
+    static let shadow = Color(red: 90/255, green: 103/255, blue: 80/255).opacity(0.10)
+}
+
+private struct ChipFlowLayout: Layout {
+    var itemSpacing: CGFloat = 8
+    var rowSpacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? UIScreen.main.bounds.width - 72
+        var currentX: CGFloat = 0
+        var currentRowHeight: CGFloat = 0
+        var totalHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if currentX > 0, currentX + size.width > maxWidth {
+                totalHeight += currentRowHeight + rowSpacing
+                currentX = 0
+                currentRowHeight = 0
+            }
+
+            currentRowHeight = max(currentRowHeight, size.height)
+            currentX += size.width + (currentX > 0 ? itemSpacing : 0)
+        }
+
+        return CGSize(width: maxWidth, height: totalHeight + currentRowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var currentX = bounds.minX
+        var currentY = bounds.minY
+        var currentRowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if currentX > bounds.minX, currentX + size.width > bounds.maxX {
+                currentX = bounds.minX
+                currentY += currentRowHeight + rowSpacing
+                currentRowHeight = 0
+            }
+
+            subview.place(
+                at: CGPoint(x: currentX, y: currentY),
+                proposal: ProposedViewSize(width: size.width, height: size.height)
+            )
+
+            currentX += size.width + itemSpacing
+            currentRowHeight = max(currentRowHeight, size.height)
+        }
+    }
+}
+
 // MARK: - Procedure Option
 
 private enum ProcedureOption: String, CaseIterable, Identifiable {
@@ -160,7 +227,8 @@ struct OnboardingFlowView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "#FFF8F6").ignoresSafeArea()
+            onboardingShellBackground
+                .ignoresSafeArea()
             Group {
                 switch screen {
                 case 0: hookScreen
@@ -181,145 +249,159 @@ struct OnboardingFlowView: View {
         }
     }
 
+    private var onboardingShellBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(hex: "#F8FAF4"), Color(hex: "#EFF3E9")],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            RadialGradient(
+                colors: [OnboardingPaywallUI.rose.opacity(0.10), .clear],
+                center: .top,
+                startRadius: 0,
+                endRadius: 240
+            )
+
+            LinearGradient(
+                colors: [OnboardingPaywallUI.roseSoft.opacity(0.26), Color.white.opacity(0)],
+                startPoint: .top,
+                endPoint: UnitPoint(x: 0.5, y: 0.24)
+            )
+        }
+    }
+
     // MARK: - Screen 1: Hook
 
     private var hookScreen: some View {
         VStack(spacing: 0) {
-            // Logo — pinned top
             Text("Rena")
-                .font(.system(size: 13, weight: .medium, design: .serif))
+                .font(.custom("Manrope", size: 14))
+                .fontWeight(.medium)
                 .italic()
-                .tracking(5)
-                .foregroundColor(Color(hex: "#8E4C5C"))
+                .tracking(4.5)
+                .foregroundColor(OnboardingPaywallUI.roseDeep)
                 .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 14)
-                .padding(.bottom, 10)
+                .padding(.top, 16)
+                .padding(.bottom, 18)
 
-            // Headline — pinned top
-            (
-                Text("Your recovery,\n")
-                    .font(.system(size: 23, weight: .regular, design: .serif))
-                    .foregroundColor(Color(hex: "#3D2B2E"))
-                +
-                Text("finally documented.")
-                    .font(.system(size: 23, weight: .light, design: .serif))
-                    .italic()
-                    .foregroundColor(Color(hex: "#8E4C5C"))
-            )
-            .multilineTextAlignment(.center)
-            .lineSpacing(2)
-            .padding(.horizontal, 18)
-            .padding(.bottom, 14)
+            GeometryReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    onboardingScreenCard {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("Step 1")
+                                .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                                .tracking(2.3)
+                                .textCase(.uppercase)
+                                .foregroundColor(OnboardingPaywallUI.roseDeep)
+                                .padding(.top, 2)
 
-            // Contrast grid — flex: 1 (fills all remaining space)
-            contrastGrid
-                .padding(.bottom, 14)
+                            Text("Your recovery, finally documented.")
+                                .font(.custom("Manrope", size: 34))
+                                .fontWeight(.heavy)
+                                .tracking(-0.6)
+                                .foregroundColor(OnboardingPaywallUI.primaryInk)
+                                .lineSpacing(1)
+                                .padding(.top, 18)
 
-            // CTA — pinned bottom
-            Button { withAnimation { screen = 1 } } label: {
-                Text("Get Started")
-                    .font(.custom("Outfit-SemiBold", size: 13.5))
-                    .foregroundColor(.white)
-                    .tracking(0.4)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 43)
-                    .background(
-                        LinearGradient(
-                            colors: [Color(hex: "#6B3346"), Color(hex: "#8E4C5C"), Color(hex: "#B76E79")],
-                            startPoint: .leading, endPoint: .trailing
-                        )
-                    )
-                    .cornerRadius(14)
-                    .shadow(color: Color(hex: "#6B3346").opacity(0.34), radius: 8, x: 0, y: 5)
-            }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 12)
+                            Text("Turn scattered memories, photo rolls, and half-remembered details into one calm record of what happened, when it happened, and how you healed.")
+                                .font(.custom("PlusJakartaSans-Regular", size: 13))
+                                .foregroundColor(OnboardingPaywallUI.muted)
+                                .lineSpacing(6)
+                                .padding(.top, 22)
+                                .padding(.bottom, 22)
 
-            // Progress dots — pinned bottom
-            HStack(spacing: 5) {
-                ForEach(0..<totalScreens, id: \.self) { i in
-                    Capsule()
-                        .fill(i == 0 ? Color(hex: "#8E4C5C") : Color(hex: "#C4929A").opacity(0.14))
-                        .frame(width: i == 0 ? 18 : 5, height: 5)
+                            contrastGrid
+
+                            Spacer(minLength: 24)
+
+                            primaryButton(label: "Get Started", enabled: true, gradient: false, horizontalPadding: 0, topPadding: 0) {
+                                withAnimation { screen = 1 }
+                            }
+
+                            HStack(spacing: 5) {
+                                ForEach(0..<totalScreens, id: \.self) { i in
+                                    Capsule()
+                                        .fill(i == 0 ? OnboardingPaywallUI.roseDeep : OnboardingPaywallUI.roseSoft.opacity(0.75))
+                                        .frame(width: i == 0 ? 24 : 6, height: 6)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.top, 20)
+                            .padding(.bottom, 2)
+                        }
+                        .frame(minHeight: proxy.size.height - 18, alignment: .top)
+                    }
+                    .frame(minHeight: proxy.size.height)
+                    .padding(.top, 6)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.bottom, 18)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .background(onboardingShellBackground.ignoresSafeArea())
     }
 
     private var contrastGrid: some View {
-        HStack(alignment: .top, spacing: 7) {
-            // Without tracking — fills available height
-            VStack(alignment: .leading, spacing: 8) {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 Text("Without tracking")
-                    .font(.custom("Outfit-Bold", size: 7.5))
-                    .foregroundColor(Color(hex: "#B8A9AB"))
-                    .tracking(2)
+                    .font(.custom("PlusJakartaSans-Bold", size: 9))
+                    .foregroundColor(OnboardingPaywallUI.muted)
+                    .tracking(2.2)
                     .textCase(.uppercase)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, 7)
-                    .overlay(alignment: .bottom) {
-                        Rectangle().fill(Color(hex: "#B8A9AB").opacity(0.35)).frame(height: 1)
-                    }
+                    .padding(.bottom, 2)
 
                 contrastDot(text: "Forgot when you last had Botox", good: false)
                 contrastDot(text: "Can't remember your units or provider", good: false)
                 contrastDot(text: "No photos to compare results", good: false)
                 contrastDot(text: "Noticed something off — waited too long", good: false)
             }
-            .padding(11)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Color(hex: "#F5F0F1"))
-            .cornerRadius(14)
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: "#B8A9AB").opacity(0.25), lineWidth: 1))
+            .background(OnboardingPaywallUI.card)
+            .cornerRadius(24)
+            .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.black.opacity(0.05), lineWidth: 1))
 
-            // With Rena — fills available height
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 12) {
                 Text("With Rena")
-                    .font(.custom("Outfit-Bold", size: 7.5))
-                    .foregroundColor(Color(hex: "#8E4C5C"))
-                    .tracking(2)
+                    .font(.custom("PlusJakartaSans-Bold", size: 9))
+                    .foregroundColor(OnboardingPaywallUI.roseDeep)
+                    .tracking(2.2)
                     .textCase(.uppercase)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, 7)
-                    .overlay(alignment: .bottom) {
-                        Rectangle().fill(Color(hex: "#8E4C5C").opacity(0.25)).frame(height: 1)
-                    }
+                    .padding(.bottom, 2)
 
                 contrastDot(text: "Knows exactly what was done & when", good: true)
                 contrastDot(text: "Day 1 through week 4 — all documented", good: true)
                 contrastDot(text: "Chose the right provider next time", good: true)
                 contrastDot(text: "Caught early bruising before it worsened", good: true)
             }
-            .padding(11)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(
                 LinearGradient(
-                    colors: [Color(hex: "#f8e9ef"), Color(hex: "#f0d2da")],
-                    startPoint: UnitPoint(x: 0.14, y: 0),
-                    endPoint: UnitPoint(x: 0.86, y: 1)
+                    colors: [Color(hex: "#F6E5E8"), Color(hex: "#EED6DC")],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
                 )
             )
-            .cornerRadius(14)
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: "#C4929A").opacity(0.28), lineWidth: 1))
+            .cornerRadius(24)
+            .overlay(RoundedRectangle(cornerRadius: 24).stroke(OnboardingPaywallUI.roseSoft.opacity(0.7), lineWidth: 1))
         }
-        .frame(maxHeight: .infinity)
-        .padding(.horizontal, 18)
     }
 
     private func contrastDot(text: String, good: Bool) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            Circle()
-                .fill(good ? Color(hex: "#8E4C5C") : Color(hex: "#B8A9AB"))
-                .frame(width: 4, height: 4)
-                .padding(.top, 4)
-            Text(text)
-                .font(.custom("Outfit-Light", size: 10))
-                .foregroundColor(good ? Color(hex: "#3D2B2E") : Color(hex: "#B8A9AB"))
-                .fixedSize(horizontal: false, vertical: true)
-                .lineSpacing(2)
-        }
+        Text(text)
+            .font(.custom("PlusJakartaSans-Regular", size: 12))
+            .foregroundColor(good ? OnboardingPaywallUI.primaryInk : OnboardingPaywallUI.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .lineSpacing(5)
     }
 
     // MARK: - Screen 2: Q1 Procedure
@@ -330,48 +412,30 @@ struct OnboardingFlowView: View {
         VStack(alignment: .leading, spacing: 0) {
             questionTopBar(step: 4, total: 4)
 
-            Text("Your timing")
-                .font(.custom("Outfit-SemiBold", size: 9))
-                .foregroundColor(Color(hex: "#C4929A"))
-                .tracking(3)
-                .textCase(.uppercase)
-                .padding(.horizontal, 18)
-                .padding(.bottom, 8)
-
-            (
-                Text("When did it\n")
-                    .font(.system(size: 23, weight: .regular, design: .serif))
-                +
-                Text("happen?")
-                    .font(.system(size: 23, weight: .regular, design: .serif))
-            )
-            .foregroundColor(Color(hex: "#3D2B2E"))
-            .lineSpacing(2)
-            .padding(.horizontal, 18)
-            .padding(.bottom, 6)
-
-            Text("This helps us find where you are in your recovery right now.")
-                .font(.custom("Outfit-Light", size: 11))
-                .foregroundColor(Color(hex: "#B8A9AB"))
-                .lineSpacing(3)
-                .padding(.horizontal, 18)
-                .padding(.bottom, 22)
-
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 9) {
-                    ForEach(WhenOption.allCases) { option in
-                        whenPill(option)
+                onboardingScreenCard {
+                    introBlock(
+                        eyebrow: "Your timing",
+                        title: "When did it happen?",
+                        body: "This helps us find where you are in your recovery right now."
+                    )
+
+                    VStack(spacing: 12) {
+                        ForEach(WhenOption.allCases) { option in
+                            whenPill(option)
+                        }
+                    }
+                    .padding(.top, 4)
+
+                    primaryButton(label: "Continue", enabled: selectedWhen != nil, gradient: false, horizontalPadding: 0, topPadding: 28) {
+                        if let when = selectedWhen {
+                            OnboardingStore.save(procedureName: selectedProcedure?.storedName ?? "Surgery", procedureDate: when.procedureDate)
+                        }
+                        withAnimation { screen = 5 }
                     }
                 }
-                .padding(.horizontal, 18)
+                .padding(.horizontal, 16)
                 .padding(.bottom, 18)
-            }
-
-            primaryButton(label: "Continue →", enabled: selectedWhen != nil, gradient: false) {
-                if let when = selectedWhen {
-                    OnboardingStore.save(procedureName: selectedProcedure?.storedName ?? "Surgery", procedureDate: when.procedureDate)
-                }
-                withAnimation { screen = 5 }
             }
             Spacer().frame(height: 14)
         }
@@ -383,38 +447,16 @@ struct OnboardingFlowView: View {
         VStack(alignment: .leading, spacing: 0) {
             Spacer().frame(height: 14)
 
-            Text("The difference it makes")
-                .font(.custom("Outfit-SemiBold", size: 9))
-                .foregroundColor(Color(hex: "#C4929A"))
-                .tracking(3)
-                .textCase(.uppercase)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
-
-            (
-                Text("Trackers vs.\n")
-                    .font(.system(size: 22, weight: .regular, design: .serif))
-                    .foregroundColor(Color(hex: "#3D2B2E"))
-                +
-                Text("non-trackers.")
-                    .font(.system(size: 22, weight: .light, design: .serif))
-                    .italic()
-                    .foregroundColor(Color(hex: "#8E4C5C"))
-            )
-            .lineSpacing(2)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 4)
-
-            Text("Real outcomes from patients who documented their recovery from day one.")
-                .font(.custom("Outfit-Light", size: 10.5))
-                .foregroundColor(Color(hex: "#B8A9AB"))
-                .lineSpacing(2)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 14)
-
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    VStack(spacing: 8) {
+                onboardingScreenCard {
+                    introBlock(
+                        eyebrow: "The difference it makes",
+                        title: "Trackers vs. non-trackers.",
+                        body: "Real outcomes from patients who documented their recovery from day one.",
+                        eyebrowColor: OnboardingPaywallUI.roseDeep
+                    )
+
+                    VStack(spacing: 12) {
                         statCard(number: "30%",
                                  title: "Higher satisfaction with their result",
                                  desc: "Patients using photo-based recovery tracking report better outcomes and arrive to follow-ups fully prepared")
@@ -425,55 +467,36 @@ struct OnboardingFlowView: View {
                                  title: "Surgical records have missing fields",
                                  desc: "Patients who self-document always have the full picture — dates, photos, and how they healed")
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
+                    .padding(.top, 4)
+                    .padding(.bottom, 14)
 
-                    // Quote card
-                    VStack(alignment: .leading, spacing: 7) {
+                    VStack(alignment: .leading, spacing: 10) {
                         Text("\"My surgeon told me it takes a full year to see the final result. I had no idea what 'normal' looked like week by week — logging photos gave me something to actually reference at every check-up.\"")
-                            .font(.custom("Outfit-Light", size: 10.5))
-                            .italic()
-                            .foregroundColor(Color(hex: "#3D2B2E"))
-                            .lineSpacing(3)
+                            .font(.custom("PlusJakartaSans-Regular", size: 12))
+                            .foregroundColor(OnboardingPaywallUI.primaryInk)
+                            .lineSpacing(4)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(Color(hex: "#C4929A").opacity(0.14))
-                                .frame(width: 20, height: 20)
-                                .overlay(
-                                    Image(systemName: "person.fill")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(Color(hex: "#C4929A"))
-                                )
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("Maya R. · Beta user")
-                                    .font(.custom("Outfit-SemiBold", size: 9.5))
-                                    .foregroundColor(Color(hex: "#8E4C5C"))
-                                Text("Rhinoplasty · 4 months post-op")
-                                    .font(.custom("Outfit-Light", size: 9))
-                                    .foregroundColor(Color(hex: "#B8A9AB"))
-                            }
-                        }
+                        Text("Maya R. · Beta user")
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+                            .foregroundColor(OnboardingPaywallUI.roseDeep)
+                        Text("Rhinoplasty · 4 months post-op")
+                            .font(.custom("PlusJakartaSans-Regular", size: 10))
+                            .foregroundColor(OnboardingPaywallUI.muted)
                     }
-                    .padding(11)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        LinearGradient(
-                            colors: [Color(hex: "#f8e9ef"), Color(hex: "#f0d2da")],
-                            startPoint: UnitPoint(x: 0.14, y: 0),
-                            endPoint: UnitPoint(x: 0.86, y: 1)
-                        )
-                    )
-                    .cornerRadius(14)
-                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: "#C4929A").opacity(0.2), lineWidth: 1))
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 18)
-                }
-            }
+                    .padding(.top, 16)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(OnboardingPaywallUI.roseSoft.opacity(0.94))
+                    .cornerRadius(24)
 
-            primaryButton(label: "I'm ready →", enabled: true, gradient: false) {
-                withAnimation { screen = 6 }
+                    primaryButton(label: "I'm ready", enabled: true, gradient: false, horizontalPadding: 0, topPadding: 28) {
+                        withAnimation { screen = 6 }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 18)
             }
             Spacer().frame(height: 14)
         }
@@ -481,179 +504,169 @@ struct OnboardingFlowView: View {
     }
 
     private func statCard(number: String, title: String, desc: String) -> some View {
-        HStack(alignment: .center, spacing: 13) {
+        HStack(alignment: .top, spacing: 14) {
             Text(number)
-                .font(.system(size: 32, weight: .medium, design: .serif))
-                .foregroundColor(Color(hex: "#8E4C5C"))
-                .frame(minWidth: 54, alignment: .leading)
+                .font(.custom("Manrope", size: 34))
+                .fontWeight(.bold)
+                .foregroundColor(OnboardingPaywallUI.roseDeep)
+                .frame(width: 88, alignment: .center)
+                .padding(.top, 2)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.custom("Outfit-SemiBold", size: 11.5))
-                    .foregroundColor(Color(hex: "#3D2B2E"))
-                    .lineSpacing(1)
-                Text(desc)
-                    .font(.custom("Outfit-Light", size: 9.5))
-                    .foregroundColor(Color(hex: "#B8A9AB"))
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                    .foregroundColor(OnboardingPaywallUI.primaryInk)
                     .lineSpacing(2)
+                Text(desc)
+                    .font(.custom("PlusJakartaSans-Regular", size: 12))
+                    .foregroundColor(OnboardingPaywallUI.muted)
+                    .lineSpacing(5)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.horizontal, 13).padding(.vertical, 12)
+        .padding(.horizontal, 16).padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white)
-        .cornerRadius(14)
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 1))
-        .shadow(color: Color(hex: "#8E4C5C").opacity(0.07), radius: 6, x: 0, y: 2)
+        .background(OnboardingPaywallUI.card)
+        .cornerRadius(22)
     }
 
     // MARK: - Screen 6: Paywall
 
     private var paywallScreen: some View {
         VStack(spacing: 0) {
-            // Gradient hero
-            ZStack(alignment: .topLeading) {
-                LinearGradient(
-                    colors: [Color(hex: "#6B3346"), Color(hex: "#8E4C5C"), Color(hex: "#B76E79")],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                )
-                .frame(maxWidth: .infinity)
-
-                // Decorative circles
-                Circle()
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                    .frame(width: 180, height: 180)
-                    .offset(x: UIScreen.main.bounds.width - 60, y: -50)
-                Circle()
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                    .frame(width: 110, height: 110)
-                    .offset(x: UIScreen.main.bounds.width - 20, y: 0)
-
-                VStack(alignment: .leading, spacing: 0) {
-                    Spacer().frame(height: 52)
-
-                    HStack(spacing: 5) {
-                        Text("⭑ Founding member — 40% off")
-                            .font(.custom("Outfit-SemiBold", size: 8.5))
-                            .foregroundColor(.white)
-                            .tracking(1)
-                    }
-                    .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(Color.white.opacity(0.16))
-                    .overlay(RoundedRectangle(cornerRadius: 100).stroke(Color.white.opacity(0.24), lineWidth: 1))
-                    .clipShape(Capsule())
-                    .padding(.bottom, 10)
-
-                    Text("Your journal awaits")
-                        .font(.custom("Outfit-Regular", size: 9))
-                        .foregroundColor(Color.white.opacity(0.6))
-                        .tracking(2)
-                        .textCase(.uppercase)
-                        .padding(.bottom, 5)
-
-                    Text("Start your recovery\njournal today.")
-                        .font(.system(size: 24, weight: .regular, design: .serif))
-                        .foregroundColor(.white)
-                        .lineSpacing(2)
-                        .padding(.bottom, 4)
-
-                    Text("Your personalised timeline is set up and ready to track.")
-                        .font(.custom("Outfit-Light", size: 10.5))
-                        .foregroundColor(Color.white.opacity(0.68))
-                        .padding(.bottom, 20)
-                }
-                .padding(.horizontal, 20)
-            }
-            .clipped()
-
-            // Body
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    Spacer().frame(height: 14)
+                onboardingScreenCard {
+                    ZStack {
+                        Text("Unlock the full experience")
+                            .font(.custom("Manrope", size: 25))
+                            .fontWeight(.black)
+                            .foregroundColor(OnboardingPaywallUI.primaryInk)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
 
-                    // Plan options
-                    VStack(spacing: 7) {
-                        planCard(
-                            name: "Yearly",
-                            price: paymentVM.yearlyPriceInfo?.displayPrice ?? "—",
-                            subtitle: "All benefits of Monthly at a discounted price for 12 months",
-                            isSelected: selectedPlan == 0,
-                            badge: "Best Value",
-                            isLoading: paymentVM.isFetchingPrices && paymentVM.yearlyPriceInfo == nil
-                        ) { selectedPlan = 0 }
-
-                        planCard(
-                            name: "Monthly",
-                            price: paymentVM.monthlyPriceInfo?.displayPrice ?? "—",
-                            isSelected: selectedPlan == 1,
-                            badge: nil,
-                            perks: ["75 msgs", "15 imgs", "210 credits"],
-                            isLoading: paymentVM.isFetchingPrices && paymentVM.monthlyPriceInfo == nil
-                        ) { selectedPlan = 1 }
-
-                        planCard(
-                            name: "Weekly",
-                            price: paymentVM.weeklyPriceInfo?.displayPrice ?? "—",
-                            isSelected: selectedPlan == 2,
-                            badge: nil,
-                            perks: ["30 msgs", "5 imgs", "80 credits"],
-                            isLoading: paymentVM.isFetchingPrices && paymentVM.weeklyPriceInfo == nil
-                        ) { selectedPlan = 2 }
+                        Button {
+                            OnboardingStore.hasCompleted = true
+                            dismiss()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { onSignIn() }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(OnboardingPaywallUI.primaryInk)
+                                .frame(width: 32, height: 32)
+                                .background(Color.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(Color.black.opacity(0.05), lineWidth: 1)
+                                )
+                                .opacity(0.82)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.bottom, 14)
+
+                    VStack(spacing: 10) {
+                        onboardingFeaturedAnnualCard
+                        onboardingCompactPlanCard(
+                            name: "Gold",
+                            price: paymentVM.monthlyPriceInfo?.displayPrice ?? "—",
+                            tierIndex: 1
+                        )
+                        onboardingCompactPlanCard(
+                            name: "Silver",
+                            price: paymentVM.weeklyPriceInfo?.displayPrice ?? "—",
+                            tierIndex: 2
+                        )
+                    }
                     .padding(.bottom, 12)
                     .task { await paymentVM.fetchPrices() }
 
-                    // Benefits
-                    VStack(spacing: 7) {
-                        benefitRow(bold: "24/7 personal AI concierge", rest: " — always here to guide your recovery")
-                        benefitRow(bold: "Week-by-week healing", rest: " with guided daily photo prompts")
-                        benefitRow(bold: "Know when to rebook", rest: " — never guess your timing again")
-                        benefitRow(bold: "Build a record", rest: " your provider can actually reference")
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 14)
-
-                    // Email input
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Email")
-                            .font(.custom("Outfit-Medium", size: 9))
-                            .foregroundColor(Color(hex: "#8E4C5C"))
-                            .tracking(1.5)
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("What your plan unlocks")
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                            .tracking(2.3)
+                            .foregroundColor(OnboardingPaywallUI.muted)
                             .textCase(.uppercase)
 
+                        VStack(spacing: 10) {
+                            unlockCard(
+                                icon: "ellipsis.message",
+                                tint: OnboardingPaywallUI.primarySoft,
+                                iconColor: OnboardingPaywallUI.primary,
+                                title: "Continue Ask Rena without interruptions"
+                            )
+                            unlockCard(
+                                icon: "chart.line.text.clipboard",
+                                tint: OnboardingPaywallUI.roseSoft,
+                                iconColor: OnboardingPaywallUI.roseDeep,
+                                title: "Turn your history into better guidance"
+                            )
+                            unlockCard(
+                                icon: "bookmark",
+                                tint: OnboardingPaywallUI.roseSoft.opacity(0.9),
+                                iconColor: OnboardingPaywallUI.roseDeep,
+                                title: "Get more value from every saved procedure"
+                            )
+                        }
+                    }
+                    .padding(16)
+                    .background(OnboardingPaywallUI.card)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 26)
+                            .stroke(OnboardingPaywallUI.roseSoft.opacity(0.8), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    .padding(.bottom, 12)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Email for secure checkout")
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                            .foregroundColor(OnboardingPaywallUI.roseDeep)
+                            .tracking(1.8)
+                            .textCase(.uppercase)
+
+                        Text("We’ll use this to create your account and connect your plan after checkout.")
+                            .font(.custom("PlusJakartaSans-Regular", size: 12))
+                            .foregroundColor(OnboardingPaywallUI.muted)
+                            .lineSpacing(4)
+
                         TextField("your@email.com", text: $email)
-                            .font(.custom("Outfit-Regular", size: 13))
-                            .foregroundColor(Color(hex: "#3D2B2E"))
+                            .font(.custom("PlusJakartaSans-Regular", size: 14))
+                            .foregroundColor(OnboardingPaywallUI.primaryInk)
                             .keyboardType(.emailAddress)
                             .textContentType(.emailAddress)
                             .autocapitalization(.none)
                             .disableAutocorrection(true)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .background(Color.white)
-                            .cornerRadius(12)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 16)
+                            .background(OnboardingPaywallUI.card)
+                            .cornerRadius(16)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 12)
+                                RoundedRectangle(cornerRadius: 16)
                                     .stroke(
-                                        isValidEmail ? Color(hex: "#8E4C5C").opacity(0.35) : Color(hex: "#C4929A").opacity(0.25),
+                                        isValidEmail ? OnboardingPaywallUI.rose.opacity(0.35) : OnboardingPaywallUI.roseSoft.opacity(0.7),
                                         lineWidth: 1
                                     )
                             )
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 10)
+                    .padding(16)
+                    .background(Color.white)
+                    .cornerRadius(24)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24)
+                            .stroke(Color.black.opacity(0.05), lineWidth: 1)
+                    )
+                    .padding(.bottom, 14)
 
                     // Payment error
                     if let error = paymentError {
                         Text(error)
-                            .font(.custom("Outfit-Light", size: 10))
+                            .font(.custom("PlusJakartaSans-Regular", size: 11))
                             .foregroundColor(Color(hex: "#C0392B"))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 16)
                             .padding(.bottom, 8)
                     }
 
-                    // Main CTA
                     Button {
                         Task {
                             isProcessingPayment = true
@@ -690,58 +703,58 @@ struct OnboardingFlowView: View {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             } else {
-                                Text("Start My Recovery Journal")
-                                    .font(.custom("Outfit-SemiBold", size: 13))
+                                Text("Continue to secure checkout")
+                                    .font(.custom("PlusJakartaSans-SemiBold", size: 15))
                                     .foregroundColor(.white)
                                     .tracking(0.3)
                             }
                         }
                         .frame(maxWidth: .infinity)
-                        .frame(height: 46)
+                        .frame(height: 56)
                         .background(
                             Group {
                                 if isValidEmail && !isProcessingPayment {
-                                    LinearGradient(
-                                        colors: [Color(hex: "#6B3346"), Color(hex: "#8E4C5C"), Color(hex: "#B76E79")],
-                                        startPoint: .leading, endPoint: .trailing
-                                    )
+                                    OnboardingPaywallUI.primary
                                 } else {
-                                    LinearGradient(
-                                        colors: [Color(hex: "#8E4C5C").opacity(0.35), Color(hex: "#8E4C5C").opacity(0.35)],
-                                        startPoint: .leading, endPoint: .trailing
-                                    )
+                                    OnboardingPaywallUI.primary.opacity(0.35)
                                 }
                             }
                         )
-                        .cornerRadius(13)
+                        .cornerRadius(24)
                         .shadow(
-                            color: isValidEmail ? Color(hex: "#6B3346").opacity(0.32) : Color.clear,
+                            color: isValidEmail ? OnboardingPaywallUI.shadow : Color.clear,
                             radius: 8, x: 0, y: 5
                         )
                     }
                     .disabled(!isValidEmail || isProcessingPayment)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 10)
 
                     if !isProcessingPayment {
-                    VStack(spacing: 4) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "checkmark.seal.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(Color(hex: "#8E4C5C"))
-                            Text("100% money back if you haven't used any AI credits")
-                                .font(.custom("Outfit-SemiBold", size: 11.5))
-                                .foregroundColor(Color(hex: "#3D2B2E"))
+                        VStack(spacing: 5) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "checkmark.seal.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(OnboardingPaywallUI.roseDeep)
+                                Text("100% money back")
+                                    .font(.custom("PlusJakartaSans-SemiBold", size: 12))
+                                    .foregroundColor(OnboardingPaywallUI.roseDeep)
+                            }
+                            Text("Cancel anytime. No pressure.")
+                                .font(.custom("PlusJakartaSans-Regular", size: 11))
+                                .foregroundColor(OnboardingPaywallUI.muted)
                         }
-                        Text("Cancel anytime. No questions asked.")
-                            .font(.custom("Outfit-Light", size: 10.5))
-                            .foregroundColor(Color(hex: "#B8A9AB"))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .background(Color.white)
+                        .cornerRadius(24)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 24)
+                                .stroke(Color.black.opacity(0.05), lineWidth: 1)
+                        )
+                        .padding(.bottom, 12)
                     }
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 14)
-                    } // end if !isProcessingPayment
 
                     Button {
                         OnboardingStore.hasCompleted = true
@@ -749,14 +762,20 @@ struct OnboardingFlowView: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { onSignIn() }
                     } label: {
                         Text("Already have an account? Sign In")
-                            .font(.custom("Outfit-Regular", size: 12))
-                            .foregroundColor(Color(hex: "#B8A9AB"))
+                            .font(.custom("PlusJakartaSans-Regular", size: 13))
+                            .foregroundColor(OnboardingPaywallUI.muted)
                             .underline()
+                            .frame(maxWidth: .infinity, alignment: .center)
                     }
-                    .padding(.bottom, 24)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 2)
                 }
+                .padding(.top, 18)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
             }
         }
+        .background(OnboardingPaywallUI.bg.ignoresSafeArea())
     }
 
     // MARK: - Screen 6: About You
@@ -765,75 +784,50 @@ struct OnboardingFlowView: View {
         VStack(alignment: .leading, spacing: 0) {
             questionTopBar(step: 1, total: 4)
 
-            Text("About you")
-                .font(.custom("Outfit-SemiBold", size: 9))
-                .foregroundColor(Color(hex: "#C4929A"))
-                .tracking(3)
-                .textCase(.uppercase)
-                .padding(.horizontal, 18)
-                .padding(.bottom, 8)
-
-            (
-                Text("Help Rena\n")
-                    .font(.system(size: 23, weight: .regular, design: .serif))
-                +
-                Text("know you better.")
-                    .font(.system(size: 23, weight: .light, design: .serif))
-                    .italic()
-                    .foregroundColor(Color(hex: "#8E4C5C"))
-            )
-            .foregroundColor(Color(hex: "#3D2B2E"))
-            .lineSpacing(2)
-            .padding(.horizontal, 18)
-            .padding(.bottom, 6)
-
-            Text("This helps us tailor guidance to your healing, skin, and aesthetic journey. All optional.")
-                .font(.custom("Outfit-Light", size: 11))
-                .foregroundColor(Color(hex: "#B8A9AB"))
-                .lineSpacing(3)
-                .padding(.horizontal, 18)
-                .padding(.bottom, 22)
-
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 20) {
-                    contextSection(title: "Gender identity") {
-                        chipGrid(options: ["Woman", "Man", "Non-binary", "Prefer not to say"],
-                                 selected: selectedGender.map { [$0] } ?? [],
-                                 multiSelect: false) { val in
-                            selectedGender = selectedGender == val ? nil : val
+                onboardingScreenCard {
+                    introBlock(
+                        eyebrow: "About you",
+                        title: "Help Rena know you better.",
+                        body: "This helps us tailor guidance to your healing, skin, and aesthetic journey. All optional."
+                    )
+
+                    VStack(alignment: .leading, spacing: 18) {
+                        contextSection(title: "Gender identity") {
+                            chipGrid(options: ProfileSelectionCatalog.genderOptions,
+                                     selected: selectedGender.map { [$0] } ?? [],
+                                     multiSelect: false) { val in
+                                selectedGender = selectedGender == val ? nil : val
+                            }
+                        }
+                        contextSection(title: "Age range") {
+                            chipGrid(options: ProfileSelectionCatalog.ageRangeOptions,
+                                     selected: selectedAgeRange.map { [$0] } ?? [],
+                                     multiSelect: false) { val in
+                                selectedAgeRange = selectedAgeRange == val ? nil : val
+                            }
+                        }
+                        contextSection(title: "Race / Ethnicity") {
+                            chipGrid(
+                                options: ProfileSelectionCatalog.raceOptions,
+                                selected: selectedRaceEthnicity.map { [$0] } ?? [],
+                                multiSelect: false
+                            ) { val in
+                                selectedRaceEthnicity = selectedRaceEthnicity == val ? nil : val
+                            }
                         }
                     }
-                    contextSection(title: "Age range") {
-                        chipGrid(options: ["Under 25", "25–34", "35–44", "45–54", "55+"],
-                                 selected: selectedAgeRange.map { [$0] } ?? [],
-                                 multiSelect: false) { val in
-                            selectedAgeRange = selectedAgeRange == val ? nil : val
-                        }
+
+                    primaryButton(label: "Continue", enabled: true, gradient: false, horizontalPadding: 0, topPadding: 28) {
+                        withAnimation { screen = 2 }
                     }
-                    contextSection(title: "Race / Ethnicity") {
-                        chipGrid(
-                            options: ["Asian", "Black / African American", "Hispanic / Latino",
-                                      "Middle Eastern", "White / Caucasian", "Multiracial", "Prefer not to say"],
-                            selected: selectedRaceEthnicity.map { [$0] } ?? [],
-                            multiSelect: false
-                        ) { val in
-                            selectedRaceEthnicity = selectedRaceEthnicity == val ? nil : val
-                        }
+
+                    secondarySkipButton {
+                        withAnimation { screen = 2 }
                     }
                 }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 18)
-            }
-
-            primaryButton(label: "Continue →", enabled: true, gradient: false) {
-                withAnimation { screen = 2 }
-            }
-            Button { withAnimation { screen = 2 } } label: {
-                Text("Skip for now")
-                    .font(.custom("Outfit-Light", size: 11))
-                    .foregroundColor(Color(hex: "#B8A9AB"))
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 8)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 14)
             }
             Spacer().frame(height: 14)
         }
@@ -845,86 +839,57 @@ struct OnboardingFlowView: View {
         VStack(alignment: .leading, spacing: 0) {
             questionTopBar(step: 2, total: 4)
 
-            Text("Your goals")
-                .font(.custom("Outfit-SemiBold", size: 9))
-                .foregroundColor(Color(hex: "#C4929A"))
-                .tracking(3)
-                .textCase(.uppercase)
-                .padding(.horizontal, 18)
-                .padding(.bottom, 8)
-
-            (
-                Text("What are you\n")
-                    .font(.system(size: 23, weight: .regular, design: .serif))
-                +
-                Text("hoping to achieve?")
-                    .font(.system(size: 23, weight: .light, design: .serif))
-                    .italic()
-                    .foregroundColor(Color(hex: "#8E4C5C"))
-            )
-            .foregroundColor(Color(hex: "#3D2B2E"))
-            .lineSpacing(2)
-            .padding(.horizontal, 18)
-            .padding(.bottom, 6)
-
-            Text("Select all that apply. This shapes the advice and insights Rena gives you.")
-                .font(.custom("Outfit-Light", size: 11))
-                .foregroundColor(Color(hex: "#B8A9AB"))
-                .lineSpacing(3)
-                .padding(.horizontal, 18)
-                .padding(.bottom, 22)
-
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 20) {
-                    contextSection(title: "Aesthetic goals") {
-                        chipGrid(
-                            options: ["Look more refreshed", "Look younger", "Change a specific feature",
-                                      "Enhance my confidence", "Explore non-surgical first", "Just researching options"],
-                            selected: Array(selectedAestheticGoals),
-                            multiSelect: true
-                        ) { val in
-                            if selectedAestheticGoals.contains(val) { selectedAestheticGoals.remove(val) }
-                            else { selectedAestheticGoals.insert(val) }
+                onboardingScreenCard {
+                    introBlock(
+                        eyebrow: "Your goals",
+                        title: "What are you hoping to achieve?",
+                        body: "Select all that apply. This shapes the advice and insights Rena gives you."
+                    )
+
+                    VStack(alignment: .leading, spacing: 18) {
+                        contextSection(title: "Aesthetic goals") {
+                            chipGrid(
+                                options: ProfileSelectionCatalog.goalOptions,
+                                selected: Array(selectedAestheticGoals),
+                                multiSelect: true
+                            ) { val in
+                                if selectedAestheticGoals.contains(val) { selectedAestheticGoals.remove(val) }
+                                else { selectedAestheticGoals.insert(val) }
+                            }
+                        }
+                        contextSection(title: "Body areas of interest") {
+                            chipGrid(
+                                options: ProfileSelectionCatalog.bodyAreaOptions,
+                                selected: Array(selectedBodyAreas),
+                                multiSelect: true
+                            ) { val in
+                                if selectedBodyAreas.contains(val) { selectedBodyAreas.remove(val) }
+                                else { selectedBodyAreas.insert(val) }
+                            }
+                        }
+                        contextSection(title: "Procedures you're considering") {
+                            chipGrid(
+                                options: ProfileSelectionCatalog.procedureOptions,
+                                selected: Array(selectedProceduresOfInterest),
+                                multiSelect: true
+                            ) { val in
+                                if selectedProceduresOfInterest.contains(val) { selectedProceduresOfInterest.remove(val) }
+                                else { selectedProceduresOfInterest.insert(val) }
+                            }
                         }
                     }
-                    contextSection(title: "Body areas of interest") {
-                        chipGrid(
-                            options: ["Face", "Nose", "Eyes / Brow", "Lips", "Neck / Jawline",
-                                      "Breasts", "Abdomen / Waist", "Arms", "Thighs / Buttocks", "Full body"],
-                            selected: Array(selectedBodyAreas),
-                            multiSelect: true
-                        ) { val in
-                            if selectedBodyAreas.contains(val) { selectedBodyAreas.remove(val) }
-                            else { selectedBodyAreas.insert(val) }
-                        }
+
+                    primaryButton(label: "Continue", enabled: true, gradient: false, horizontalPadding: 0, topPadding: 28) {
+                        withAnimation { screen = 3 }
                     }
-                    contextSection(title: "Procedures you're considering") {
-                        chipGrid(
-                            options: ["Rhinoplasty", "Facelift / Mini facelift", "Eyelid surgery",
-                                      "Breast augmentation", "Breast reduction / Lift",
-                                      "Body contouring / BBL", "Tummy tuck", "Botox / Fillers / Lasers",
-                                      "Not sure yet"],
-                            selected: Array(selectedProceduresOfInterest),
-                            multiSelect: true
-                        ) { val in
-                            if selectedProceduresOfInterest.contains(val) { selectedProceduresOfInterest.remove(val) }
-                            else { selectedProceduresOfInterest.insert(val) }
-                        }
+
+                    secondarySkipButton {
+                        withAnimation { screen = 3 }
                     }
                 }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 18)
-            }
-
-            primaryButton(label: "Continue →", enabled: true, gradient: false) {
-                withAnimation { screen = 3 }
-            }
-            Button { withAnimation { screen = 3 } } label: {
-                Text("Skip for now")
-                    .font(.custom("Outfit-Light", size: 11))
-                    .foregroundColor(Color(hex: "#B8A9AB"))
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 8)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 14)
             }
             Spacer().frame(height: 14)
         }
@@ -936,97 +901,69 @@ struct OnboardingFlowView: View {
         VStack(alignment: .leading, spacing: 0) {
             questionTopBar(step: 3, total: 4)
 
-            Text("Health & history")
-                .font(.custom("Outfit-SemiBold", size: 9))
-                .foregroundColor(Color(hex: "#C4929A"))
-                .tracking(3)
-                .textCase(.uppercase)
-                .padding(.horizontal, 18)
-                .padding(.bottom, 8)
-
-            (
-                Text("A few quick\n")
-                    .font(.system(size: 23, weight: .regular, design: .serif))
-                +
-                Text("context questions.")
-                    .font(.system(size: 23, weight: .light, design: .serif))
-                    .italic()
-                    .foregroundColor(Color(hex: "#8E4C5C"))
-            )
-            .foregroundColor(Color(hex: "#3D2B2E"))
-            .lineSpacing(2)
-            .padding(.horizontal, 18)
-            .padding(.bottom, 6)
-
-            Text("Not a diagnosis — just helps Rena personalise your recovery guidance.")
-                .font(.custom("Outfit-Light", size: 11))
-                .foregroundColor(Color(hex: "#B8A9AB"))
-                .lineSpacing(3)
-                .padding(.horizontal, 18)
-                .padding(.bottom, 22)
-
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 20) {
-                    contextSection(title: "Procedures you've already had") {
-                        chipGrid(
-                            options: ["None yet", "Rhinoplasty", "Facial surgery", "Breast surgery",
-                                      "Body contouring", "Botox / Fillers", "Other surgical"],
-                            selected: Array(selectedPreviousProcedures),
-                            multiSelect: true
-                        ) { val in
-                            if selectedPreviousProcedures.contains(val) { selectedPreviousProcedures.remove(val) }
-                            else { selectedPreviousProcedures.insert(val) }
+                onboardingScreenCard {
+                    introBlock(
+                        eyebrow: "Health & history",
+                        title: "A few quick context questions.",
+                        body: "Not a diagnosis — just helps Rena personalise your recovery guidance."
+                    )
+
+                    VStack(alignment: .leading, spacing: 18) {
+                        contextSection(title: "Procedures you've already had") {
+                            chipGrid(
+                                options: ProfileSelectionCatalog.previousProcedureOptions,
+                                selected: Array(selectedPreviousProcedures),
+                                multiSelect: true
+                            ) { val in
+                                if selectedPreviousProcedures.contains(val) { selectedPreviousProcedures.remove(val) }
+                                else { selectedPreviousProcedures.insert(val) }
+                            }
+                        }
+                        contextSection(title: "Any health considerations?") {
+                            chipGrid(
+                                options: ProfileSelectionCatalog.healthFlagOptions,
+                                selected: Array(selectedHealthFlags),
+                                multiSelect: true
+                            ) { val in
+                                if selectedHealthFlags.contains(val) { selectedHealthFlags.remove(val) }
+                                else { selectedHealthFlags.insert(val) }
+                            }
                         }
                     }
-                    contextSection(title: "Any health considerations?") {
-                        chipGrid(
-                            options: ["No known sensitivities", "History of keloid scarring",
-                                      "Sensitive / eczema-prone skin", "Latex sensitivity",
-                                      "Blood thinners or clotting concerns", "Slower healing than average",
-                                      "Prefer not to say"],
-                            selected: Array(selectedHealthFlags),
-                            multiSelect: true
-                        ) { val in
-                            if selectedHealthFlags.contains(val) { selectedHealthFlags.remove(val) }
-                            else { selectedHealthFlags.insert(val) }
-                        }
+
+                    primaryButton(label: "Continue", enabled: true, gradient: false, horizontalPadding: 0, topPadding: 28) {
+                        OnboardingStore.saveUserContext(
+                            gender: selectedGender,
+                            zipCode: nil,
+                            ageRange: selectedAgeRange,
+                            raceEthnicity: selectedRaceEthnicity,
+                            aestheticGoals: Array(selectedAestheticGoals),
+                            proceduresOfInterest: Array(selectedProceduresOfInterest),
+                            previousProcedures: Array(selectedPreviousProcedures),
+                            healthFlags: Array(selectedHealthFlags),
+                            bodyAreas: Array(selectedBodyAreas)
+                        )
+                        withAnimation { screen = 4 }
+                    }
+
+                    secondarySkipButton {
+                        OnboardingStore.saveUserContext(
+                            gender: selectedGender,
+                            zipCode: nil,
+                            ageRange: selectedAgeRange,
+                            raceEthnicity: selectedRaceEthnicity,
+                            aestheticGoals: Array(selectedAestheticGoals),
+                            proceduresOfInterest: Array(selectedProceduresOfInterest),
+                            previousProcedures: Array(selectedPreviousProcedures),
+                            healthFlags: Array(selectedHealthFlags),
+                            bodyAreas: Array(selectedBodyAreas)
+                        )
+                        withAnimation { screen = 4 }
                     }
                 }
-                .padding(.horizontal, 18)
+                .padding(.horizontal, 16)
                 .padding(.bottom, 18)
-            }
-
-            primaryButton(label: "Continue →", enabled: true, gradient: true) {
-                OnboardingStore.saveUserContext(
-                    gender: selectedGender,
-                    ageRange: selectedAgeRange,
-                    raceEthnicity: selectedRaceEthnicity,
-                    aestheticGoals: Array(selectedAestheticGoals),
-                    proceduresOfInterest: Array(selectedProceduresOfInterest),
-                    previousProcedures: Array(selectedPreviousProcedures),
-                    healthFlags: Array(selectedHealthFlags),
-                    bodyAreas: Array(selectedBodyAreas)
-                )
-                withAnimation { screen = 4 }
-            }
-            Button {
-                OnboardingStore.saveUserContext(
-                    gender: selectedGender,
-                    ageRange: selectedAgeRange,
-                    raceEthnicity: selectedRaceEthnicity,
-                    aestheticGoals: Array(selectedAestheticGoals),
-                    proceduresOfInterest: Array(selectedProceduresOfInterest),
-                    previousProcedures: Array(selectedPreviousProcedures),
-                    healthFlags: Array(selectedHealthFlags),
-                    bodyAreas: Array(selectedBodyAreas)
-                )
-                withAnimation { screen = 4 }
-            } label: {
-                Text("Skip for now")
-                    .font(.custom("Outfit-Light", size: 11))
-                    .foregroundColor(Color(hex: "#B8A9AB"))
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 8)
             }
             Spacer().frame(height: 14)
         }
@@ -1035,94 +972,129 @@ struct OnboardingFlowView: View {
     // MARK: - Context Quiz Helpers
 
     private func contextSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 9) {
             Text(title)
-                .font(.custom("Outfit-SemiBold", size: 10.5))
-                .foregroundColor(Color(hex: "#3D2B2E"))
-                .tracking(0.3)
+                .font(.custom("PlusJakartaSans-SemiBold", size: 12))
+                .foregroundColor(OnboardingPaywallUI.primaryInk)
+                .tracking(0.2)
             content()
         }
     }
 
+    private func onboardingScreenCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            content()
+        }
+        .padding(24)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                .stroke(Color.black.opacity(0.05), lineWidth: 1)
+        )
+        .shadow(color: OnboardingPaywallUI.shadow.opacity(0.8), radius: 14, x: 0, y: 6)
+    }
+
     private func chipGrid(options: [String], selected: [String], multiSelect: Bool, onTap: @escaping (String) -> Void) -> some View {
-        var rows: [[String]] = [[]]
-        for option in options {
-            let approxWidth = CGFloat(option.count) * 7.5 + 24
-            let currentRowWidth = rows.last!.reduce(CGFloat(0)) { $0 + CGFloat($1.count) * 7.5 + 32 }
-            if currentRowWidth + approxWidth > UIScreen.main.bounds.width - 36 && !rows.last!.isEmpty {
-                rows.append([option])
-            } else {
-                rows[rows.count - 1].append(option)
-            }
-        }
-        return VStack(alignment: .leading, spacing: 7) {
-            ForEach(rows.indices, id: \.self) { rowIdx in
-                HStack(spacing: 7) {
-                    ForEach(rows[rowIdx], id: \.self) { option in
-                        let isSelected = selected.contains(option)
-                        Button { onTap(option) } label: {
-                            Text(option)
-                                .font(.custom("Outfit-Regular", size: 11.5))
-                                .foregroundColor(isSelected ? Color(hex: "#6B3346") : Color(hex: "#3D2B2E").opacity(0.7))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .background(
-                                    isSelected
-                                        ? LinearGradient(colors: [Color(hex: "#f8e9ef"), Color(hex: "#f0d4dc")],
-                                                         startPoint: .topLeading, endPoint: .bottomTrailing)
-                                        : LinearGradient(colors: [.white, .white],
-                                                         startPoint: .topLeading, endPoint: .bottomTrailing)
+        ChipFlowLayout(itemSpacing: 8, rowSpacing: 8) {
+            ForEach(options, id: \.self) { option in
+                let isSelected = selected.contains(option)
+                Button { onTap(option) } label: {
+                    Text(option)
+                        .font(.custom("PlusJakartaSans-Medium", size: 13))
+                        .foregroundColor(isSelected ? Color(hex: "#5F4546") : OnboardingPaywallUI.primaryInk)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background {
+                            if isSelected {
+                                LinearGradient(
+                                    colors: [Color(hex: "#F5E3E0"), Color(hex: "#F8EFED")],
+                                    startPoint: .top,
+                                    endPoint: .bottom
                                 )
-                                .cornerRadius(20)
-                                .overlay(
-                                    Capsule()
-                                        .stroke(isSelected ? Color(hex: "#8E4C5C").opacity(0.5) : Color(hex: "#C4929A").opacity(0.22), lineWidth: 1)
-                                )
+                            } else {
+                                Color.white.opacity(0.88)
+                            }
                         }
-                        .buttonStyle(.plain)
-                    }
+                        .clipShape(Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(isSelected ? OnboardingPaywallUI.rose.opacity(0.46) : Color.black.opacity(0.05), lineWidth: 1)
+                        )
                 }
+                .buttonStyle(.plain)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Shared Components
+
+    private func introBlock(
+        eyebrow: String,
+        title: String,
+        body: String,
+        eyebrowColor: Color = OnboardingPaywallUI.muted,
+        titleSize: CGFloat = 36
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(eyebrow)
+                .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                .foregroundColor(eyebrowColor)
+                .tracking(2.3)
+                .textCase(.uppercase)
+
+            Text(title)
+                .font(.custom("Manrope", size: titleSize))
+                .fontWeight(.black)
+                .foregroundColor(OnboardingPaywallUI.primaryInk)
+                .lineSpacing(2)
+                .padding(.top, 16)
+
+            Text(body)
+                .font(.custom("PlusJakartaSans-Regular", size: 13))
+                .foregroundColor(OnboardingPaywallUI.muted)
+                .lineSpacing(6)
+                .padding(.top, 20)
+                .padding(.bottom, 28)
+        }
+    }
 
     private func questionTopBar(step: Int, total: Int) -> some View {
         HStack(spacing: 10) {
             Button { withAnimation { screen -= 1 } } label: {
                 ZStack {
                     Circle()
-                        .fill(Color.white)
-                        .frame(width: 30, height: 30)
-                        .shadow(color: Color(hex: "#8E4C5C").opacity(0.07), radius: 5, x: 0, y: 2)
+                        .fill(Color.white.opacity(0.92))
+                        .frame(width: 38, height: 38)
+                        .shadow(color: OnboardingPaywallUI.shadow.opacity(0.34), radius: 5, x: 0, y: 2)
                     Circle()
-                        .stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 1)
-                        .frame(width: 30, height: 30)
+                        .stroke(Color.black.opacity(0.04), lineWidth: 1)
+                        .frame(width: 38, height: 38)
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(hex: "#8E4C5C"))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(OnboardingPaywallUI.roseDeep)
                 }
             }
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color(hex: "#C4929A").opacity(0.2)).frame(height: 3)
+                    Capsule().fill(OnboardingPaywallUI.rose.opacity(0.16)).frame(height: 4)
                     Capsule()
-                        .fill(Color(hex: "#8E4C5C"))
-                        .frame(width: geo.size.width * CGFloat(step) / CGFloat(total), height: 3)
+                        .fill(OnboardingPaywallUI.roseDeep)
+                        .frame(width: geo.size.width * CGFloat(step) / CGFloat(total), height: 4)
                 }
             }
-            .frame(height: 3)
+            .frame(height: 4)
 
             Text("\(step) of \(total)")
-                .font(.custom("Outfit-Medium", size: 9))
-                .foregroundColor(Color(hex: "#B8A9AB"))
+                .font(.custom("PlusJakartaSans-Medium", size: 11))
+                .foregroundColor(OnboardingPaywallUI.muted)
                 .fixedSize()
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 60)
-        .padding(.bottom, 20)
+        .padding(.horizontal, 16)
+        .padding(.top, 58)
+        .padding(.bottom, 24)
     }
 
     private func optionPill(icon: String, title: String, desc: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
@@ -1131,20 +1103,20 @@ struct OnboardingFlowView: View {
                 // Rounded-rect icon (not circle)
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(hex: "#8E4C5C").opacity(isSelected ? 0.15 : 0.10))
+                        .fill(OnboardingPaywallUI.roseSoft.opacity(isSelected ? 0.92 : 0.55))
                         .frame(width: 32, height: 32)
                     Image(systemName: icon)
                         .font(.system(size: 14))
-                        .foregroundColor(Color(hex: "#8E4C5C"))
+                        .foregroundColor(OnboardingPaywallUI.roseDeep)
                 }
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
-                        .font(.custom("Outfit-SemiBold", size: 12))
-                        .foregroundColor(Color(hex: "#3D2B2E"))
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 13))
+                        .foregroundColor(OnboardingPaywallUI.primaryInk)
                     Text(desc)
-                        .font(.custom("Outfit-Light", size: 10))
-                        .foregroundColor(Color(hex: "#B8A9AB"))
+                        .font(.custom("PlusJakartaSans-Regular", size: 11))
+                        .foregroundColor(OnboardingPaywallUI.muted)
                 }
 
                 Spacer()
@@ -1152,10 +1124,10 @@ struct OnboardingFlowView: View {
                 // Circle check
                 ZStack {
                     Circle()
-                        .fill(isSelected ? Color(hex: "#8E4C5C") : Color.clear)
+                        .fill(isSelected ? OnboardingPaywallUI.primary : Color.clear)
                         .frame(width: 18, height: 18)
                     Circle()
-                        .stroke(isSelected ? Color(hex: "#8E4C5C") : Color(hex: "#C4929A").opacity(0.18), lineWidth: 1.5)
+                        .stroke(isSelected ? OnboardingPaywallUI.primary : Color.black.opacity(0.08), lineWidth: 1.5)
                         .frame(width: 18, height: 18)
                     if isSelected {
                         Image(systemName: "checkmark")
@@ -1165,17 +1137,13 @@ struct OnboardingFlowView: View {
                 }
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
-            .background(
-                isSelected
-                    ? LinearGradient(colors: [Color(hex: "#f8e9ef"), Color(hex: "#f0d4dc")], startPoint: .topLeading, endPoint: .bottomTrailing)
-                    : LinearGradient(colors: [.white, .white], startPoint: .topLeading, endPoint: .bottomTrailing)
-            )
-            .cornerRadius(13)
+            .background(isSelected ? OnboardingPaywallUI.roseSoft.opacity(0.9) : Color.white)
+            .cornerRadius(16)
             .overlay(
-                RoundedRectangle(cornerRadius: 13)
-                    .stroke(isSelected ? Color(hex: "#8E4C5C").opacity(0.35) : Color(hex: "#C4929A").opacity(0.18), lineWidth: 1.5)
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(isSelected ? OnboardingPaywallUI.rose.opacity(0.45) : Color.black.opacity(0.05), lineWidth: 1)
             )
-            .shadow(color: Color(hex: "#8E4C5C").opacity(0.07), radius: 6, x: 0, y: 2)
+            .shadow(color: OnboardingPaywallUI.shadow.opacity(0.5), radius: 8, x: 0, y: 3)
         }
         .buttonStyle(.plain)
     }
@@ -1187,158 +1155,284 @@ struct OnboardingFlowView: View {
         } label: {
             HStack {
                 Text(option.rawValue)
-                    .font(.custom("Outfit-Regular", size: 12.5))
-                    .foregroundColor(Color(hex: "#3D2B2E").opacity(isSelected ? 1 : 0.7))
+                    .font(.custom("PlusJakartaSans-Medium", size: 14))
+                    .foregroundColor(isSelected ? Color(hex: "#5F4546") : OnboardingPaywallUI.primaryInk)
                 Spacer()
-                ZStack {
-                    Circle()
-                        .fill(isSelected ? Color(hex: "#8E4C5C") : Color.clear)
-                        .frame(width: 18, height: 18)
-                    Circle()
-                        .stroke(isSelected ? Color(hex: "#8E4C5C") : Color(hex: "#C4929A").opacity(0.18), lineWidth: 1.5)
-                        .frame(width: 18, height: 18)
-                    if isSelected {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundColor(.white)
-                    }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 16)
+            .background {
+                if isSelected {
+                    LinearGradient(
+                        colors: [Color(hex: "#F5E3E0"), Color(hex: "#F8EFED")],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                } else {
+                    Color.white.opacity(0.88)
                 }
             }
-            .padding(.horizontal, 14).padding(.vertical, 12)
-            .background(
-                isSelected
-                    ? LinearGradient(colors: [Color(hex: "#f8e9ef"), Color(hex: "#f0d4dc")], startPoint: .topLeading, endPoint: .bottomTrailing)
-                    : LinearGradient(colors: [.white, .white], startPoint: .topLeading, endPoint: .bottomTrailing)
-            )
-            .cornerRadius(13)
+            .cornerRadius(20)
             .overlay(
-                RoundedRectangle(cornerRadius: 13)
-                    .stroke(isSelected ? Color(hex: "#8E4C5C").opacity(0.35) : Color(hex: "#C4929A").opacity(0.18), lineWidth: 1.5)
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(isSelected ? OnboardingPaywallUI.rose.opacity(0.46) : Color.black.opacity(0.05), lineWidth: 1)
             )
-            .shadow(color: Color(hex: "#8E4C5C").opacity(0.07), radius: 6, x: 0, y: 2)
         }
         .buttonStyle(.plain)
     }
 
-    private func planCard(name: String, price: String, subtitle: String? = nil, isSelected: Bool, badge: String?, perks: [String] = [], isLoading: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(alignment: .top, spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(isSelected ? Color(hex: "#8E4C5C") : Color.clear)
-                        .frame(width: 16, height: 16)
-                    Circle()
-                        .stroke(isSelected ? Color(hex: "#8E4C5C") : Color(hex: "#C4929A").opacity(0.18), lineWidth: 2)
-                        .frame(width: 16, height: 16)
-                    if isSelected {
-                        Circle().fill(Color.white).frame(width: 5, height: 5)
-                    }
-                }
-                .padding(.top, 2)
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(name)
-                            .font(.custom("Outfit-Bold", size: 12))
-                            .foregroundColor(Color(hex: "#3D2B2E"))
-                        if let badge = badge {
-                            Text(badge)
-                                .font(.custom("Outfit-Bold", size: 8))
+    private var onboardingAnnualSupportText: String {
+        let annualPrice = paymentVM.yearlyPriceInfo?.displayPrice ?? "—"
+        return annualPrice == "—" ? "Billed yearly" : "About $17.99/mo billed yearly"
+    }
+
+    private func onboardingPlanDescription(for tierIndex: Int) -> String {
+        switch tierIndex {
+        case 0: return "Everything in Gold with the strongest long-term value."
+        case 1: return "For consistent support across chat, research, and journal."
+        default: return "A lighter starting point for occasional AI help."
+        }
+    }
+
+    private func onboardingPlanPerks(for tierIndex: Int) -> [String] {
+        switch tierIndex {
+        case 0, 1: return ["75 msgs", "15 imgs", "210 credits"]
+        default: return ["30 msgs", "5 imgs", "80 credits"]
+        }
+    }
+
+    private func onboardingPlanUnit(for tierIndex: Int) -> String {
+        switch tierIndex {
+        case 0: return "/yr"
+        case 2: return "/wk"
+        default: return "/mo"
+        }
+    }
+
+    private func normalizedPriceText(_ rawPrice: String) -> String {
+        rawPrice
+            .replacingOccurrences(of: "/yr", with: "")
+            .replacingOccurrences(of: "/mo", with: "")
+            .replacingOccurrences(of: "/wk", with: "")
+            .replacingOccurrences(of: "/week", with: "")
+            .replacingOccurrences(of: "/month", with: "")
+            .replacingOccurrences(of: "/year", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func onboardingPriceDisplay(_ rawPrice: String, tierIndex: Int) -> some View {
+        HStack(alignment: .lastTextBaseline, spacing: 0) {
+            Text(rawPrice == "—" ? "—" : normalizedPriceText(rawPrice))
+                .font(.custom("Manrope", size: 18))
+                .fontWeight(.bold)
+                .foregroundColor(OnboardingPaywallUI.primaryInk)
+            Text(onboardingPlanUnit(for: tierIndex))
+                .font(.custom("PlusJakartaSans-SemiBold", size: 12))
+                .foregroundColor(OnboardingPaywallUI.muted)
+                .padding(.leading, 4)
+        }
+    }
+
+    private func onboardingSelectionDot(isSelected: Bool) -> some View {
+        ZStack {
+            Circle()
+                .stroke(isSelected ? OnboardingPaywallUI.primary : Color.black.opacity(0.10), lineWidth: 2)
+                .frame(width: 18, height: 18)
+            if isSelected {
+                Circle()
+                    .fill(OnboardingPaywallUI.primary)
+                    .frame(width: 18, height: 18)
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 6, height: 6)
+            }
+        }
+    }
+
+    private var onboardingFeaturedAnnualCard: some View {
+        let annualPrice = paymentVM.yearlyPriceInfo?.displayPrice ?? "—"
+        let isSelected = selectedPlan == 0
+        return Button { selectedPlan = 0 } label: {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Text("Annual")
+                                .font(.custom("Manrope", size: 17))
+                                .fontWeight(.bold)
+                                .foregroundColor(OnboardingPaywallUI.primaryInk)
+                            Text("Best Value")
+                                .font(.custom("PlusJakartaSans-Bold", size: 9))
                                 .foregroundColor(.white)
-                                .tracking(0.5)
-                                .padding(.horizontal, 7).padding(.vertical, 2)
-                                .background(Color(hex: "#8E4C5C"))
+                                .tracking(1.3)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 4)
+                                .background(OnboardingPaywallUI.rose)
                                 .clipShape(Capsule())
                         }
+                        Text(onboardingPlanDescription(for: 0))
+                            .font(.custom("PlusJakartaSans-Regular", size: 12))
+                            .foregroundColor(OnboardingPaywallUI.muted)
+                            .lineSpacing(3)
                     }
-                    if isLoading {
-                        Capsule()
-                            .fill(Color(hex: "#C4929A").opacity(0.15))
-                            .frame(width: 72, height: 8)
-                    } else {
-                        Text(price)
-                            .font(.custom("Outfit-Light", size: 10))
-                            .foregroundColor(isSelected ? Color(hex: "#8E4C5C") : Color(hex: "#B8A9AB"))
-                    }
-                    if let subtitle = subtitle {
-                        Text(subtitle)
-                            .font(.custom("Outfit-Light", size: 9.5))
-                            .foregroundColor(isSelected ? Color(hex: "#8E4C5C").opacity(0.75) : Color(hex: "#B8A9AB").opacity(0.85))
-                            .lineSpacing(1.5)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    if !perks.isEmpty {
-                        HStack(spacing: 0) {
-                            ForEach(Array(perks.enumerated()), id: \.offset) { idx, perk in
-                                Text(perk)
-                                    .font(.custom("Outfit-Light", size: 9))
-                                    .foregroundColor(isSelected ? Color(hex: "#8E4C5C").opacity(0.7) : Color(hex: "#B8A9AB").opacity(0.85))
-                                if idx < perks.count - 1 {
-                                    Text("  ·  ")
-                                        .font(.custom("Outfit-Light", size: 9))
-                                        .foregroundColor(isSelected ? Color(hex: "#8E4C5C").opacity(0.4) : Color(hex: "#C4929A").opacity(0.45))
-                                }
-                            }
-                        }
-                        .padding(.top, 1)
-                    }
+
+                    Spacer()
+                    onboardingSelectionDot(isSelected: isSelected)
+                        .padding(.top, 2)
                 }
-                Spacer()
+
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        onboardingPriceDisplay(annualPrice, tierIndex: 0)
+                        Text(onboardingAnnualSupportText)
+                            .font(.custom("PlusJakartaSans-Regular", size: 11))
+                            .foregroundColor(OnboardingPaywallUI.roseDeep)
+                    }
+
+                    Spacer(minLength: 10)
+
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("Includes")
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 8))
+                            .tracking(1.6)
+                            .foregroundColor(OnboardingPaywallUI.muted)
+                            .textCase(.uppercase)
+                        Text(onboardingPlanPerks(for: 0).joined(separator: " • "))
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                            .foregroundColor(OnboardingPaywallUI.primaryInk)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 9)
+                    .background(OnboardingPaywallUI.roseSoft)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
             }
-            .padding(.horizontal, 13).padding(.vertical, 11)
-            .background(
-                isSelected
-                    ? LinearGradient(colors: [Color(hex: "#f8e9ef"), Color(hex: "#f0d4dc")], startPoint: .topLeading, endPoint: .bottomTrailing)
-                    : LinearGradient(colors: [.white, .white], startPoint: .topLeading, endPoint: .bottomTrailing)
-            )
-            .cornerRadius(13)
+            .padding(15)
+            .background(isSelected ? OnboardingPaywallUI.surface : Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 13)
-                    .stroke(isSelected ? Color(hex: "#8E4C5C").opacity(0.35) : Color(hex: "#C4929A").opacity(0.18), lineWidth: 1.5)
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .stroke(isSelected ? OnboardingPaywallUI.rose.opacity(0.42) : Color.black.opacity(0.05), lineWidth: 1)
             )
-            .shadow(color: Color(hex: "#8E4C5C").opacity(0.07), radius: 6, x: 0, y: 2)
+            .shadow(color: isSelected ? OnboardingPaywallUI.shadow.opacity(0.55) : Color.clear, radius: 7, x: 0, y: 3)
         }
         .buttonStyle(.plain)
     }
 
-    private func benefitRow(bold: String, rest: String) -> some View {
-        HStack(alignment: .center, spacing: 8) {
-            Image(systemName: "checkmark")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundColor(Color(hex: "#8E4C5C"))
-                .frame(width: 16)
-            (
-                Text(bold).font(.custom("Outfit-SemiBold", size: 10.5))
-                + Text(rest).font(.custom("Outfit-Light", size: 10.5))
+    private func onboardingCompactPlanCard(name: String, price: String, tierIndex: Int) -> some View {
+        let isSelected = selectedPlan == tierIndex
+        return Button { selectedPlan = tierIndex } label: {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(name)
+                            .font(.custom("Manrope", size: 17))
+                            .fontWeight(.bold)
+                            .foregroundColor(OnboardingPaywallUI.primaryInk)
+                        Text(onboardingPlanDescription(for: tierIndex))
+                            .font(.custom("PlusJakartaSans-Regular", size: 11))
+                            .foregroundColor(OnboardingPaywallUI.muted)
+                            .lineSpacing(3)
+                    }
+                    Spacer()
+                    onboardingSelectionDot(isSelected: isSelected)
+                        .padding(.top, 2)
+                }
+
+                HStack(alignment: .lastTextBaseline) {
+                    onboardingPriceDisplay(price, tierIndex: tierIndex)
+                    Spacer()
+                    Text(onboardingPlanPerks(for: tierIndex).joined(separator: " • "))
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 9))
+                        .foregroundColor(OnboardingPaywallUI.muted)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+            .padding(.horizontal, 15)
+            .padding(.vertical, 13)
+            .background(isSelected ? OnboardingPaywallUI.surface : Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .stroke(isSelected ? OnboardingPaywallUI.primary.opacity(0.34) : OnboardingPaywallUI.roseSoft.opacity(0.7), lineWidth: 1)
             )
-            .foregroundColor(Color(hex: "#3D2B2E"))
-            .lineSpacing(2)
+            .shadow(color: isSelected ? OnboardingPaywallUI.shadow.opacity(0.45) : Color.clear, radius: 6, x: 0, y: 2)
         }
+        .buttonStyle(.plain)
     }
 
-    private func primaryButton(label: String, enabled: Bool, gradient: Bool, action: @escaping () -> Void) -> some View {
+    private func unlockCard(icon: String, tint: some ShapeStyle, iconColor: Color, title: String, body: String? = nil) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(tint)
+                .frame(width: 32, height: 32)
+                .overlay(
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(iconColor)
+                )
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                    .foregroundColor(OnboardingPaywallUI.primaryInk)
+                if let body {
+                    Text(body)
+                        .font(.custom("PlusJakartaSans-Regular", size: 12))
+                        .foregroundColor(OnboardingPaywallUI.muted)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white)
+        .cornerRadius(18)
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(OnboardingPaywallUI.roseSoft.opacity(0.65), lineWidth: 1)
+        )
+    }
+
+    private func primaryButton(
+        label: String,
+        enabled: Bool,
+        gradient: Bool,
+        horizontalPadding: CGFloat = 16,
+        topPadding: CGFloat = 14,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Text(label)
-                .font(.custom("Outfit-SemiBold", size: 12.5))
+                .font(.custom("PlusJakartaSans-SemiBold", size: 15))
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 44)
+                .frame(height: 56)
                 .background {
                     if !enabled {
-                        Color(hex: "#8E4C5C").opacity(0.35).cornerRadius(13)
-                    } else if gradient {
-                        LinearGradient(
-                            colors: [Color(hex: "#6B3346"), Color(hex: "#8E4C5C"), Color(hex: "#B76E79")],
-                            startPoint: .leading, endPoint: .trailing
-                        )
-                        .cornerRadius(13)
+                        OnboardingPaywallUI.primary.opacity(0.35).cornerRadius(24)
                     } else {
-                        Color(hex: "#8E4C5C").cornerRadius(13)
+                        OnboardingPaywallUI.primary.cornerRadius(24)
                     }
                 }
-                .shadow(color: enabled ? Color(hex: "#8E4C5C").opacity(0.3) : Color.clear, radius: 8, x: 0, y: 4)
+                .shadow(color: enabled ? OnboardingPaywallUI.shadow.opacity(0.8) : Color.clear, radius: 10, x: 0, y: 5)
         }
         .disabled(!enabled)
-        .padding(.horizontal, 18)
+        .padding(.horizontal, horizontalPadding)
+        .padding(.top, topPadding)
+    }
+
+    private func secondarySkipButton(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text("Skip for now")
+                .font(.custom("PlusJakartaSans-Medium", size: 14))
+                .foregroundColor(OnboardingPaywallUI.muted)
+                .underline()
+                .frame(maxWidth: .infinity)
+        }
         .padding(.top, 14)
     }
 }
