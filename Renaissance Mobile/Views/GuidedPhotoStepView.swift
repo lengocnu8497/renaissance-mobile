@@ -185,7 +185,7 @@ struct GuidedPhotoStepView: View {
             if isLast {
                 Button {
                     dismiss()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                         onBeginEntry()
                     }
                 } label: {

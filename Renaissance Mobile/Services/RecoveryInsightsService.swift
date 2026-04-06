@@ -23,6 +23,7 @@ private struct InsightsRequest: Encodable {
         let date: String
         let dayNumber: Int
         let notes: String?
+        let painLevel: Double?
         let bruisingLevel: Double?
         let swellingLevel: Double?
         let rednessLevel: Double?
@@ -68,6 +69,7 @@ class RecoveryInsightsService {
                     date: $0.entryDate,
                     dayNumber: $0.dayNumber,
                     notes: $0.notes,
+                    painLevel: $0.painLevel,
                     bruisingLevel: $0.bruisingLevel,
                     swellingLevel: $0.swellingLevel,
                     rednessLevel: $0.rednessLevel
@@ -113,6 +115,18 @@ class RecoveryInsightsService {
     private func saveToCache(_ insights: RecoveryInsights) {
         guard let data = try? JSONEncoder().encode(insights) else { return }
         UserDefaults.standard.set(data, forKey: cacheKey(insights.procedureId))
+    }
+
+    /// Returns the most recently generated cached insight across all procedures.
+    /// Does not validate entry count — suitable for context injection only.
+    func fetchMostRecentCached() -> RecoveryInsights? {
+        UserDefaults.standard.dictionaryRepresentation()
+            .filter { $0.key.hasPrefix(cachePrefix) }
+            .compactMap { _, value -> RecoveryInsights? in
+                guard let data = value as? Data else { return nil }
+                return try? JSONDecoder().decode(RecoveryInsights.self, from: data)
+            }
+            .max(by: { $0.generatedAt < $1.generatedAt })
     }
 
     private func cacheKey(_ procedureId: String) -> String {

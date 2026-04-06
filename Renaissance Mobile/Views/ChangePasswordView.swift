@@ -68,17 +68,9 @@ struct ChangePasswordView: View {
             }
             .navigationTitle("Change Password")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        dismiss()
-                    }) {
-                        Image(systemName: "arrow.left")
-                            .font(.system(size: 20))
-                            .foregroundColor(Theme.Colors.textProfilePrimary)
-                    }
-                }
-            }
+            .navigationBarBackButtonHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
+            .forceUIKitNavigationBarHidden()
             .sheet(isPresented: $showForgotPassword) {
                 ForgotPasswordView()
             }
@@ -374,17 +366,9 @@ struct ForgotPasswordView: View {
             }
             .navigationTitle("Forgot Password")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        dismiss()
-                    }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 18))
-                            .foregroundColor(Theme.Colors.textProfilePrimary)
-                    }
-                }
-            }
+            .navigationBarBackButtonHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
+            .forceUIKitNavigationBarHidden()
         }
     }
 

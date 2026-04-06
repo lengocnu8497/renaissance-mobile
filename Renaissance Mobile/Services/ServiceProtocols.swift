@@ -18,6 +18,7 @@ protocol JournalServiceProtocol {
         entryDate: Date,
         notes: String?,
         photoData: Data?,
+        painLevel: Int?,
         bruisingLevel: Int?,
         swellingLevel: Int?,
         rednessLevel: Int?

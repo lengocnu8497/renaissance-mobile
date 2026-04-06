@@ -2,6 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>StripePublishableKey</key>
+	<string>$(STRIPE_PUBLISHABLE_KEY)</string>
+	<key>StripePriceWeekly</key>
+	<string>$(STRIPE_PRICE_WEEKLY)</string>
+	<key>StripePriceMonthly</key>
+	<string>$(STRIPE_PRICE_MONTHLY)</string>
+	<key>StripePriceYearly</key>
+	<string>$(STRIPE_PRICE_YEARLY)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Renaissance uses your camera to capture recovery photos for your personal journal.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

@@ -23,9 +23,14 @@ class OnboardingPaymentViewModel {
     var errorMessage: String?
 
     // Fetched from Stripe — nil while loading
-    var annualPriceInfo: OnboardingPriceInfo?
-    var goldPriceInfo: OnboardingPriceInfo?
-    var silverPriceInfo: OnboardingPriceInfo?
+    var yearlyPriceInfo: OnboardingPriceInfo?
+    var monthlyPriceInfo: OnboardingPriceInfo?
+    var weeklyPriceInfo: OnboardingPriceInfo?
+
+    // Current paywall surfaces use Silver / Gold / Annual naming.
+    var silverPriceInfo: OnboardingPriceInfo? { weeklyPriceInfo }
+    var goldPriceInfo: OnboardingPriceInfo? { monthlyPriceInfo }
+    var annualPriceInfo: OnboardingPriceInfo? { yearlyPriceInfo }
 
     // Set after a successful subscription creation — read by the view on .completed
     private(set) var lastCustomerId: String?
@@ -55,9 +60,9 @@ class OnboardingPaymentViewModel {
             let results: [PriceResponse] = try await supabase.functions.invoke(
                 "fetch-stripe-prices",
                 options: FunctionInvokeOptions(body: FetchRequest(priceIds: [
-                    EnvironmentConfig.stripeAnnualPriceId,
-                    EnvironmentConfig.stripeGoldPriceId,
-                    EnvironmentConfig.stripeSilverPriceId,
+                    AppConfig.stripeYearlyPriceId,
+                    AppConfig.stripeMonthlyPriceId,
+                    AppConfig.stripeWeeklyPriceId,
                 ]))
             )
 
@@ -69,9 +74,9 @@ class OnboardingPaymentViewModel {
                     interval: item.interval
                 )
                 switch item.priceId {
-                case EnvironmentConfig.stripeAnnualPriceId:  annualPriceInfo  = info
-                case EnvironmentConfig.stripeGoldPriceId:    goldPriceInfo    = info
-                case EnvironmentConfig.stripeSilverPriceId:  silverPriceInfo  = info
+                case AppConfig.stripeYearlyPriceId:  yearlyPriceInfo  = info
+                case AppConfig.stripeMonthlyPriceId: monthlyPriceInfo = info
+                case AppConfig.stripeWeeklyPriceId:  weeklyPriceInfo  = info
                 default: break
                 }
             }
@@ -137,7 +142,7 @@ class OnboardingPaymentViewModel {
             configuration.appearance = appearance
 
             configuration.applePay = PaymentSheet.ApplePayConfiguration(
-                merchantId: EnvironmentConfig.appleMerchantId,
+                merchantId: AppConfig.appleMerchantId,
                 merchantCountryCode: "US"
             )
 

@@ -5,13 +5,42 @@
 
 import SwiftUI
 
+private enum HomeUI {
+    static let shell = Color(hex: "#EEF1E8")
+    static let background = Color(hex: "#F6F7F2")
+    static let surface = Color(hex: "#FBFCF8")
+    static let card = Color(hex: "#EDF1E8")
+    static let cardStrong = Color(hex: "#E1E7DA")
+    static let line = Color(hex: "#CFD6C7")
+    static let text = Color(hex: "#1F261D")
+    static let muted = Color(hex: "#687064")
+    static let primary = Color(hex: "#516048")
+    static let primaryInk = Color(hex: "#314030")
+    static let primarySoft = Color(hex: "#D9E3CE")
+    static let rose = Color(hex: "#B07B7A")
+    static let roseSoft = Color(hex: "#F1DDDA")
+    static let alert = Color(hex: "#A85555")
+    static let success = Color(hex: "#4D7A58")
+    static let shadow = Color(hex: "#5A6750").opacity(0.10)
+}
+
+private enum HomeMode {
+    case recovery
+    case research
+}
+
 struct PostLoginHomeView: View {
-    @State private var navigateToProcedures = false
-    @State private var firstName: String = ""
+    @State private var firstName = ""
     @State private var journalViewModel = JournalViewModel()
-    @State private var selectedDay: Date = Calendar.current.startOfDay(for: Date())
-    @State private var homePendingCheckIn: WeeklyCheckIn? = nil
-    @State private var homeGuidedGuide: WeeklyPhotoGuide? = nil
+    @State private var proceduresViewModel = ProceduresViewModel()
+    @State private var researchViewModel = ResearchViewModel()
+    @State private var isSubscribed = false
+    @State private var selectedMode: HomeMode = .recovery
+    @State private var selectedProcedure: Procedure?
+    @State private var selectedSavedForDetail: SavedProcedure?
+    @State private var recentSessions: [ChatConversation] = []
+    @State private var loadingRecentSessions = false
+    @State private var showExploreSheet = false
 
     var onNavigateToChat: ((String) -> Void)?
     var onNavigateToJournal: (() -> Void)?
@@ -21,519 +50,1042 @@ struct PostLoginHomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
+                LazyVStack(alignment: .leading, spacing: 16) {
                     headerSection
-                    askRenaCard
-                    heroSection
-                    weeklySection
-                    recoverySection
-                    brandLogoSection
+                    modeSwitch
+                    modeContent
                 }
-                .padding(.bottom, 100)
+                .padding(.horizontal, 18)
+                .padding(.top, 46)
+                .padding(.bottom, 120)
             }
-            .background(Color(hex: "#FFF8F6"))
+            .background(HomeUI.shell.ignoresSafeArea())
             .navigationBarHidden(true)
-            .navigationDestination(isPresented: $navigateToProcedures) {
-                ProceduresListView()
+            .navigationDestination(item: $selectedProcedure) { procedure in
+                ProcedureDetailView(
+                    procedure: procedure,
+                    allProcedures: proceduresViewModel.procedures,
+                    onNavigateToChat: { msg, _ in
+                        onNavigateToChat?(msg)
+                    },
+                    onSaveProcedure: { proc in
+                        Task { await researchViewModel.toggleSave(proc) }
+                    },
+                    isSaved: researchViewModel.isSaved(procedure.id)
+                )
+            }
+            .navigationDestination(item: $selectedSavedForDetail) { saved in
+                if let proc = researchViewModel.procedure(for: saved) {
+                    SavedProcedureDetailView(
+                        saved: saved,
+                        procedure: proc,
+                        viewModel: researchViewModel,
+                        onNavigateToChat: { msg, _ in
+                            onNavigateToChat?(msg)
+                        },
+                        onReopenConversation: nil
+                    )
+                }
+            }
+            .sheet(isPresented: $showExploreSheet) {
+                NavigationStack {
+                    ProceduresListView(
+                        initialSavedIds: Set(researchViewModel.savedProcedures.map { $0.procedureId }),
+                        onBackButtonTapped: { showExploreSheet = false },
+                        onNavigateToChat: { msg, _ in
+                            showExploreSheet = false
+                            onNavigateToChat?(msg)
+                        },
+                        onSaveProcedure: { proc in
+                            Task { await researchViewModel.toggleSave(proc) }
+                        }
+                    )
+                }
+            }
+            .onChange(of: showExploreSheet) { _, isPresented in
+                guard !isPresented else { return }
+                Task {
+                    await researchViewModel.load()
+                    await loadRecentSessions()
+                }
             }
             .task {
-                await loadUserProfile()
-                await journalViewModel.load()
-                OnboardingStore.applyIfNeeded(to: journalViewModel)
-                homePendingCheckIn = journalViewModel.primaryPendingCheckIn
+                await loadHomeData()
             }
             .onReceive(NotificationCenter.default.publisher(for: .subscriptionLinked)) { _ in
-                Task { await loadUserProfile() }
-            }
-            .sheet(item: $homeGuidedGuide) { guide in
-                GuidedPhotoStepView(guide: guide) {
-                    onNavigateToJournal?()
-                }
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
+                Task { await loadHomeData() }
             }
         }
     }
 
-    // MARK: - Data Loading
+    // MARK: - Data
 
-    private func loadUserProfile() async {
+    private func loadHomeData() async {
         do {
             let profile = try await userProfileService.getUserProfile()
             if let fullName = profile.fullName, !fullName.isEmpty {
                 firstName = fullName.components(separatedBy: " ").first ?? fullName
             }
+
+            let subscribed = profile.billingPlan == .silver
+                || profile.billingPlan == .gold
+                || profile.billingPlan == .annual
+            isSubscribed = subscribed
+            journalViewModel.insightsEnabled = subscribed
         } catch {
             print("Failed to load user profile: \(error)")
         }
+
+        await journalViewModel.load()
+        await OnboardingStore.applyIfNeeded(to: journalViewModel)
+        await proceduresViewModel.fetchProcedures()
+        await researchViewModel.load()
+        await loadRecentSessions()
+
+        guard isSubscribed else { return }
+        journalViewModel.loadCachedWeeklySummaries()
+        await journalViewModel.loadRemoteWeeklySummaries()
     }
 
-    // MARK: - Header
+    private var primaryProcedureName: String {
+        journalViewModel.primaryProcedureName ?? "Recovery"
+    }
+
+    private var firstNameDisplay: String {
+        firstName.isEmpty ? "there" : firstName
+    }
+
+    private var latestEntry: JournalEntry? {
+        journalViewModel.entries.max(by: { $0.entryDateAsDate < $1.entryDateAsDate })
+    }
+
+    private var latestPrimaryWeeklySummary: WeeklySummary? {
+        guard let procedureId = journalViewModel.primaryProcedureId else { return nil }
+        return journalViewModel.weeklySummaries.values
+            .filter { $0.procedureId == procedureId }
+            .sorted { lhs, rhs in
+                if lhs.weekNumber == rhs.weekNumber {
+                    return lhs.generatedAt > rhs.generatedAt
+                }
+                return lhs.weekNumber > rhs.weekNumber
+            }
+            .first
+    }
+
+    private var resolvedWeeklyPreview: JournalWeeklyReportPreview {
+        if let preview = journalViewModel.weeklyReportPreview {
+            return preview
+        }
+
+        let hasEntries = !journalViewModel.entries.isEmpty
+        return JournalWeeklyReportPreview(
+            weekNumber: 1,
+            title: hasEntries ? "Week 1 is almost ready." : "Week 1 is getting started.",
+            subtitle: hasEntries
+                ? "Add one more detailed log and your weekly report will auto-fill with trends and insights."
+                : "Keep logging daily and your weekly report will auto-fill with trends and insights.",
+            statusLabel: hasEntries ? "Building" : "Starting",
+            progress: hasEntries ? max(68, journalViewModel.weeklyReportProgress) : 18,
+            actionTitle: hasEntries ? "See preview" : "Keep logging",
+            summary: nil
+        )
+    }
+
+    private var activeWeeklyCheckIns: [WeeklyCheckIn] {
+        guard let procedureId = journalViewModel.primaryProcedureId ?? journalViewModel.bootstrappedProcedureId else {
+            return []
+        }
+        return journalViewModel.checkIns(for: procedureId)
+    }
+
+    private var hasHomeAttentionState: Bool {
+        let hasPendingWeekly = activeWeeklyCheckIns.contains { !$0.isCompleted && $0.scheduledDate <= Date() }
+        return hasPendingWeekly || !journalViewModel.primarySmartAlerts.isEmpty
+    }
+
+    private var proceduresToResearch: [Procedure] {
+        let savedIds = Set(researchViewModel.savedProcedures.map(\.procedureId))
+        let prioritizedSaved = researchViewModel.shortlistCards.map(\.procedure)
+        let additional = proceduresViewModel.procedures
+            .filter { !savedIds.contains($0.id) }
+            .sorted { $0.sortOrder < $1.sortOrder }
+        return Array((prioritizedSaved + additional).prefix(6))
+    }
+
+    // MARK: - Sections
 
     private var headerSection: some View {
         HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Good morning,")
-                    .font(.custom("Outfit-Light", size: 11.5))
-                    .foregroundColor(Color(hex: "#B8A9AB"))
-                    .tracking(0.3)
-                Text("Hello, \(firstName.isEmpty ? "there" : firstName)")
-                    .font(.system(size: 30, weight: .regular, design: .serif))
-                    .foregroundColor(Color(hex: "#3D2B2E"))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Hello, \(firstNameDisplay)")
+                    .font(.system(size: 29, weight: .heavy, design: .rounded))
+                    .foregroundColor(HomeUI.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
             }
 
             Spacer()
+
+            bellStatusButton
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 60)
-        .padding(.bottom, 18)
     }
 
-    // MARK: - Ask Rena
-
-    private var askRenaCard: some View {
-        Button {
-            onNavigateToChat?("")
-        } label: {
-            HStack(spacing: 12) {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(hex: "#8E4C5C").opacity(0.10))
-                    .frame(width: 40, height: 40)
-                    .overlay(
-                        Canvas { context, size in
-                            let cx = size.width / 2
-                            let cy = size.height / 2
-                            var p = Path()
-                            p.addEllipse(in: CGRect(x: cx-9.5, y: cy-9.5, width: 19, height: 19))
-                            context.stroke(p, with: .color(Color(hex: "#8E4C5C")), lineWidth: 1.2)
-                            p = Path()
-                            p.addEllipse(in: CGRect(x: cx-6.5, y: cy-6.5, width: 13, height: 13))
-                            context.stroke(p, with: .color(Color(hex: "#8E4C5C")), lineWidth: 1.0)
-                            p = Path()
-                            p.addEllipse(in: CGRect(x: cx-3.5, y: cy-3.5, width: 7, height: 7))
-                            context.stroke(p, with: .color(Color(hex: "#8E4C5C")), lineWidth: 1.2)
-                            p = Path()
-                            p.addEllipse(in: CGRect(x: cx-1.5, y: cy-1.5, width: 3, height: 3))
-                            context.fill(p, with: .color(Color(hex: "#8E4C5C")))
-                        }
-                    )
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Ask Rena")
-                        .font(.custom("Outfit-SemiBold", size: 13))
-                        .foregroundColor(Color(hex: "#3D2B2E"))
-                    Text("How can I help you today?")
-                        .font(.custom("Outfit-Light", size: 11))
-                        .foregroundColor(Color(hex: "#B8A9AB"))
-                }
-
-                Spacer()
-
-                Circle()
-                    .fill(Color(hex: "#8E4C5C").opacity(0.10))
-                    .frame(width: 30, height: 30)
-                    .overlay(
-                        Image(systemName: "arrow.forward")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Color(hex: "#8E4C5C"))
-                    )
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(Color.white)
-            .cornerRadius(16)
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 1))
-            .shadow(color: Color(hex: "#8E4C5C").opacity(0.07), radius: 7, x: 0, y: 2)
+    private var modeSwitch: some View {
+        HStack(spacing: 8) {
+            modeButton(title: "Recovery", mode: .recovery)
+            modeButton(title: "Research", mode: .research)
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 18)
-        .padding(.bottom, 12)
-    }
-
-    // MARK: - Hero
-
-    private var heroSection: some View {
-        HeroCardView(
-            title: "Explore\nProcedures",
-            subtitle: "Find the perfect treatment for you.",
-            imageName: nil
+        .padding(8)
+        .background(HomeUI.card)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.black.opacity(0.05), lineWidth: 1)
         )
-        .overlay(alignment: .topTrailing) {
-            HStack(spacing: 4) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 8, weight: .semibold))
-                Text("Coming Soon")
-                    .font(.custom("Outfit-SemiBold", size: 9))
-                    .tracking(0.5)
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Color.black.opacity(0.35))
-            .clipShape(Capsule())
-            .padding(.top, 12)
-            .padding(.trailing, 30)
-        }
-        .opacity(0.72)
-        .padding(.horizontal, 18)
-        .padding(.bottom, 20)
     }
-
-    // MARK: - Weekly Check-In
 
     @ViewBuilder
-    private var weeklySection: some View {
-        let primaryId = journalViewModel.groupedByProcedure
-            .max(by: { $0.entries.count < $1.entries.count })?
-            .entries.first?.procedureId
-            ?? journalViewModel.bootstrappedProcedureId
-        let allCheckIns = primaryId.map { journalViewModel.checkIns(for: $0) } ?? []
-
-        if !allCheckIns.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                // Banner when a check-in is due
-                if let checkIn = homePendingCheckIn {
-                    let guide = PhotoAngleGuideService.guide(for: checkIn.procedureName, week: checkIn.weekNumber)
-                    WeeklyCheckInBannerView(
-                        checkIn: checkIn,
-                        guide: guide,
-                        onBeginCheckIn: { homeGuidedGuide = guide },
-                        onSnooze: {
-                            WeeklyCheckInService.shared.snooze(procedureId: checkIn.procedureId)
-                            homePendingCheckIn = nil
-                        }
-                    )
-                    .padding(.horizontal, 18)
-                }
-
-                // Progress strip — always visible when check-ins exist
-                VStack(alignment: .leading, spacing: 6) {
-                    WeeklyProgressStripView(
-                        procedureName: journalViewModel.groupedByProcedure
-                            .max(by: { $0.entries.count < $1.entries.count })?.key ?? "",
-                        checkIns: allCheckIns,
-                        onTapPending: { onNavigateToJournal?() }
-                    )
-                }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 8)
-            }
+    private var modeContent: some View {
+        switch selectedMode {
+        case .recovery:
+            recoveryModeContent
+        case .research:
+            researchModeContent
         }
     }
 
-    // MARK: - Daily Reflection
-
-    private var recoverySection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Daily Reflection")
-                    .font(.custom("Outfit-SemiBold", size: 15))
-                    .foregroundColor(Color(hex: "#3D2B2E"))
-                Spacer()
-                Button {
-                    onNavigateToJournal?()
-                } label: {
-                    Text("View all")
-                        .font(.custom("Outfit-SemiBold", size: 11))
-                        .foregroundColor(Color(hex: "#C4929A"))
-                }
-            }
-            .padding(.horizontal, 18)
-
-            if let snapshot = recoverySnapshotData {
-                RecoverySnapshotCard(
-                    averages: (snapshot.bruising, snapshot.swelling, snapshot.redness),
-                    isThisWeek: snapshot.isThisWeek
-                )
-                .padding(.horizontal, 18)
-            }
-
-            calendarCard
-            journalCardArea
-        }
-    }
-
-    private var recoverySnapshotData: (bruising: Double, swelling: Double, redness: Double, isThisWeek: Bool)? {
-        let entries = journalViewModel.entries
-        guard !entries.isEmpty else { return nil }
-
-        let cal = Calendar.current
-        let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())) ?? Date()
-        let weekEntries = entries.filter { $0.entryDateAsDate >= weekStart }
-        let source = weekEntries.isEmpty ? entries : weekEntries
-        let isThisWeek = !weekEntries.isEmpty
-
-        func avg(_ values: [Double]) -> Double {
-            let nonZero = values.filter { $0 > 0 }
-            return nonZero.isEmpty ? 0 : nonZero.reduce(0, +) / Double(nonZero.count)
-        }
-
-        return (
-            avg(source.compactMap { $0.bruisingLevel }),
-            avg(source.compactMap { $0.swellingLevel }),
-            avg(source.compactMap { $0.rednessLevel }),
-            isThisWeek
-        )
-    }
-
-    // MARK: - Calendar
-
-    private var calendarCard: some View {
-        HStack(spacing: 0) {
-            ForEach(weekDays(), id: \.self) { day in
-                dayCellView(day)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 13)
-        .background(Color.white)
-        .cornerRadius(16)
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 1))
-        .shadow(color: Color(hex: "#8E4C5C").opacity(0.07), radius: 7, x: 0, y: 2)
-        .padding(.horizontal, 18)
-    }
-
-    private func dayCellView(_ date: Date) -> some View {
-        let cal = Calendar.current
-        let isSelected = cal.isDate(date, inSameDayAs: selectedDay)
-        let dayNum = cal.component(.day, from: date)
-
+    private func modeButton(title: String, mode: HomeMode) -> some View {
+        let isSelected = selectedMode == mode
         return Button {
-            selectedDay = date
+            selectedMode = mode
         } label: {
-            VStack(spacing: 6) {
-                Text(date, format: .dateTime.weekday(.abbreviated))
-                    .font(.custom("Outfit-Regular", size: 9.5))
-                    .fontWeight(isSelected ? .semibold : .regular)
-                    .foregroundColor(isSelected ? Color(hex: "#8E4C5C") : Color(hex: "#B8A9AB"))
-
-                Text("\(dayNum)")
-                    .font(.custom("Outfit-Regular", size: 14))
-                    .fontWeight(isSelected ? .bold : .regular)
-                    .foregroundColor(isSelected ? .white : Color(hex: "#B8A9AB"))
-                    .frame(width: 32, height: 32)
-                    .background(isSelected ? Color(hex: "#C4929A") : Color.clear)
-                    .cornerRadius(10)
-                    .shadow(
-                        color: isSelected ? Color(hex: "#C4929A").opacity(0.42) : Color.clear,
-                        radius: 6, x: 0, y: 3
-                    )
-            }
-            .frame(maxWidth: .infinity)
+            Text(title)
+                .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                .foregroundColor(isSelected ? .white : HomeUI.primaryInk)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background(isSelected ? HomeUI.primary : .white)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(isSelected ? Color.clear : Color.black.opacity(0.05), lineWidth: 1)
+                )
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - Journal Cards
-
-    private var journalCardArea: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 5) {
-                Circle()
-                    .fill(Color(hex: "#8E4C5C"))
-                    .frame(width: 5, height: 5)
-                Text("Today")
-                    .font(.custom("Outfit-SemiBold", size: 9.5))
-                    .foregroundColor(Color(hex: "#8E4C5C"))
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(Color(hex: "#8E4C5C").opacity(0.12))
-            .clipShape(Capsule())
-            .padding(.bottom, 9)
-
-            Text("Create an entry to reflect")
-                .font(.custom("Outfit-SemiBold", size: 13))
-                .foregroundColor(Color(hex: "#3D2B2E"))
-                .padding(.bottom, 4)
-
-            Text("Document your recovery journey, one day at a time.")
-                .font(.custom("Outfit-Light", size: 10.5))
-                .foregroundColor(Color(hex: "#B8A9AB"))
-                .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer()
-
-            Button {
-                onNavigateToJournal?()
-            } label: {
-                Text("Log Entry")
-                    .font(.custom("Outfit-SemiBold", size: 12.5))
-                    .tracking(0.4)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Color(hex: "#8E4C5C"))
-                    .cornerRadius(11)
-                    .shadow(color: Color(hex: "#8E4C5C").opacity(0.28), radius: 7, x: 0, y: 4)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.top, 13)
-        .padding(.bottom, 12)
-        .frame(maxWidth: .infinity)
-        .frame(height: 172)
-        .background(
-            LinearGradient(
-                colors: [Color(hex: "#f8e9ef"), Color(hex: "#f0d4dc")],
-                startPoint: UnitPoint(x: 0, y: 0.15),
-                endPoint: .bottomTrailing
+    private var recoveryModeContent: some View {
+        Group {
+            JournalStreakStrip(
+                streak: journalViewModel.streak,
+                dayNumber: journalViewModel.heroData?.dayNumber ?? 0,
+                procedureName: journalViewModel.primaryProcedureName
             )
-        )
-        .cornerRadius(16)
-        .shadow(color: Color(hex: "#8E4C5C").opacity(0.12), radius: 12, x: 0, y: 5)
-        .padding(.horizontal, 18)
-    }
 
-    // MARK: - Brand Logo
+            JournalTodayCard(
+                latestEntry: journalViewModel.latestEntry,
+                procedureName: journalViewModel.primaryProcedureName,
+                onLogToday: { journalViewModel.tapAddEntry(for: journalViewModel.primaryProcedureName) }
+            )
 
-    private var brandLogoSection: some View {
-        VStack(spacing: 8) {
-            Canvas { context, size in
-                let cx = size.width / 2
-                let cy = size.height / 2
-                var p = Path()
-                p.addEllipse(in: CGRect(x: cx - 32, y: cy - 32, width: 64, height: 64))
-                context.stroke(p, with: .color(Color(hex: "#8E4C5C").opacity(0.55)), lineWidth: 1.2)
-                p = Path()
-                p.addEllipse(in: CGRect(x: cx - 23, y: cy - 23, width: 46, height: 46))
-                context.stroke(p, with: .color(Color(hex: "#8E4C5C").opacity(0.45)), lineWidth: 1)
-                p = Path()
-                p.addEllipse(in: CGRect(x: cx - 14, y: cy - 14, width: 28, height: 28))
-                context.stroke(p, with: .color(Color(hex: "#3D2B2E").opacity(0.4)), lineWidth: 1.2)
-                p = Path()
-                p.move(to: CGPoint(x: cx, y: cy - 12))
-                p.addCurve(
-                    to: CGPoint(x: cx + 12, y: cy),
-                    control1: CGPoint(x: cx + 8, y: cy - 12),
-                    control2: CGPoint(x: cx + 12, y: cy - 6)
+            JournalRecoveryScoreCard(score: journalViewModel.primaryRecoveryScore)
+
+            askRenaRecoveryCard
+
+            HStack(alignment: .top, spacing: 12) {
+                JournalPainTrendCard(painSeries: journalViewModel.primaryPainSeries)
+                JournalTodaySignalsCard(
+                    pain: journalViewModel.latestPainLevel,
+                    swelling: journalViewModel.latestSwellingLevel,
+                    bruising: journalViewModel.latestBruisingLevel
                 )
-                p.addCurve(
-                    to: CGPoint(x: cx, y: cy + 12),
-                    control1: CGPoint(x: cx + 12, y: cy + 6),
-                    control2: CGPoint(x: cx + 8, y: cy + 12)
-                )
-                context.stroke(p, with: .color(Color(hex: "#8E4C5C").opacity(0.45)), lineWidth: 1)
-                p = Path()
-                p.addEllipse(in: CGRect(x: cx - 3.5, y: cy - 3.5, width: 7, height: 7))
-                context.fill(p, with: .color(Color(hex: "#8E4C5C").opacity(0.55)))
             }
-            .frame(width: 68, height: 68)
 
-            VStack(spacing: 3) {
-                Text("Rena Aesthetic")
-                    .font(.system(size: 14, weight: .light, design: .serif))
-                    .foregroundColor(Color(hex: "#3D2B2E").opacity(0.85))
-                Text("LAB")
-                    .font(.system(size: 9, weight: .medium))
-                    .tracking(5)
-                    .foregroundColor(Color(hex: "#8E4C5C").opacity(0.6))
+            if let alert = journalViewModel.journalAlert {
+                JournalAlertCard(alert: alert)
             }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 24)
-    }
 
-    // MARK: - Helpers
+            JournalWeeklyReportCard(
+                preview: resolvedWeeklyPreview,
+                onOpenReport: {
+                    onNavigateToJournal?()
+                }
+            )
 
-    private func weekDays() -> [Date] {
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        return (-3...3).compactMap { offset in
-            cal.date(byAdding: .day, value: offset, to: today)
+            recentJournalSection
+
+            JournalPhotoReelSection(
+                entries: journalViewModel.photoReelEntries(),
+                onOpenGallery: { onNavigateToJournal?() }
+            )
         }
     }
 
-    private func entryForDay(_ date: Date) -> JournalEntry? {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        let dateString = formatter.string(from: date)
-        return journalViewModel.entries.first { $0.entryDate == dateString }
-    }
-}
-
-// MARK: - Recovery Snapshot Card
-
-private struct RecoverySnapshotCard: View {
-    let averages: (bruising: Double, swelling: Double, redness: Double)
-    let isThisWeek: Bool
-
-    private let metrics: [(label: String, color: Color, value: Double)]
-
-    init(averages: (bruising: Double, swelling: Double, redness: Double), isThisWeek: Bool) {
-        self.averages = averages
-        self.isThisWeek = isThisWeek
-        self.metrics = [
-            ("Bruising", Color(hex: "#7B4B6A"), averages.bruising),
-            ("Swelling", Color(hex: "#B76E79"), averages.swelling),
-            ("Redness",  Color(hex: "#C4929A"), averages.redness),
-        ]
+    private var researchModeContent: some View {
+        Group {
+            researchHeroSection
+            askRenaResearchCard
+            proceduresToResearchSection
+            shortlistShelfSection
+            exploreNextSection
+            savedResearchSection
+            consultationPrepSection
+            researchSessionsSection
+        }
     }
 
-    private var hasAnyData: Bool {
-        averages.bruising > 0 || averages.swelling > 0 || averages.redness > 0
-    }
+    private var bellStatusButton: some View {
+        Button {
+            onNavigateToJournal?()
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "bell")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(HomeUI.primary)
+                    .frame(width: 44, height: 44)
+                    .background(HomeUI.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .shadow(color: HomeUI.shadow, radius: 10, x: 0, y: 4)
 
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Recovery Snapshot")
-                    .font(.custom("Outfit-SemiBold", size: 13))
-                    .foregroundColor(Color(hex: "#3D2B2E"))
-                Spacer()
-                Text(isThisWeek ? "This Week" : "Recent")
-                    .font(.custom("Outfit-SemiBold", size: 10))
-                    .foregroundColor(Color(hex: "#8E4C5C"))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color(hex: "#8E4C5C").opacity(0.10))
-                    .clipShape(Capsule())
+                if hasHomeAttentionState {
+                    Circle()
+                        .fill(HomeUI.rose)
+                        .frame(width: 10, height: 10)
+                        .overlay(Circle().stroke(.white, lineWidth: 2))
+                        .offset(x: 3, y: -3)
+                }
             }
-            .padding(.bottom, 10)
+        }
+        .buttonStyle(.plain)
+    }
 
-            if hasAnyData {
-                VStack(spacing: 7) {
-                    ForEach(metrics, id: \.label) { metric in
-                        HStack(spacing: 10) {
-                            Text(metric.label)
-                                .font(.custom("Outfit-Light", size: 10))
-                                .foregroundColor(Color(hex: "#B8A9AB"))
-                                .frame(width: 52, alignment: .leading)
+    private var researchHeroSection: some View {
+        ModernHomeCard(background: .white, padding: 20) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HomeEyebrow("Research home", color: HomeUI.muted)
+                    Text("Organize what to explore before you book anything.")
+                        .font(.system(size: 27, weight: .heavy, design: .rounded))
+                        .foregroundColor(HomeUI.primaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Research mode keeps procedures, comparisons, and consult questions in one focused place.")
+                        .font(.custom("Outfit-Regular", size: 14))
+                        .foregroundColor(HomeUI.muted)
+                        .lineSpacing(5)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
-                            GeometryReader { geo in
-                                ZStack(alignment: .leading) {
-                                    Capsule()
-                                        .fill(Color(hex: "#C4929A").opacity(0.12))
-                                        .frame(height: 5)
-                                    Capsule()
-                                        .fill(metric.color)
-                                        .frame(width: geo.size.width * CGFloat(metric.value / 10.0), height: 5)
-                                        .animation(.easeOut(duration: 0.7), value: metric.value)
-                                }
+                Spacer(minLength: 0)
+
+                VStack(spacing: 2) {
+                    Text("THIS WEEK")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                        .tracking(1.8)
+                        .foregroundColor(HomeUI.muted)
+                    Text("\(researchViewModel.shortlistCards.count) saved")
+                        .font(.custom("Manrope", size: 22))
+                        .fontWeight(.bold)
+                        .foregroundColor(HomeUI.primary)
+                }
+                .frame(width: 108)
+                .padding(.vertical, 14)
+                .background(HomeUI.card)
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            }
+        }
+    }
+
+    private var proceduresToResearchSection: some View {
+        ModernHomeCard(background: HomeUI.card, padding: 18) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HomeEyebrow("Procedures to research", color: HomeUI.muted)
+                        Text("Start with what fits your goals")
+                            .font(.custom("Manrope", size: 24))
+                            .fontWeight(.bold)
+                            .foregroundColor(HomeUI.primaryInk)
+                    }
+                    Spacer()
+                    Button {
+                        showExploreSheet = true
+                    } label: {
+                        Text("Browse all")
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+                            .foregroundColor(HomeUI.primaryInk)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(.white)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color.black.opacity(0.05), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(proceduresToResearch, id: \.id) { procedure in
+                            Button {
+                                selectedProcedure = procedure
+                            } label: {
+                                Text(procedure.name)
+                                    .font(.custom("PlusJakartaSans-SemiBold", size: 13))
+                                    .foregroundColor(HomeUI.primaryInk)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
+                                    .background(Color.white)
+                                    .clipShape(Capsule())
+                                    .overlay(Capsule().stroke(Color.black.opacity(0.05), lineWidth: 1))
                             }
-                            .frame(height: 5)
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 1)
+                }
+            }
+        }
+    }
 
-                            Text("\(Int((metric.value / 10.0) * 100))%")
-                                .font(.custom("Outfit-Regular", size: 10))
-                                .foregroundColor(Color(hex: "#B8A9AB"))
-                                .frame(width: 28, alignment: .trailing)
+    private var askRenaRecoveryCard: some View {
+        Button {
+            onNavigateToChat?("What is normal for swelling in week 2?")
+        } label: {
+            askRenaCardContent(
+                title: "Ask Rena",
+                body: "What is normal today?"
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var askRenaResearchCard: some View {
+        Button {
+            onNavigateToChat?("Help me compare procedures and figure out what to research first.")
+        } label: {
+            askRenaCardContent(
+                title: "Ask Rena",
+                body: "What should I ask in a consultation?"
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func askRenaCardContent(title: String, body: String) -> some View {
+        ModernHomeCard(background: HomeUI.surface, padding: 16) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(HomeUI.primarySoft)
+                        .frame(width: 48, height: 48)
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(HomeUI.primary)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.custom("Outfit-SemiBold", size: 15))
+                        .foregroundColor(HomeUI.text)
+                    Text(body)
+                        .font(.custom("Outfit-Regular", size: 12.5))
+                        .foregroundColor(HomeUI.muted)
+                }
+
+                Spacer()
+
+                CircleArrow()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var recentJournalSection: some View {
+        if let entry = latestEntry {
+            ModernHomeCard(background: HomeUI.surface, padding: 20) {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HomeEyebrow("Recent Journal", color: HomeUI.muted)
+                            Text(entry.entryDateAsDate.formatted(.dateTime.weekday(.wide)))
+                                .font(.system(size: 21, weight: .bold, design: .rounded))
+                                .foregroundColor(HomeUI.text)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.82)
+                        }
+                        Spacer()
+                        Button {
+                            onNavigateToJournal?()
+                        } label: {
+                            Text("View all")
+                                .font(.custom("Outfit-SemiBold", size: 13))
+                                .foregroundColor(HomeUI.primary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(entry.procedureName)
+                                    .font(.custom("Outfit-SemiBold", size: 15))
+                                    .foregroundColor(HomeUI.text)
+                                Text("Day \(entry.dayNumber) • \(entry.entryDateAsDate.formatted(date: .omitted, time: .shortened))")
+                                    .font(.custom("Outfit-Regular", size: 12))
+                                    .foregroundColor(HomeUI.muted)
+                            }
+                            Spacer()
+                            GradientChip(title: "raw daily log")
+                        }
+
+                        Text(entry.notes?.isEmpty == false ? entry.notes! : "Add notes to your next daily check-in so Rena can turn them into sharper weekly insights.")
+                            .font(.custom("Outfit-Regular", size: 14))
+                            .foregroundColor(HomeUI.text.opacity(0.72))
+                            .lineSpacing(5)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(17)
+                    .background(HomeUI.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                }
+            }
+        }
+    }
+
+    private var shortlistShelfSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    HomeEyebrow("Your shortlist", color: HomeUI.muted)
+                    Text("Saved procedures")
+                        .font(.custom("Manrope", size: 24))
+                        .fontWeight(.bold)
+                        .foregroundColor(HomeUI.primaryInk)
+                }
+                Spacer()
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    if researchViewModel.shortlistCards.isEmpty {
+                        researchEmptyShortlistCard(
+                            title: "Save your first procedure",
+                            subtitle: "Your shortlist lives here. Save 1-2 procedures you're considering so you can compare recovery, questions, and sessions in one place.",
+                            accent: .white
+                        )
+                        researchEmptyShortlistCard(
+                            title: "Build your consultation prep",
+                            subtitle: "Once saved, each procedure gets its own notes, questions, and a direct path to Ask Rena.",
+                            accent: HomeUI.card
+                        )
+                    } else {
+                        ForEach(researchViewModel.shortlistCards) { card in
+                            Button {
+                                selectedSavedForDetail = researchViewModel.savedEntry(for: card.procedure.id)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text(card.procedure.category.uppercased())
+                                        .font(.custom("PlusJakartaSans-SemiBold", size: 9))
+                                        .tracking(1.8)
+                                        .foregroundColor(HomeUI.muted)
+                                    Text(card.procedure.name)
+                                        .font(.custom("Manrope", size: 21))
+                                        .fontWeight(.bold)
+                                        .foregroundColor(HomeUI.text)
+                                        .lineLimit(2)
+                                    HStack(spacing: 6) {
+                                        if !card.procedure.recoveryDurationLabel.isEmpty {
+                                            researchPill(card.procedure.recoveryDurationLabel, tint: HomeUI.card, textColor: HomeUI.muted)
+                                        }
+                                        if card.questionCount > 0 {
+                                            researchPill("\(card.questionCount) questions", tint: HomeUI.roseSoft, textColor: HomeUI.primaryInk)
+                                        }
+                                    }
+                                }
+                                .frame(width: 210)
+                                .frame(minHeight: 144, alignment: .leading)
+                                .padding(18)
+                                .background(shortlistSurface(for: card.id))
+                                .cornerRadius(26)
+                                .overlay(RoundedRectangle(cornerRadius: 26).stroke(Color.black.opacity(0.05), lineWidth: 1))
+                                .shadow(color: HomeUI.shadow, radius: 10, x: 0, y: 3)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    private var exploreNextSection: some View {
+        ModernHomeCard(background: HomeUI.card, padding: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    HomeEyebrow("Explore next", color: HomeUI.muted)
+                    Spacer()
+                    Image(systemName: "safari")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(HomeUI.primary)
+                }
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(researchExploreSuggestions, id: \.self) { suggestion in
+                            Button {
+                                showExploreSheet = true
+                            } label: {
+                                Text(suggestion)
+                                    .font(.custom("PlusJakartaSans-SemiBold", size: 13))
+                                    .foregroundColor(HomeUI.primaryInk)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
+                                    .background(Color.white)
+                                    .clipShape(Capsule())
+                                    .overlay(Capsule().stroke(Color.black.opacity(0.05), lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 1)
+                }
+            }
+        }
+    }
+
+    private var savedResearchSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HomeEyebrow("Saved research", color: HomeUI.muted)
+
+            if researchViewModel.shortlistCards.isEmpty {
+                ModernHomeCard(background: HomeUI.surface, padding: 18) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Save a procedure to unlock details")
+                            .font(.custom("Manrope", size: 24))
+                            .fontWeight(.bold)
+                            .foregroundColor(HomeUI.text)
+
+                        HStack(spacing: 8) {
+                            researchPill("Recovery timeline", tint: .white, textColor: HomeUI.muted)
+                            researchPill("Questions", tint: HomeUI.roseSoft, textColor: HomeUI.primaryInk)
+                            researchPill("Ask Rena", tint: HomeUI.primarySoft, textColor: HomeUI.primaryInk)
+                        }
+
+                        Text("Saved procedures become your research workspace. You’ll see recovery tags, cost context, your own questions, and quick actions to open details or continue with Rena.")
+                            .font(.custom("PlusJakartaSans-Regular", size: 14))
+                            .foregroundColor(HomeUI.text.opacity(0.74))
+                            .lineSpacing(3)
+
+                        HStack(spacing: 12) {
+                            Button {
+                                showExploreSheet = true
+                            } label: {
+                                Text("Explore procedures")
+                                    .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                                    .background(HomeUI.primary)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                onNavigateToChat?("Help me compare procedures and figure out what to research first.")
+                            } label: {
+                                Text("Ask Rena")
+                                    .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                                    .foregroundColor(HomeUI.primaryInk)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                                    .background(Color.white)
+                                    .clipShape(Capsule())
+                                    .overlay(Capsule().stroke(Color.black.opacity(0.05), lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
             } else {
-                Text("Log bruising, swelling & redness levels in your next entry to see trends here.")
-                    .font(.custom("Outfit-Light", size: 11))
-                    .foregroundColor(Color(hex: "#B8A9AB"))
-                    .lineSpacing(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                ForEach(researchViewModel.shortlistCards) { card in
+                    researchSavedCard(card)
+                }
             }
         }
-        .padding(14)
+    }
+
+    private var consultationPrepSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    HomeEyebrow("Consultation prep", color: HomeUI.muted)
+                    Text("Questions to bring")
+                        .font(.custom("Manrope", size: 24))
+                        .fontWeight(.bold)
+                        .foregroundColor(HomeUI.text)
+                }
+                Spacer()
+                Image(systemName: "text.bubble")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(HomeUI.primary)
+            }
+
+            ModernHomeCard(background: .white, padding: 18) {
+                VStack(alignment: .leading, spacing: 12) {
+                    if let featured = featuredQuestionCard {
+                        Text(featured.procedure.name)
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 12))
+                            .foregroundColor(HomeUI.primaryInk)
+
+                        ForEach(featured.questions, id: \.self) { question in
+                            Text(question)
+                                .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                                .foregroundColor(HomeUI.primaryInk)
+                                .lineSpacing(3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(14)
+                                .background(HomeUI.card)
+                                .cornerRadius(22)
+                        }
+                    } else {
+                        Text("Start collecting questions before your consult.")
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                            .foregroundColor(HomeUI.primaryInk)
+
+                        ForEach(exampleConsultationQuestions, id: \.self) { question in
+                            Text(question)
+                                .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                                .foregroundColor(HomeUI.primaryInk)
+                                .lineSpacing(3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(14)
+                                .background(HomeUI.card)
+                                .cornerRadius(22)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var researchSessionsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    HomeEyebrow("Research sessions", color: HomeUI.muted)
+                    Text("Continue where you left off")
+                        .font(.custom("Manrope", size: 24))
+                        .fontWeight(.bold)
+                        .foregroundColor(HomeUI.text)
+                }
+                Spacer()
+                if loadingRecentSessions {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                        .tint(HomeUI.primary)
+                } else {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(HomeUI.primary)
+                }
+            }
+
+            ModernHomeCard(background: HomeUI.cardStrong, padding: 18) {
+                if recentSessions.isEmpty && !loadingRecentSessions {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Your future research chats will live here.")
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                            .foregroundColor(HomeUI.primaryInk)
+                        Text("Ask Rena about a procedure, then come back here to quickly resume your research without starting over.")
+                            .font(.custom("PlusJakartaSans-Regular", size: 13))
+                            .foregroundColor(HomeUI.muted)
+                            .lineSpacing(3)
+                    }
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(recentSessions.prefix(3)) { conversation in
+                            HStack(alignment: .top, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(conversation.title ?? "Research session")
+                                        .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                                        .foregroundColor(HomeUI.text)
+                                        .lineLimit(2)
+                                    Text(sessionSubtitle(for: conversation))
+                                        .font(.custom("PlusJakartaSans-Regular", size: 11))
+                                        .foregroundColor(HomeUI.muted)
+                                }
+                                Spacer()
+                                Text("Resume")
+                                    .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+                                    .foregroundColor(HomeUI.primaryInk)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(HomeUI.card)
+                                    .clipShape(Capsule())
+                            }
+                            .padding(16)
+                            .background(Color.white)
+                            .cornerRadius(22)
+                            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Color.black.opacity(0.05), lineWidth: 1))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func researchEmptyShortlistCard(title: String, subtitle: String, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("EXAMPLE")
+                .font(.custom("PlusJakartaSans-SemiBold", size: 9))
+                .tracking(1.8)
+                .foregroundColor(HomeUI.muted)
+            Text(title)
+                .font(.custom("Manrope", size: 21))
+                .fontWeight(.bold)
+                .foregroundColor(HomeUI.text)
+                .lineLimit(2)
+            Text(subtitle)
+                .font(.custom("PlusJakartaSans-Regular", size: 13))
+                .foregroundColor(HomeUI.text.opacity(0.72))
+                .lineSpacing(3)
+            HStack(spacing: 6) {
+                researchPill("Save", tint: .white, textColor: HomeUI.muted)
+                researchPill("Questions", tint: HomeUI.roseSoft, textColor: HomeUI.primaryInk)
+            }
+        }
+        .frame(width: 210)
+        .frame(minHeight: 144, alignment: .leading)
+        .padding(18)
+        .background(accent)
+        .cornerRadius(26)
+        .overlay(RoundedRectangle(cornerRadius: 26).stroke(Color.black.opacity(0.05), lineWidth: 1))
+        .shadow(color: HomeUI.shadow, radius: 10, x: 0, y: 3)
+    }
+
+    private func researchSavedCard(_ card: SavedProcedureCardModel) -> some View {
+        ModernHomeCard(background: HomeUI.surface, padding: 18) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(card.procedure.category.uppercased())
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 9))
+                            .tracking(1.8)
+                            .foregroundColor(HomeUI.muted)
+                        Text(card.procedure.name)
+                            .font(.custom("Manrope", size: 25))
+                            .fontWeight(.bold)
+                            .foregroundColor(HomeUI.text)
+                    }
+                    Spacer()
+                    Text("saved")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+                        .foregroundColor(HomeUI.primaryInk)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.white)
+                        .clipShape(Capsule())
+                }
+
+                HStack(spacing: 8) {
+                    if !card.procedure.recoveryDurationLabel.isEmpty {
+                        researchPill(card.procedure.recoveryDurationLabel, tint: .white, textColor: HomeUI.muted)
+                    }
+                    researchPill(
+                        card.procedure.isSurgical ? "Surgical" : "Non-Surgical",
+                        tint: card.procedure.isSurgical ? HomeUI.roseSoft : HomeUI.primarySoft,
+                        textColor: HomeUI.primaryInk
+                    )
+                    if let cost = card.procedure.costRangeDisplay {
+                        researchPill(cost, tint: HomeUI.primarySoft, textColor: HomeUI.primaryInk)
+                    }
+                }
+
+                Text(card.procedure.description)
+                    .font(.custom("PlusJakartaSans-Regular", size: 14))
+                    .foregroundColor(HomeUI.text.opacity(0.74))
+                    .lineLimit(3)
+                    .lineSpacing(4)
+
+                HStack(spacing: 10) {
+                    researchMetricTile("Questions", "\(card.questionCount)", "saved")
+                    researchMetricTile("Sessions", "\(card.linkedSessionCount)", card.linkedSessionCount > 0 ? "active" : "none yet")
+                }
+
+                HStack(spacing: 12) {
+                    Button {
+                        selectedSavedForDetail = researchViewModel.savedEntry(for: card.procedure.id)
+                    } label: {
+                        Text("Open details")
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .background(HomeUI.primary)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        onNavigateToChat?("I'm researching \(card.procedure.name) and I have some questions about it.")
+                    } label: {
+                        Text("Ask Rena")
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                            .foregroundColor(HomeUI.primaryInk)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .background(Color.white)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color.black.opacity(0.05), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func researchPill(_ text: String, tint: Color, textColor: Color) -> some View {
+        Text(text)
+            .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+            .foregroundColor(textColor)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(tint)
+            .clipShape(Capsule())
+    }
+
+    private func researchMetricTile(_ label: String, _ value: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                .tracking(1.4)
+                .foregroundColor(HomeUI.muted)
+                .textCase(.uppercase)
+            Text(value)
+                .font(.custom("PlusJakartaSans-SemiBold", size: 16))
+                .foregroundColor(HomeUI.primaryInk)
+            Text(detail)
+                .font(.custom("PlusJakartaSans-Regular", size: 11))
+                .foregroundColor(HomeUI.muted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(15)
         .background(Color.white)
-        .cornerRadius(16)
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 1))
-        .shadow(color: Color(hex: "#8E4C5C").opacity(0.07), radius: 7, x: 0, y: 2)
+        .cornerRadius(22)
+    }
+
+    private func shortlistSurface(for id: UUID) -> Color {
+        guard let idx = researchViewModel.shortlistCards.firstIndex(where: { $0.id == id }) else { return .white }
+        switch idx % 3 {
+        case 1: return HomeUI.card
+        case 2: return HomeUI.cardStrong
+        default: return .white
+        }
+    }
+
+    private var featuredQuestionCard: (procedure: Procedure, questions: [String])? {
+        for saved in researchViewModel.savedProcedures {
+            guard !saved.questions.isEmpty, let procedure = researchViewModel.procedure(for: saved) else { continue }
+            return (procedure, Array(saved.questions.prefix(3)))
+        }
+        return nil
+    }
+
+    private var exampleConsultationQuestions: [String] {
+        [
+            "What changes are realistic for my features and anatomy?",
+            "How long will swelling or downtime affect what I see?",
+            "Can you walk me through before-and-afters similar to my case?"
+        ]
+    }
+
+    private var researchExploreSuggestions: [String] {
+        if researchViewModel.shortlistCards.isEmpty {
+            return ["Natural-result rhinoplasty", "Mini facelift recovery", "Lower bleph cost"]
+        }
+        return researchViewModel.exploreSuggestions
+    }
+
+    private func sessionSubtitle(for conversation: ChatConversation) -> String {
+        "\(RelativeDateTimeFormatter().localizedString(for: conversation.updatedAt, relativeTo: Date()).capitalized) • saved research"
+    }
+
+    private func loadRecentSessions() async {
+        loadingRecentSessions = true
+        defer { loadingRecentSessions = false }
+        let conversationIds = Array(Set(researchViewModel.savedProcedures.flatMap(\.conversationIds)))
+        recentSessions = await researchViewModel.fetchConversations(for: conversationIds)
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+}
+
+private struct HomeEyebrow: View {
+    let title: String
+    let color: Color
+
+    init(_ title: String, color: Color) {
+        self.title = title
+        self.color = color
+    }
+
+    var body: some View {
+        Text(title)
+            .font(.custom("Outfit-SemiBold", size: 10.5))
+            .tracking(2.2)
+            .foregroundColor(color)
+            .textCase(.uppercase)
+    }
+}
+
+private struct GradientChip: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.custom("Outfit-SemiBold", size: 11))
+            .foregroundColor(HomeUI.primaryInk)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                LinearGradient(
+                    colors: [HomeUI.primarySoft, HomeUI.roseSoft],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .clipShape(Capsule())
+    }
+}
+
+private struct CircleArrow: View {
+    var body: some View {
+        Circle()
+            .fill(HomeUI.primarySoft)
+            .frame(width: 30, height: 30)
+            .overlay(
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(HomeUI.primary)
+            )
+    }
+}
+
+private struct ModernHomeCard<Content: View>: View {
+    let background: Color
+    let padding: CGFloat
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content
+            .padding(padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(background)
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(.black.opacity(0.05), lineWidth: 1)
+            )
+            .shadow(color: HomeUI.shadow, radius: 18, x: 0, y: 8)
     }
 }
 

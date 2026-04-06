@@ -18,6 +18,16 @@ struct EditProfileView: View {
     @State private var zipCode: String = ""
     @State private var profileImageUrl: String?
 
+    // AI personalization context
+    @State private var gender: String? = nil
+    @State private var ageRange: String? = nil
+    @State private var raceEthnicity: String? = nil
+    @State private var aestheticGoals: Set<String> = []
+    @State private var bodyAreas: Set<String> = []
+    @State private var proceduresOfInterest: Set<String> = []
+    @State private var previousProcedures: Set<String> = []
+    @State private var healthFlags: Set<String> = []
+
     // Image picker
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var selectedImageData: Data?
@@ -133,6 +143,72 @@ struct EditProfileView: View {
                             }
                             .padding(.horizontal, Theme.Spacing.xl)
 
+                            // MARK: Personalization Context
+                            VStack(alignment: .leading, spacing: 24) {
+                                profileSectionHeader("About You")
+                                    .padding(.horizontal, Theme.Spacing.xl)
+
+                                profileChipGroup(title: "Gender identity", options: ProfileSelectionCatalog.genderOptions,
+                                                 selected: gender.map { [$0] } ?? [], multiSelect: false) { val in
+                                    gender = gender == val ? nil : val
+                                }
+                                .padding(.horizontal, Theme.Spacing.xl)
+
+                                profileChipGroup(title: "Age range", options: ProfileSelectionCatalog.ageRangeOptions,
+                                                 selected: ageRange.map { [$0] } ?? [], multiSelect: false) { val in
+                                    ageRange = ageRange == val ? nil : val
+                                }
+                                .padding(.horizontal, Theme.Spacing.xl)
+
+                                profileChipGroup(title: "Race / Ethnicity", options: ProfileSelectionCatalog.raceOptions,
+                                                 selected: raceEthnicity.map { [$0] } ?? [], multiSelect: false) { val in
+                                    raceEthnicity = raceEthnicity == val ? nil : val
+                                }
+                                .padding(.horizontal, Theme.Spacing.xl)
+
+                                profileSectionHeader("Aesthetic Goals")
+                                    .padding(.horizontal, Theme.Spacing.xl)
+
+                                profileChipGroup(title: "What I'm hoping to achieve",
+                                                 options: ProfileSelectionCatalog.goalOptions, selected: Array(aestheticGoals),
+                                                 multiSelect: true) { val in
+                                    if aestheticGoals.contains(val) { aestheticGoals.remove(val) } else { aestheticGoals.insert(val) }
+                                }
+                                .padding(.horizontal, Theme.Spacing.xl)
+
+                                profileChipGroup(title: "Body areas of interest",
+                                                 options: ProfileSelectionCatalog.bodyAreaOptions, selected: Array(bodyAreas),
+                                                 multiSelect: true) { val in
+                                    if bodyAreas.contains(val) { bodyAreas.remove(val) } else { bodyAreas.insert(val) }
+                                }
+                                .padding(.horizontal, Theme.Spacing.xl)
+
+                                profileChipGroup(title: "Procedures I'm considering",
+                                                 options: ProfileSelectionCatalog.procedureOptions, selected: Array(proceduresOfInterest),
+                                                 multiSelect: true) { val in
+                                    if proceduresOfInterest.contains(val) { proceduresOfInterest.remove(val) } else { proceduresOfInterest.insert(val) }
+                                }
+                                .padding(.horizontal, Theme.Spacing.xl)
+
+                                profileSectionHeader("Health & History")
+                                    .padding(.horizontal, Theme.Spacing.xl)
+
+                                profileChipGroup(title: "Procedures I've already had",
+                                                 options: ProfileSelectionCatalog.previousProcedureOptions, selected: Array(previousProcedures),
+                                                 multiSelect: true) { val in
+                                    if previousProcedures.contains(val) { previousProcedures.remove(val) } else { previousProcedures.insert(val) }
+                                }
+                                .padding(.horizontal, Theme.Spacing.xl)
+
+                                profileChipGroup(title: "Health considerations",
+                                                 options: ProfileSelectionCatalog.healthFlagOptions, selected: Array(healthFlags),
+                                                 multiSelect: true) { val in
+                                    if healthFlags.contains(val) { healthFlags.remove(val) } else { healthFlags.insert(val) }
+                                }
+                                .padding(.horizontal, Theme.Spacing.xl)
+                            }
+                            .padding(.top, 8)
+
                             Spacer(minLength: 100)
                         }
                     }
@@ -147,17 +223,9 @@ struct EditProfileView: View {
             }
             .navigationTitle("Edit Profile")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        dismiss()
-                    }) {
-                        Image(systemName: "arrow.left")
-                            .font(.system(size: 20))
-                            .foregroundColor(Theme.Colors.textProfilePrimary)
-                    }
-                }
-            }
+            .navigationBarBackButtonHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
+            .forceUIKitNavigationBarHidden()
             .alert("Error", isPresented: $showError) {
                 Button("OK", role: .cancel) { }
             } message: {
@@ -269,6 +337,14 @@ struct EditProfileView: View {
                 phoneNumber = profile.phoneNumber ?? ""
                 zipCode = profile.zipCode ?? ""
                 profileImageUrl = profile.profileImageUrl
+                gender = profile.gender
+                ageRange = profile.ageRange
+                raceEthnicity = profile.raceEthnicity
+                aestheticGoals = Set(profile.aestheticGoals ?? [])
+                bodyAreas = Set(profile.bodyAreasOfInterest ?? [])
+                proceduresOfInterest = Set(profile.proceduresOfInterest ?? [])
+                previousProcedures = Set(profile.previousProcedures ?? [])
+                healthFlags = Set(profile.healthFlags ?? [])
             }
         } catch {
             await MainActor.run {
@@ -284,30 +360,93 @@ struct EditProfileView: View {
         defer { isSaving = false }
 
         do {
-            // Convert UIImage to Data if needed
             var imageData: Data?
             if let selectedData = selectedImageData {
                 imageData = selectedData
             }
 
-            // Update profile with all fields
             _ = try await profileService.updateUserProfile(
                 fullName: fullName.isEmpty ? nil : fullName,
                 email: email.isEmpty ? nil : email,
                 phoneNumber: phoneNumber.isEmpty ? nil : phoneNumber,
                 zipCode: zipCode.isEmpty ? nil : zipCode,
-                billingPlan: nil, // Keep existing billing plan
-                profileImageData: imageData
+                billingPlan: nil,
+                profileImageData: imageData,
+                gender: gender,
+                ageRange: ageRange,
+                raceEthnicity: raceEthnicity,
+                aestheticGoals: aestheticGoals.isEmpty ? nil : Array(aestheticGoals),
+                proceduresOfInterest: proceduresOfInterest.isEmpty ? nil : Array(proceduresOfInterest),
+                previousProcedures: previousProcedures.isEmpty ? nil : Array(previousProcedures),
+                healthFlags: healthFlags.isEmpty ? nil : Array(healthFlags),
+                bodyAreasOfInterest: bodyAreas.isEmpty ? nil : Array(bodyAreas)
             )
 
-            // Dismiss on success
-            await MainActor.run {
-                dismiss()
-            }
+            await MainActor.run { dismiss() }
         } catch {
             await MainActor.run {
                 errorMessage = "Failed to save profile: \(error.localizedDescription)"
                 showError = true
+            }
+        }
+    }
+
+    // MARK: - Personalization UI Helpers
+
+    private func profileSectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundColor(Theme.Colors.textProfilePrimary)
+            .padding(.top, 4)
+    }
+
+    private func profileChipGroup(title: String, options: [String], selected: [String],
+                                   multiSelect: Bool, onTap: @escaping (String) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(Theme.Colors.textProfilePrimary.opacity(0.6))
+
+            profileChipFlow(options: options, selected: selected, onTap: onTap)
+        }
+    }
+
+    private func profileChipFlow(options: [String], selected: [String],
+                                  onTap: @escaping (String) -> Void) -> some View {
+        var rows: [[String]] = [[]]
+        for option in options {
+            let approxWidth = CGFloat(option.count) * 7.5 + 28
+            let rowWidth = rows.last!.reduce(CGFloat(0)) { $0 + CGFloat($1.count) * 7.5 + 36 }
+            let screenWidth = UIScreen.main.bounds.width - CGFloat(Theme.Spacing.xl) * 2 - 4
+            if rowWidth + approxWidth > screenWidth && !rows.last!.isEmpty {
+                rows.append([option])
+            } else {
+                rows[rows.count - 1].append(option)
+            }
+        }
+        return VStack(alignment: .leading, spacing: 7) {
+            ForEach(rows.indices, id: \.self) { rowIdx in
+                HStack(spacing: 7) {
+                    ForEach(rows[rowIdx], id: \.self) { option in
+                        let isOn = selected.contains(option)
+                        Button { onTap(option) } label: {
+                            Text(option)
+                                .font(.system(size: 12))
+                                .foregroundColor(isOn ? Theme.Colors.primaryProfile : Theme.Colors.textProfilePrimary.opacity(0.65))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(isOn ? Theme.Colors.primaryProfile.opacity(0.1) : Color.white)
+                                .cornerRadius(20)
+                                .overlay(
+                                    Capsule().stroke(
+                                        isOn ? Theme.Colors.primaryProfile.opacity(0.6) : Theme.Colors.borderLight,
+                                        lineWidth: 1
+                                    )
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
         }
     }

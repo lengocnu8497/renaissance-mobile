@@ -22,7 +22,7 @@ struct Renaissance_MobileApp: App {
         )
 
         // Configure Stripe SDK
-        STPAPIClient.shared.publishableKey = EnvironmentConfig.stripePublishableKey
+        STPAPIClient.shared.publishableKey = AppConfig.stripePublishableKey
     }
 
     var body: some Scene {

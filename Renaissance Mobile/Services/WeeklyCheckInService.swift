@@ -2,9 +2,10 @@
 //  WeeklyCheckInService.swift
 //  Renaissance Mobile
 //
-//  Manages week-by-week check-in schedules for each procedure.
-//  Persists locally in UserDefaults per procedureId.
-//  Schedules local push notifications at 9 AM on each check-in date.
+//  Owns weekly schedule metadata such as expected week count and local reminder
+//  notifications. Remote weekly state now lives in weekly_recovery_reports via
+//  WeeklySummaryService; the legacy UserDefaults helpers remain only as
+//  compatibility fallbacks until they can be removed safely.
 //
 
 import Foundation
@@ -121,8 +122,8 @@ final class WeeklyCheckInService {
         let center = UNUserNotificationCenter.current()
         for checkIn in checkIns where !checkIn.isCompleted && checkIn.scheduledDate > Date() {
             let content = UNMutableNotificationContent()
-            content.title = "Week \(checkIn.weekNumber) Check-in — \(procedureName)"
-            content.body = "Time to document your healing progress. Open Rena to log this week's photos."
+            content.title = "Week \(checkIn.weekNumber) Recovery Report — \(procedureName)"
+            content.body = "Keep logging daily so your weekly recovery report stays accurate and useful."
             content.sound = .default
             content.userInfo = [
                 "procedureName": procedureName,

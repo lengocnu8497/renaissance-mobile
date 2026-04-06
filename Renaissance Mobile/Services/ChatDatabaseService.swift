@@ -58,6 +58,19 @@ class ChatDatabaseService {
         return response
     }
 
+    /// Get conversations by a list of IDs (for linked research sessions)
+    func getConversations(ids: [UUID]) async throws -> [ChatConversation] {
+        guard !ids.isEmpty else { return [] }
+        let response: [ChatConversation] = try await supabase.database
+            .from("chat_conversations")
+            .select()
+            .in("id", values: ids.map { $0.uuidString })
+            .order("updated_at", ascending: false)
+            .execute()
+            .value
+        return response
+    }
+
     /// Get a specific conversation by ID
     func getConversation(id: UUID) async throws -> ChatConversation? {
         let response: ChatConversation? = try? await supabase.database

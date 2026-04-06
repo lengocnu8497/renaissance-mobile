@@ -58,6 +58,17 @@ struct InsightFlag: Codable {
     let metric: String?
 }
 
+struct RecoveryAlert: Codable, Identifiable, Hashable {
+    var id: String {
+        [severity.rawValue, title, metric ?? ""].joined(separator: "-")
+    }
+    let severity: FlagSeverity
+    let title: String
+    let explanation: String
+    let recommendedNextStep: String?
+    let metric: String?
+}
+
 // MARK: - Flag Severity
 
 enum FlagSeverity: String, Codable {

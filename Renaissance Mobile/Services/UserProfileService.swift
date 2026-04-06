@@ -72,7 +72,15 @@ class UserProfileService {
         phoneNumber: String? = nil,
         zipCode: String? = nil,
         billingPlan: BillingPlan? = nil,
-        profileImageData: Data? = nil
+        profileImageData: Data? = nil,
+        gender: String? = nil,
+        ageRange: String? = nil,
+        raceEthnicity: String? = nil,
+        aestheticGoals: [String]? = nil,
+        proceduresOfInterest: [String]? = nil,
+        previousProcedures: [String]? = nil,
+        healthFlags: [String]? = nil,
+        bodyAreasOfInterest: [String]? = nil
     ) async throws -> UserProfile {
         guard let userId = supabase.auth.currentUser?.id else {
             throw UserProfileError.notAuthenticated
@@ -98,7 +106,15 @@ class UserProfileService {
             profileImageUrl: profileImageUrl ?? currentProfile.profileImageUrl,
             createdAt: currentProfile.createdAt,
             updatedAt: Date(),
-            metadata: currentProfile.metadata
+            metadata: currentProfile.metadata,
+            gender: gender ?? currentProfile.gender,
+            ageRange: ageRange ?? currentProfile.ageRange,
+            raceEthnicity: raceEthnicity ?? currentProfile.raceEthnicity,
+            aestheticGoals: aestheticGoals ?? currentProfile.aestheticGoals,
+            proceduresOfInterest: proceduresOfInterest ?? currentProfile.proceduresOfInterest,
+            previousProcedures: previousProcedures ?? currentProfile.previousProcedures,
+            healthFlags: healthFlags ?? currentProfile.healthFlags,
+            bodyAreasOfInterest: bodyAreasOfInterest ?? currentProfile.bodyAreasOfInterest
         )
 
         // Update the profile in the database
@@ -131,7 +147,15 @@ class UserProfileService {
                 phoneNumber: phoneNumber,
                 zipCode: zipCode,
                 billingPlan: billingPlan ?? .free,
-                profileImageUrl: profileImageUrl
+                profileImageUrl: profileImageUrl,
+                gender: gender,
+                ageRange: ageRange,
+                raceEthnicity: raceEthnicity,
+                aestheticGoals: aestheticGoals,
+                proceduresOfInterest: proceduresOfInterest,
+                previousProcedures: previousProcedures,
+                healthFlags: healthFlags,
+                bodyAreasOfInterest: bodyAreasOfInterest
             )
 
             let response: UserProfile = try await supabase.database
@@ -264,7 +288,15 @@ class UserProfileService {
             profileImageUrl: nil,
             createdAt: currentProfile.createdAt,
             updatedAt: Date(),
-            metadata: currentProfile.metadata
+            metadata: currentProfile.metadata,
+            gender: currentProfile.gender,
+            ageRange: currentProfile.ageRange,
+            raceEthnicity: currentProfile.raceEthnicity,
+            aestheticGoals: currentProfile.aestheticGoals,
+            proceduresOfInterest: currentProfile.proceduresOfInterest,
+            previousProcedures: currentProfile.previousProcedures,
+            healthFlags: currentProfile.healthFlags,
+            bodyAreasOfInterest: currentProfile.bodyAreasOfInterest
         )
 
         _ = try await supabase.database

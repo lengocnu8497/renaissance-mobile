@@ -175,4 +175,30 @@ final class JournalViewModelTests: XCTestCase {
 
         XCTAssertFalse(vm.isLoading)
     }
+
+    func testPrimarySmartAlerts_flagsPainIncreasingThreeLogs() {
+        let (vm, _) = makeVM()
+        vm.entries = [
+            .stub(dayNumber: 1, painLevel: 2, bruisingLevel: 4, swellingLevel: 5),
+            .stub(dayNumber: 2, painLevel: 4, bruisingLevel: 4, swellingLevel: 5),
+            .stub(dayNumber: 3, painLevel: 6, bruisingLevel: 3, swellingLevel: 6)
+        ]
+
+        XCTAssertTrue(vm.primarySmartAlerts.contains { $0.id == "pain-rise" })
+    }
+
+    func testPrimaryRecoveryScore_returnsMeaningfulScore() {
+        let (vm, _) = makeVM()
+        vm.entries = [
+            .stub(dayNumber: 1, painLevel: 5, bruisingLevel: 5, swellingLevel: 6),
+            .stub(dayNumber: 2, painLevel: 4, bruisingLevel: 4, swellingLevel: 5),
+            .stub(dayNumber: 3, painLevel: 3, bruisingLevel: 3, swellingLevel: 4)
+        ]
+
+        let score = vm.primaryRecoveryScore
+
+        XCTAssertNotNil(score)
+        XCTAssertTrue((score?.score ?? 0) > 0)
+        XCTAssertEqual(score?.symptomTrend, .improving)
+    }
 }

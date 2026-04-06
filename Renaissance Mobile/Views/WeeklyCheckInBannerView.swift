@@ -27,7 +27,7 @@ struct WeeklyCheckInBannerView: View {
                 HStack(spacing: 5) {
                     Image(systemName: "camera.fill")
                         .font(.system(size: 9, weight: .semibold))
-                    Text("WEEK \(checkIn.weekNumber) CHECK-IN")
+                    Text("WEEK \(checkIn.weekNumber) REPORT")
                         .font(.custom("Outfit-SemiBold", size: 10))
                         .kerning(0.8)
                 }
@@ -51,7 +51,12 @@ struct WeeklyCheckInBannerView: View {
 
             // ── Body ──────────────────────────────────────────────────────────
             VStack(alignment: .leading, spacing: 12) {
-                // Context note
+                Text("Your weekly report will be auto-filled from daily logs. Add this week's guided photos to sharpen the trends and before/after timeline.")
+                    .font(.custom("Outfit-SemiBold", size: 13))
+                    .foregroundColor(textHi)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+
                 Text(guide.contextNote)
                     .font(.custom("Outfit-Regular", size: 13))
                     .foregroundColor(textHi.opacity(0.7))
@@ -73,7 +78,7 @@ struct WeeklyCheckInBannerView: View {
                         HStack(spacing: 6) {
                             Image(systemName: "camera.fill")
                                 .font(.system(size: 12, weight: .semibold))
-                            Text("Begin Check-In")
+                            Text("Capture Weekly Photos")
                                 .font(.custom("Outfit-SemiBold", size: 13))
                         }
                         .foregroundColor(.white)

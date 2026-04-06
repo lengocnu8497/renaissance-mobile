@@ -8,7 +8,6 @@
 import SwiftUI
 
 struct HelpSupportView: View {
-    @Environment(\.dismiss) private var dismiss
     @State private var expandedSection: FAQSection? = nil
 
     var body: some View {
@@ -33,17 +32,9 @@ struct HelpSupportView: View {
             }
             .navigationTitle("Help & Support")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        dismiss()
-                    }) {
-                        Image(systemName: "arrow.left")
-                            .font(.system(size: 20))
-                            .foregroundColor(Theme.Colors.textProfilePrimary)
-                    }
-                }
-            }
+            .navigationBarBackButtonHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
+            .forceUIKitNavigationBarHidden()
         }
     }
 

@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.192.0/http/server.ts'
 import Stripe from 'https://esm.sh/stripe@17.4.0?target=deno&no-check'
 
-const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY_DEV') || '', {
+const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
   apiVersion: '2023-10-16',
   httpClient: Stripe.createFetchHttpClient(),
 })
@@ -37,10 +37,9 @@ serve(async (req) => {
     // Derive tier from price interval / amount so link-onboarding-subscription
     // can write the correct tier to user_profiles without needing price IDs.
     const interval = price.recurring?.interval
-    const unitAmount = price.unit_amount ?? 0
-    const tier: string = interval === 'year' ? 'annual'
-                       : unitAmount >= 2000   ? 'gold'
-                       : 'silver'
+    const tier: string = interval === 'year'  ? 'yearly'
+                       : interval === 'week'  ? 'weekly'
+                       : 'monthly'
 
     // Get or create Stripe customer by email
     const existingCustomers = await stripe.customers.list({ email, limit: 1 })

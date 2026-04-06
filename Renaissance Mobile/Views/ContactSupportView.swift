@@ -62,9 +62,12 @@ struct ContactSupportView: View {
 
             // Contact Buttons
             VStack(spacing: Theme.Spacing.lg) {
-                // Chat with Support Button
+                // Chat with Support Button — opens email composer
                 Button(action: {
-                    // Handle chat with support
+                    let subject = "Support Request".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                    if let url = URL(string: "mailto:renaestheticslab@gmail.com?subject=\(subject)") {
+                        UIApplication.shared.open(url)
+                    }
                 }) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "message.fill")
@@ -83,7 +86,10 @@ struct ContactSupportView: View {
 
                 // Email Us Button
                 Button(action: {
-                    // Handle email
+                    let subject = "Hello".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                    if let url = URL(string: "mailto:renaestheticslab@gmail.com?subject=\(subject)") {
+                        UIApplication.shared.open(url)
+                    }
                 }) {
                     HStack(spacing: Theme.Spacing.md) {
                         Image(systemName: "envelope.fill")
@@ -100,24 +106,6 @@ struct ContactSupportView: View {
                     .cornerRadius(Theme.CornerRadius.large)
                 }
 
-                // Call Us Button
-                Button(action: {
-                    // Handle phone call
-                }) {
-                    HStack(spacing: Theme.Spacing.md) {
-                        Image(systemName: "phone.fill")
-                            .font(.system(size: 20))
-                            .foregroundColor(Theme.Colors.primaryProfile)
-
-                        Text("Call us")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(Theme.Colors.primaryProfile)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .background(Theme.Colors.primaryProfile.opacity(0.15))
-                    .cornerRadius(Theme.CornerRadius.large)
-                }
             }
 
             // Additional Info

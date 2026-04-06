@@ -45,18 +45,19 @@ struct WelcomeView: View {
 
             // Full content — fades in after animation
             if loadingPhase == .complete || loadingPhase == .expanding {
-                mainContent
-                    .padding(.horizontal, 32)
-                    .offset(y: -20)
-                    .opacity(contentOpacity)
+                VStack(spacing: 0) {
+                    Spacer(minLength: 72)
 
-                VStack {
-                    Spacer()
+                    mainContent
+                        .padding(.horizontal, 36)
+
+                    Spacer(minLength: 40)
+
                     footerSection
-                        .padding(.horizontal, 32)
+                        .padding(.horizontal, 24)
                         .padding(.bottom, 48)
                 }
-                .offset(y: -3)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .opacity(contentOpacity)
             }
         }
@@ -126,20 +127,43 @@ struct WelcomeView: View {
 
     // MARK: - Main Content
     private var mainContent: some View {
-        HStack(spacing: 24) {
+        VStack(spacing: 0) {
             concentricCirclesLogo()
+                .padding(.top, 2)
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(spacing: 0) {
                 Text("Rena Aesthetic")
-                    .font(.system(size: 26, weight: .light, design: .serif))
+                    .font(.system(size: 30, weight: .light, design: .serif))
                     .foregroundColor(Color(red: 61/255, green: 43/255, blue: 46/255))
+                    .padding(.top, 30)
 
                 Text("LAB")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(Color(red: 196/255, green: 146/255, blue: 154/255))
-                    .kerning(4)
+                    .kerning(4.1)
+                    .padding(.top, 8)
             }
+
+            VStack(spacing: 0) {
+                Text("Your aesthetic companion.")
+                    .font(.system(size: 34, weight: .bold, design: .default))
+                    .foregroundColor(Color(red: 54/255, green: 71/255, blue: 60/255))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(0)
+                    .padding(.top, 64)
+                    .frame(maxWidth: 280)
+
+                Text("Track, ask, and remember.")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundColor(Color(red: 122/255, green: 130/255, blue: 120/255))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(8)
+                    .padding(.top, 20)
+                    .frame(maxWidth: 285)
+            }
+            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Logo
@@ -193,46 +217,45 @@ struct WelcomeView: View {
 
     // MARK: - Footer Section
     private var footerSection: some View {
-        VStack(spacing: 16) {
-            // Start Consultation Button — Dusty Rose filled
+        VStack(spacing: 0) {
             Button(action: {
                 showOnboarding = true
             }) {
                 Text("Start My Consultation")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
-                    .background(Theme.Colors.primaryWelcome)
-                    .cornerRadius(Theme.CornerRadius.medium)
+                    .background(Color(red: 84/255, green: 99/255, blue: 89/255))
+                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
             }
 
-            // Create Account Button — ghost outline
             Button(action: {
                 showSignUp = true
             }) {
                 Text("Create Account")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(Color(red: 61/255, green: 43/255, blue: 46/255))
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
-                    .background(Color.clear)
+                    .background(Color.white.opacity(0.8))
                     .overlay(
-                        RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
-                            .stroke(Color(red: 196/255, green: 146/255, blue: 154/255), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .stroke(Color(red: 196/255, green: 146/255, blue: 154/255).opacity(0.3), lineWidth: 1)
                     )
             }
+            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .padding(.top, 12)
 
-            // Sign In Link
             Button(action: {
                 showSignIn = true
             }) {
                 Text("Sign In")
-                    .font(.system(size: 15))
-                    .foregroundColor(Color(red: 184/255, green: 169/255, blue: 171/255))
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(Color(red: 122/255, green: 130/255, blue: 120/255))
                     .underline()
             }
-            .padding(.top, 4)
+            .padding(.top, 16)
         }
     }
 }

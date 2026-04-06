@@ -2,7 +2,7 @@ import { serve } from 'https://deno.land/std@0.192.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import Stripe from 'https://esm.sh/stripe@17.4.0?target=deno&no-check'
 
-const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY_DEV') || '', {
+const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
   apiVersion: '2023-10-16',
   httpClient: Stripe.createFetchHttpClient(),
 })
@@ -14,7 +14,7 @@ const corsHeaders = {
 
 interface CreateSubscriptionRequest {
   priceId: string
-  tier: 'silver' | 'gold'
+  tier: 'weekly' | 'monthly' | 'yearly'
 }
 
 serve(async (req) => {
@@ -74,6 +74,21 @@ serve(async (req) => {
       .single()
 
     let customerId = profile?.stripe_customer_id
+
+    // Verify the stored customer exists in this Stripe account (guards against
+    // stale IDs from a different account or environment)
+    if (customerId) {
+      try {
+        await stripe.customers.retrieve(customerId)
+      } catch (err: any) {
+        if (err?.code === 'resource_missing') {
+          console.log('⚠️ Stored customer not found in this Stripe account, creating new one')
+          customerId = null
+        } else {
+          throw err
+        }
+      }
+    }
 
     if (!customerId) {
       // Create new Stripe customer

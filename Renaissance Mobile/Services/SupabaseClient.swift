@@ -18,12 +18,12 @@ import Supabase
 import Auth
 
 // MARK: - Supabase Client Configuration
-// Credentials are stored in EnvironmentConfig.swift
+// Credentials are stored in AppConfig.swift
 // You can configure different values for Debug vs Release builds there
 
 let supabase = SupabaseClient(
-    supabaseURL: URL(string: EnvironmentConfig.supabaseURL)!,
-    supabaseKey: EnvironmentConfig.supabaseAnonKey,
+    supabaseURL: URL(string: AppConfig.supabaseURL)!,
+    supabaseKey: AppConfig.supabaseAnonKey,
     options: SupabaseClientOptions(
         auth: .init(
             redirectToURL: URL(string: "renaissance://reset-callback"),
