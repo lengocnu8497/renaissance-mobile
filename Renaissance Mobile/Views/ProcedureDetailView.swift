@@ -21,6 +21,145 @@ private enum PDC {
     static let border = Color.black.opacity(0.05)
 }
 
+private enum ProcedureHeroImageResolver {
+    static func bundleImage(for procedure: Procedure) -> UIImage? {
+        let slug = slug(for: procedure.name)
+        let candidateAssetNames = [
+            slug,
+            "procedure-\(slug)",
+            "\(slug)-hero",
+            "\(slug)_hero"
+        ]
+
+        for name in candidateAssetNames {
+            if let image = UIImage(named: name) {
+                return image
+            }
+        }
+
+        let candidatePaths: [(String, String?)] = [
+            (slug, "png"),
+            (slug, "jpg"),
+            (slug, "jpeg"),
+            ("procedure-\(slug)", "png"),
+            ("procedure-\(slug)", "jpg"),
+            ("procedure-\(slug)", "jpeg")
+        ]
+
+        for (resource, ext) in candidatePaths {
+            if let url = Bundle.main.url(forResource: resource, withExtension: ext, subdirectory: "ProcedureHeroImages"),
+               let image = UIImage(contentsOfFile: url.path) {
+                return image
+            }
+        }
+
+        return nil
+    }
+
+    static func remoteURL(for procedure: Procedure) -> URL? {
+        guard let raw = procedure.heroImageURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else {
+            return nil
+        }
+        return URL(string: raw)
+    }
+
+    static func slug(for name: String) -> String {
+        let normalized = name.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: " "))
+        let cleanedScalars = normalized.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar) : " "
+        }
+        let cleaned = String(cleanedScalars)
+        return cleaned
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+            .joined(separator: "_")
+            .lowercased()
+    }
+}
+
+private struct ProcedureHeroMediaView: View {
+    let procedure: Procedure
+
+    private var bundledImage: UIImage? {
+        ProcedureHeroImageResolver.bundleImage(for: procedure)
+    }
+
+    private var remoteURL: URL? {
+        ProcedureHeroImageResolver.remoteURL(for: procedure)
+    }
+
+    private var badgeText: String {
+        procedure.isSurgical ? "Before & After Preview" : "Treatment Preview"
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            Group {
+                if let bundledImage {
+                    Image(uiImage: bundledImage)
+                        .resizable()
+                        .scaledToFit()
+                } else if let remoteURL {
+                    CachedAsyncImage(url: remoteURL) { image in
+                        image
+                            .resizable()
+                            .scaledToFit()
+                    } placeholder: {
+                        fallbackSurface
+                    }
+                } else {
+                    fallbackSurface
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(maxHeight: 292)
+            .background(PDC.surface)
+
+            Text(badgeText)
+                .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                .tracking(1.1)
+                .foregroundColor(PDC.primaryInk)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.white.opacity(0.86))
+                .clipShape(Capsule())
+                .padding(16)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(procedure.mediaAltText ?? "\(procedure.name) hero image")
+    }
+
+    private var fallbackSurface: some View {
+        ZStack {
+            LinearGradient(
+                colors: [PDC.primarySoft.opacity(0.95), Color.white.opacity(0.92)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            VStack(spacing: 10) {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(PDC.primaryInk.opacity(0.82))
+
+                Text("Hero image ready for \(procedure.name)")
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                    .foregroundColor(PDC.primaryInk)
+                    .multilineTextAlignment(.center)
+
+                Text("Add a bundled procedure image or set `hero_image_url` to render the live media here.")
+                    .font(.custom("PlusJakartaSans-Regular", size: 12))
+                    .foregroundColor(PDC.text.opacity(0.68))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 28)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 240)
+    }
+}
+
 struct ProcedureDetailView: View {
     let procedure: Procedure
     var allProcedures: [Procedure] = []
@@ -33,6 +172,10 @@ struct ProcedureDetailView: View {
     @State private var showShareSheet = false
     @State private var shareText = ""
     @State private var selectedRelated: Procedure?
+
+    private var resolvedIsSaved: Bool {
+        isSavedProcedure?(procedure.id) ?? isSaved
+    }
 
     var body: some View {
         ZStack {
@@ -78,6 +221,7 @@ struct ProcedureDetailView: View {
         .navigationBarHidden(true)
         .safeAreaInset(edge: .top, spacing: 0) {
             detailNavBar
+                .background(PDC.bg.ignoresSafeArea(edges: .top))
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             Color.clear
@@ -141,7 +285,7 @@ struct ProcedureDetailView: View {
                 .buttonStyle(.plain)
             }
 
-            VStack(spacing: 2) {
+            VStack(spacing: 4) {
                 Text("Open details")
                     .font(.custom("PlusJakartaSans-SemiBold", size: 10))
                     .tracking(2.1)
@@ -157,49 +301,42 @@ struct ProcedureDetailView: View {
             .padding(.horizontal, 56)
         }
         .padding(.horizontal, 18)
-        .padding(.top, 12)
-        .padding(.bottom, 12)
+        .padding(.top, 18)
+        .padding(.bottom, 14)
         .background(PDC.bg)
     }
 
     private var heroSection: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(procedure.category.uppercased())
-                    .font(.custom("PlusJakartaSans-SemiBold", size: 10))
-                    .tracking(2)
-                    .foregroundColor(PDC.muted)
+        VStack(alignment: .leading, spacing: 0) {
+            ProcedureHeroMediaView(procedure: procedure)
 
-                Text(procedure.name)
-                    .font(.custom("Manrope", size: 34))
-                    .fontWeight(.heavy)
-                    .foregroundColor(PDC.text)
-                    .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(procedure.category.uppercased())
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                        .tracking(2)
+                        .foregroundColor(PDC.muted)
 
-                Text(editorialSubtitle)
-                    .font(.custom("PlusJakartaSans-Regular", size: 15))
-                    .foregroundColor(PDC.text.opacity(0.78))
-                    .lineSpacing(4)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+                    Text(procedure.name)
+                        .font(.custom("Manrope", size: 34))
+                        .fontWeight(.heavy)
+                        .foregroundColor(PDC.text)
+                        .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 8) {
-                if !procedure.recoveryDurationLabel.isEmpty {
-                    heroPill(procedure.recoveryDurationLabel)
+                    Text(editorialSubtitle)
+                        .font(.custom("PlusJakartaSans-Regular", size: 15))
+                        .foregroundColor(PDC.text.opacity(0.78))
+                        .lineSpacing(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                heroPill(procedure.isSurgical ? "Surgical" : "Non-Surgical")
-                if let cost = procedure.costRangeDisplay {
-                    heroPill(cost)
-                }
-            }
 
-            HStack(spacing: 10) {
-                heroMetric("Status", isSaved ? "Saved" : "Unsaved")
-                heroMetric("Recovery", procedure.recoveryDurationLabel.isEmpty ? "Varies" : procedure.recoveryDurationLabel)
-                heroMetric("Type", procedure.isSurgical ? "Surgical" : "Non-Surgical")
+                procedurePillRow
+
+                procedureMetricGrid
             }
+            .padding(24)
         }
-        .padding(24)
         .background(Color.white)
         .cornerRadius(30)
         .overlay(RoundedRectangle(cornerRadius: 30).stroke(PDC.border, lineWidth: 1))
@@ -216,6 +353,42 @@ struct ProcedureDetailView: View {
             .clipShape(Capsule())
     }
 
+    private var procedurePillItems: [String] {
+        var items: [String] = []
+        if !procedure.recoveryDurationLabel.isEmpty {
+            items.append(procedure.recoveryDurationLabel)
+        }
+        items.append(procedure.isSurgical ? "Surgical" : "Non-Surgical")
+        if let cost = procedure.costRangeDisplay {
+            items.append(cost)
+        }
+        return items
+    }
+
+    private var procedurePillRow: some View {
+        FlowLayout(horizontalSpacing: 8, verticalSpacing: 8) {
+            ForEach(procedurePillItems, id: \.self) { item in
+                heroPill(item)
+            }
+        }
+    }
+
+    private var procedureMetricGrid: some View {
+        LazyVGrid(
+            columns: [
+                GridItem(.flexible(), spacing: 10),
+                GridItem(.flexible(), spacing: 10),
+                GridItem(.flexible(), spacing: 10)
+            ],
+            alignment: .leading,
+            spacing: 10
+        ) {
+                    heroMetric("Status", resolvedIsSaved ? "Saved" : "Unsaved")
+            heroMetric("Recovery", procedure.recoveryDurationLabel.isEmpty ? "Varies" : procedure.recoveryDurationLabel)
+            heroMetric("Type", procedure.isSurgical ? "Surgical" : "Non-Surgical")
+        }
+    }
+
     private func heroMetric(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label.uppercased())
@@ -225,9 +398,11 @@ struct ProcedureDetailView: View {
             Text(value)
                 .font(.custom("PlusJakartaSans-SemiBold", size: 15))
                 .foregroundColor(PDC.text)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 11)
         .padding(.horizontal, 12)
         .background(PDC.card)
@@ -435,9 +610,9 @@ struct ProcedureDetailView: View {
                 onSaveProcedure?(procedure)
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
+                    Image(systemName: resolvedIsSaved ? "bookmark.fill" : "bookmark")
                         .font(.system(size: 16))
-                    Text(isSaved ? "Remove From Saved Research" : "Save To Research")
+                    Text(resolvedIsSaved ? "Remove From Saved Research" : "Save To Research")
                         .font(.custom("PlusJakartaSans-SemiBold", size: 15))
                 }
                 .foregroundColor(PDC.primary)
@@ -531,6 +706,90 @@ struct ShareSheet: UIViewControllerRepresentable {
         UIActivityViewController(activityItems: items, applicationActivities: nil)
     }
     func updateUIViewController(_ uvc: UIActivityViewController, context: Context) {}
+}
+
+private struct FlowLayout<Content: View>: View {
+    let horizontalSpacing: CGFloat
+    let verticalSpacing: CGFloat
+    @ViewBuilder let content: Content
+
+    init(
+        horizontalSpacing: CGFloat = 8,
+        verticalSpacing: CGFloat = 8,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.horizontalSpacing = horizontalSpacing
+        self.verticalSpacing = verticalSpacing
+        self.content = content()
+    }
+
+    var body: some View {
+        if #available(iOS 16.0, *) {
+            FlowColumnsLayout(
+                horizontalSpacing: horizontalSpacing,
+                verticalSpacing: verticalSpacing
+            ) {
+                content
+            }
+        } else {
+            VStack(alignment: .leading, spacing: verticalSpacing) {
+                content
+            }
+        }
+    }
+}
+
+@available(iOS 16.0, *)
+private struct FlowColumnsLayout: Layout {
+    let horizontalSpacing: CGFloat
+    let verticalSpacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var currentX: CGFloat = 0
+        var currentRowHeight: CGFloat = 0
+        var totalHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+
+            if currentX > 0, currentX + size.width > maxWidth {
+                totalHeight += currentRowHeight + verticalSpacing
+                currentX = 0
+                currentRowHeight = 0
+            }
+
+            currentRowHeight = max(currentRowHeight, size.height)
+            currentX += size.width + horizontalSpacing
+        }
+
+        totalHeight += currentRowHeight
+        return CGSize(width: maxWidth.isFinite ? maxWidth : currentX, height: totalHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var currentX = bounds.minX
+        var currentY = bounds.minY
+        var currentRowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+
+            if currentX > bounds.minX, currentX + size.width > bounds.maxX {
+                currentX = bounds.minX
+                currentY += currentRowHeight + verticalSpacing
+                currentRowHeight = 0
+            }
+
+            subview.place(
+                at: CGPoint(x: currentX, y: currentY),
+                proposal: ProposedViewSize(width: size.width, height: size.height)
+            )
+
+            currentX += size.width + horizontalSpacing
+            currentRowHeight = max(currentRowHeight, size.height)
+        }
+    }
 }
 
 #Preview {

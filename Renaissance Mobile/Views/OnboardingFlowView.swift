@@ -4,7 +4,6 @@
 //
 
 import SwiftUI
-import StripePaymentSheet
 
 private enum OnboardingPaywallUI {
     static let shell = Color(hex: "#EEF1E8")
@@ -28,6 +27,17 @@ private struct ChipFlowLayout: Layout {
     var itemSpacing: CGFloat = 8
     var rowSpacing: CGFloat = 8
 
+    private func measuredSize(
+        for subview: LayoutSubview,
+        availableWidth: CGFloat
+    ) -> CGSize {
+        let unconstrainedSize = subview.sizeThatFits(.unspecified)
+        let fittedWidth = min(unconstrainedSize.width, availableWidth)
+        return subview.sizeThatFits(
+            ProposedViewSize(width: fittedWidth, height: nil)
+        )
+    }
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxWidth = proposal.width ?? UIScreen.main.bounds.width - 72
         var currentX: CGFloat = 0
@@ -35,15 +45,17 @@ private struct ChipFlowLayout: Layout {
         var totalHeight: CGFloat = 0
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if currentX > 0, currentX + size.width > maxWidth {
+            let size = measuredSize(for: subview, availableWidth: maxWidth)
+            let spacingBeforeItem = currentX > 0 ? itemSpacing : 0
+
+            if currentX > 0, currentX + spacingBeforeItem + size.width > maxWidth {
                 totalHeight += currentRowHeight + rowSpacing
                 currentX = 0
                 currentRowHeight = 0
             }
 
             currentRowHeight = max(currentRowHeight, size.height)
-            currentX += size.width + (currentX > 0 ? itemSpacing : 0)
+            currentX += size.width + spacingBeforeItem
         }
 
         return CGSize(width: maxWidth, height: totalHeight + currentRowHeight)
@@ -53,21 +65,24 @@ private struct ChipFlowLayout: Layout {
         var currentX = bounds.minX
         var currentY = bounds.minY
         var currentRowHeight: CGFloat = 0
+        let availableWidth = bounds.width
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if currentX > bounds.minX, currentX + size.width > bounds.maxX {
+            let size = measuredSize(for: subview, availableWidth: availableWidth)
+            let spacingBeforeItem = currentX > bounds.minX ? itemSpacing : 0
+
+            if currentX > bounds.minX, currentX + spacingBeforeItem + size.width > bounds.maxX {
                 currentX = bounds.minX
                 currentY += currentRowHeight + rowSpacing
                 currentRowHeight = 0
             }
 
             subview.place(
-                at: CGPoint(x: currentX, y: currentY),
+                at: CGPoint(x: currentX + spacingBeforeItem, y: currentY),
                 proposal: ProposedViewSize(width: size.width, height: size.height)
             )
 
-            currentX += size.width + itemSpacing
+            currentX += size.width + spacingBeforeItem
             currentRowHeight = max(currentRowHeight, size.height)
         }
     }
@@ -186,8 +201,7 @@ private enum WhenOption: String, CaseIterable, Identifiable {
 
 struct OnboardingFlowView: View {
     @Environment(\.dismiss) private var dismiss
-    var onGetStarted: () -> Void = {}
-    var onSignIn: () -> Void = {}
+    var onFinish: () -> Void = {}
 
     @State private var screen = 0
     @State private var selectedProcedure: ProcedureOption? = nil
@@ -195,10 +209,8 @@ struct OnboardingFlowView: View {
     @State private var selectedPlan = 0
 
     // Paywall / payment state
-    @State private var email = ""
     @State private var paymentVM = OnboardingPaymentViewModel()
-    @State private var isProcessingPayment = false
-    @State private var paymentError: String? = nil
+    @State private var isSkippingSubscription = false
 
     // User context quiz state (screens 5–7)
     @State private var selectedGender: String? = nil
@@ -209,21 +221,23 @@ struct OnboardingFlowView: View {
     @State private var selectedProceduresOfInterest: Set<String> = []
     @State private var selectedPreviousProcedures: Set<String> = []
     @State private var selectedHealthFlags: Set<String> = []
+    @State private var selectedAcquisitionSource = OnboardingStore.pendingAcquisitionSource
 
-    private var isValidEmail: Bool {
-        let regex = #"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$"#
-        return email.range(of: regex, options: .regularExpression) != nil
-    }
+    private let userProfileService = UserProfileService(supabase: supabase)
+    private let recoveryPlanService = RecoveryPlanService()
 
-    private var selectedPlanPriceId: String {
+    private var selectedPlanTier: SubscriptionTier {
         switch selectedPlan {
-        case 1:  return AppConfig.stripeMonthlyPriceId
-        case 2:  return AppConfig.stripeWeeklyPriceId
-        default: return AppConfig.stripeYearlyPriceId
+        case 1:
+            .monthly
+        case 2:
+            .weekly
+        default:
+            .yearly
         }
     }
 
-    private let totalScreens = 7
+    private let totalScreens = 9
 
     var body: some View {
         ZStack {
@@ -236,7 +250,9 @@ struct OnboardingFlowView: View {
                 case 2: goalsScreen
                 case 3: healthHistoryScreen
                 case 4: whenScreen
-                case 5: socialProofScreen
+                case 5: attributionScreen
+                case 6: socialProofScreen
+                case 7: recoveryPlanTeaserScreen
                 default: paywallScreen
                 }
             }
@@ -429,7 +445,10 @@ struct OnboardingFlowView: View {
 
                     primaryButton(label: "Continue", enabled: selectedWhen != nil, gradient: false, horizontalPadding: 0, topPadding: 28) {
                         if let when = selectedWhen {
-                            OnboardingStore.save(procedureName: selectedProcedure?.storedName ?? "Surgery", procedureDate: when.procedureDate)
+                            OnboardingStore.save(
+                                procedureName: resolvedOnboardingProcedureName,
+                                procedureDate: when.procedureDate
+                            )
                         }
                         withAnimation { screen = 5 }
                     }
@@ -492,7 +511,7 @@ struct OnboardingFlowView: View {
                     .cornerRadius(24)
 
                     primaryButton(label: "I'm ready", enabled: true, gradient: false, horizontalPadding: 0, topPadding: 28) {
-                        withAnimation { screen = 6 }
+                        withAnimation { screen = 7 }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -529,13 +548,68 @@ struct OnboardingFlowView: View {
         .cornerRadius(22)
     }
 
-    // MARK: - Screen 6: Paywall
+    // MARK: - Screen 6: Recovery Plan Teaser
+
+    private var recoveryPlanTeaserScreen: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            questionTopBar(step: 4, total: 4)
+
+            RecoveryPlanTeaserView(
+                viewModel: RecoveryPlanViewModel(
+                    service: recoveryPlanService,
+                    isLocked: true
+                ),
+                onUnlock: {
+                    withAnimation { screen = 8 }
+                }
+            )
+        }
+        .background(onboardingShellBackground.ignoresSafeArea())
+    }
+
+    private var attributionScreen: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Spacer().frame(height: 14)
+
+            ScrollView(showsIndicators: false) {
+                onboardingScreenCard {
+                    introBlock(
+                        eyebrow: "One quick thing",
+                        title: "How did you hear about us?",
+                        body: "This helps us understand which channels are actually working.",
+                        eyebrowColor: OnboardingPaywallUI.roseDeep,
+                        titleSize: 32
+                    )
+
+                    VStack(spacing: 10) {
+                        ForEach(AcquisitionSource.allCases) { source in
+                            onboardingSourceRow(for: source)
+                        }
+                    }
+
+                    primaryButton(label: "Continue", enabled: selectedAcquisitionSource != nil, gradient: false, horizontalPadding: 0, topPadding: 28) {
+                        guard let selectedAcquisitionSource else { return }
+                        OnboardingStore.savePendingAcquisitionSource(selectedAcquisitionSource)
+                        withAnimation { screen = 6 }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 18)
+            }
+            Spacer().frame(height: 14)
+        }
+    }
+
+    // MARK: - Screen 7: Paywall
 
     private var paywallScreen: some View {
         VStack(spacing: 0) {
             ScrollView(showsIndicators: false) {
                 onboardingScreenCard {
-                    ZStack {
+                    HStack(spacing: 12) {
+                        Color.clear
+                            .frame(width: 32, height: 32)
+
                         Text("Unlock the full experience")
                             .font(.custom("Manrope", size: 25))
                             .fontWeight(.black)
@@ -544,9 +618,9 @@ struct OnboardingFlowView: View {
                             .frame(maxWidth: .infinity)
 
                         Button {
-                            OnboardingStore.hasCompleted = true
-                            dismiss()
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { onSignIn() }
+                            Task {
+                                await completeOnboardingWithoutSubscription()
+                            }
                         } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 15, weight: .semibold))
@@ -560,19 +634,18 @@ struct OnboardingFlowView: View {
                                 )
                                 .opacity(0.82)
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     }
                     .padding(.bottom, 14)
 
                     VStack(spacing: 10) {
                         onboardingFeaturedAnnualCard
                         onboardingCompactPlanCard(
-                            name: "Gold",
+                            name: "Monthly",
                             price: paymentVM.monthlyPriceInfo?.displayPrice ?? "—",
                             tierIndex: 1
                         )
                         onboardingCompactPlanCard(
-                            name: "Silver",
+                            name: "Weekly",
                             price: paymentVM.weeklyPriceInfo?.displayPrice ?? "—",
                             tierIndex: 2
                         )
@@ -617,93 +690,29 @@ struct OnboardingFlowView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
                     .padding(.bottom, 12)
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Email for secure checkout")
-                            .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                    if let errorMessage = paymentVM.errorMessage, !errorMessage.isEmpty {
+                        Text(errorMessage)
+                            .font(.custom("PlusJakartaSans-Regular", size: 13))
                             .foregroundColor(OnboardingPaywallUI.roseDeep)
-                            .tracking(1.8)
-                            .textCase(.uppercase)
-
-                        Text("We’ll use this to create your account and connect your plan after checkout.")
-                            .font(.custom("PlusJakartaSans-Regular", size: 12))
-                            .foregroundColor(OnboardingPaywallUI.muted)
-                            .lineSpacing(4)
-
-                        TextField("your@email.com", text: $email)
-                            .font(.custom("PlusJakartaSans-Regular", size: 14))
-                            .foregroundColor(OnboardingPaywallUI.primaryInk)
-                            .keyboardType(.emailAddress)
-                            .textContentType(.emailAddress)
-                            .autocapitalization(.none)
-                            .disableAutocorrection(true)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 16)
-                            .background(OnboardingPaywallUI.card)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(OnboardingPaywallUI.roseSoft.opacity(0.95))
                             .cornerRadius(16)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(
-                                        isValidEmail ? OnboardingPaywallUI.rose.opacity(0.35) : OnboardingPaywallUI.roseSoft.opacity(0.7),
-                                        lineWidth: 1
-                                    )
-                            )
-                    }
-                    .padding(16)
-                    .background(Color.white)
-                    .cornerRadius(24)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24)
-                            .stroke(Color.black.opacity(0.05), lineWidth: 1)
-                    )
-                    .padding(.bottom, 14)
-
-                    // Payment error
-                    if let error = paymentError {
-                        Text(error)
-                            .font(.custom("PlusJakartaSans-Regular", size: 11))
-                            .foregroundColor(Color(hex: "#C0392B"))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 8)
+                            .padding(.bottom, 14)
                     }
 
                     Button {
                         Task {
-                            isProcessingPayment = true
-                            paymentError = nil
-                            let prepared = await paymentVM.prepareSubscriptionPaymentSheet(
-                                email: email,
-                                priceId: selectedPlanPriceId
-                            )
-                            guard prepared else {
-                                paymentError = paymentVM.errorMessage ?? "Something went wrong. Please try again."
-                                isProcessingPayment = false
-                                return
-                            }
-                            let result = await paymentVM.presentPaymentSheet()
-                            switch result {
-                            case .completed:
-                                if let cId = paymentVM.lastCustomerId,
-                                   let sId = paymentVM.lastSubscriptionId {
-                                    OnboardingStore.saveStripeData(email: email, customerId: cId, subscriptionId: sId)
-                                }
-                                OnboardingStore.hasCompleted = true
-                                dismiss()
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { onGetStarted() }
-                            case .failed(let error):
-                                paymentError = error.localizedDescription
-                            case .canceled:
-                                break
-                            }
-                            isProcessingPayment = false
+                            await purchaseSelectedPlan()
                         }
                     } label: {
                         Group {
-                            if isProcessingPayment {
+                            if paymentVM.isLoading {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             } else {
-                                Text("Continue to secure checkout")
+                                Text("Subscribe")
                                     .font(.custom("PlusJakartaSans-SemiBold", size: 15))
                                     .foregroundColor(.white)
                                     .tracking(0.3)
@@ -711,64 +720,64 @@ struct OnboardingFlowView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
-                        .background(
-                            Group {
-                                if isValidEmail && !isProcessingPayment {
-                                    OnboardingPaywallUI.primary
-                                } else {
-                                    OnboardingPaywallUI.primary.opacity(0.35)
-                                }
-                            }
-                        )
+                        .background(OnboardingPaywallUI.primary.opacity(paymentVM.isLoading ? 0.6 : 1))
                         .cornerRadius(24)
                         .shadow(
-                            color: isValidEmail ? OnboardingPaywallUI.shadow : Color.clear,
+                            color: OnboardingPaywallUI.shadow,
                             radius: 8, x: 0, y: 5
                         )
                     }
-                    .disabled(!isValidEmail || isProcessingPayment)
+                    .disabled(paymentVM.isLoading || isSkippingSubscription)
                     .padding(.bottom, 10)
 
-                    if !isProcessingPayment {
-                        VStack(spacing: 5) {
-                            HStack(spacing: 5) {
-                                Image(systemName: "checkmark.seal.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(OnboardingPaywallUI.roseDeep)
-                                Text("100% money back")
-                                    .font(.custom("PlusJakartaSans-SemiBold", size: 12))
-                                    .foregroundColor(OnboardingPaywallUI.roseDeep)
-                            }
-                            Text("Cancel anytime. No pressure.")
-                                .font(.custom("PlusJakartaSans-Regular", size: 11))
-                                .foregroundColor(OnboardingPaywallUI.muted)
-                        }
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 14)
-                        .background(Color.white)
-                        .cornerRadius(24)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 24)
-                                .stroke(Color.black.opacity(0.05), lineWidth: 1)
-                        )
-                        .padding(.bottom, 12)
-                    }
-
                     Button {
-                        OnboardingStore.hasCompleted = true
-                        dismiss()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { onSignIn() }
+                        Task {
+                            await completeOnboardingWithoutSubscription()
+                        }
                     } label: {
-                        Text("Already have an account? Sign In")
-                            .font(.custom("PlusJakartaSans-Regular", size: 13))
-                            .foregroundColor(OnboardingPaywallUI.muted)
-                            .underline()
-                            .frame(maxWidth: .infinity, alignment: .center)
+                        Group {
+                            if isSkippingSubscription {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: OnboardingPaywallUI.primary))
+                            } else {
+                                Text("Maybe later")
+                                    .font(.custom("PlusJakartaSans-Regular", size: 13))
+                                    .foregroundColor(OnboardingPaywallUI.muted)
+                                    .underline()
+                            }
+                        }
+                        .font(.custom("PlusJakartaSans-Regular", size: 13))
+                        .foregroundColor(OnboardingPaywallUI.muted)
+                        .frame(maxWidth: .infinity, alignment: .center)
                     }
+                    .disabled(paymentVM.isLoading || isSkippingSubscription)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 2)
+
+                    VStack(spacing: 5) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(OnboardingPaywallUI.roseDeep)
+                            Text("100% money back")
+                                .font(.custom("PlusJakartaSans-SemiBold", size: 12))
+                                .foregroundColor(OnboardingPaywallUI.roseDeep)
+                        }
+                        Text("Cancel anytime. No questions asked.")
+                            .font(.custom("PlusJakartaSans-Regular", size: 11))
+                            .foregroundColor(OnboardingPaywallUI.muted)
+                    }
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .background(Color.white)
+                    .cornerRadius(24)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24)
+                            .stroke(Color.black.opacity(0.05), lineWidth: 1)
+                    )
+                    .padding(.top, 12)
                 }
                 .padding(.top, 18)
                 .padding(.horizontal, 16)
@@ -776,6 +785,41 @@ struct OnboardingFlowView: View {
             }
         }
         .background(OnboardingPaywallUI.bg.ignoresSafeArea())
+    }
+
+    @MainActor
+    private func purchaseSelectedPlan() async {
+        let outcome = await paymentVM.purchaseSubscription(tier: selectedPlanTier)
+
+        switch outcome {
+        case .success:
+            await OnboardingStore.syncUserContextIfNeeded(using: userProfileService)
+            await OnboardingStore.syncAttributionIfNeeded(using: userProfileService)
+            OnboardingStore.completePostOnboardingFeedback()
+            finishOnboarding()
+        case .pending, .cancelled, .failed:
+            break
+        }
+    }
+
+    @MainActor
+    private func completeOnboardingWithoutSubscription() async {
+        guard !isSkippingSubscription else { return }
+
+        isSkippingSubscription = true
+        await OnboardingStore.syncUserContextIfNeeded(using: userProfileService)
+        await OnboardingStore.syncAttributionIfNeeded(using: userProfileService)
+        OnboardingStore.completePostOnboardingFeedback()
+        finishOnboarding()
+    }
+
+    @MainActor
+    private func finishOnboarding() {
+        OnboardingStore.hasCompleted = true
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            onFinish()
+        }
     }
 
     // MARK: - Screen 6: About You
@@ -1003,6 +1047,7 @@ struct OnboardingFlowView: View {
                     Text(option)
                         .font(.custom("PlusJakartaSans-Medium", size: 13))
                         .foregroundColor(isSelected ? Color(hex: "#5F4546") : OnboardingPaywallUI.primaryInk)
+                        .multilineTextAlignment(.center)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
                         .background {
@@ -1180,6 +1225,44 @@ struct OnboardingFlowView: View {
         .buttonStyle(.plain)
     }
 
+    private func onboardingSourceRow(for source: AcquisitionSource) -> some View {
+        let isSelected = selectedAcquisitionSource == source
+
+        return Button {
+            selectedAcquisitionSource = source
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: source.iconName)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(isSelected ? OnboardingPaywallUI.primary : OnboardingPaywallUI.roseDeep)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        (isSelected ? OnboardingPaywallUI.primarySoft : OnboardingPaywallUI.roseSoft.opacity(0.92))
+                            .clipShape(Circle())
+                    )
+
+                Text(source.displayName)
+                    .font(.custom("PlusJakartaSans-Medium", size: 14))
+                    .foregroundColor(OnboardingPaywallUI.primaryInk)
+
+                Spacer()
+
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundColor(isSelected ? OnboardingPaywallUI.primary : OnboardingPaywallUI.muted.opacity(0.45))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .background(isSelected ? OnboardingPaywallUI.primarySoft.opacity(0.55) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(isSelected ? OnboardingPaywallUI.primary.opacity(0.18) : Color.black.opacity(0.04), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
     private var onboardingAnnualSupportText: String {
         let annualPrice = paymentVM.yearlyPriceInfo?.displayPrice ?? "—"
         return annualPrice == "—" ? "Billed yearly" : "About $17.99/mo billed yearly"
@@ -1187,7 +1270,7 @@ struct OnboardingFlowView: View {
 
     private func onboardingPlanDescription(for tierIndex: Int) -> String {
         switch tierIndex {
-        case 0: return "Everything in Gold with the strongest long-term value."
+        case 0: return "Everything in Monthly at the strongest long-term value."
         case 1: return "For consistent support across chat, research, and journal."
         default: return "A lighter starting point for occasional AI help."
         }
@@ -1195,8 +1278,8 @@ struct OnboardingFlowView: View {
 
     private func onboardingPlanPerks(for tierIndex: Int) -> [String] {
         switch tierIndex {
-        case 0, 1: return ["75 msgs", "15 imgs", "210 credits"]
-        default: return ["30 msgs", "5 imgs", "80 credits"]
+        case 0, 1: return ["210 AI credits"]
+        default: return ["80 AI credits"]
         }
     }
 
@@ -1434,6 +1517,51 @@ struct OnboardingFlowView: View {
                 .frame(maxWidth: .infinity)
         }
         .padding(.top, 14)
+    }
+
+    private var resolvedOnboardingProcedureName: String {
+        if let selectedProcedure {
+            return selectedProcedure.storedName
+        }
+
+        let prioritizedSelections = Array(selectedProceduresOfInterest) + Array(selectedPreviousProcedures)
+        for option in prioritizedSelections {
+            let normalized = option.lowercased()
+            if normalized.contains("rhinoplasty") || normalized.contains("nose") {
+                return "Rhinoplasty"
+            }
+            if normalized.contains("facelift") || normalized.contains("eyelid") || normalized.contains("facial") {
+                return "Facial Surgery"
+            }
+            if normalized.contains("breast") {
+                return "Breast Surgery"
+            }
+            if normalized.contains("body contour") || normalized.contains("bbl") || normalized.contains("tummy tuck") {
+                return "Body Contouring"
+            }
+            if normalized.contains("botox") || normalized.contains("fillers") || normalized.contains("laser") {
+                return "Facial Surgery"
+            }
+        }
+
+        if selectedBodyAreas.contains("Nose") {
+            return "Rhinoplasty"
+        }
+        if selectedBodyAreas.contains("Breasts") {
+            return "Breast Surgery"
+        }
+        if selectedBodyAreas.contains("Abdomen / Waist")
+            || selectedBodyAreas.contains("Thighs / Buttocks")
+            || selectedBodyAreas.contains("Full body") {
+            return "Body Contouring"
+        }
+        if selectedBodyAreas.contains("Face")
+            || selectedBodyAreas.contains("Eyes / Brow")
+            || selectedBodyAreas.contains("Neck / Jawline") {
+            return "Facial Surgery"
+        }
+
+        return "Surgery"
     }
 }
 

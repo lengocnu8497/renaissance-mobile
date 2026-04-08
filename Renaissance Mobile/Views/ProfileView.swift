@@ -508,7 +508,7 @@ struct ProfileView: View {
 
     private var isPaidPlan: Bool {
         guard let plan = userProfile?.billingPlan else { return false }
-        return plan == .silver || plan == .gold || plan == .annual
+        return plan == .weekly || plan == .monthly || plan == .yearly
     }
 
     private var usagePercentage: Int {

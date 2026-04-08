@@ -84,7 +84,7 @@ struct PaymentMethodsView: View {
                 let ready = await paymentViewModel.prepareSetupSheet()
                 guard ready else { return }
                 let result = await paymentViewModel.presentSetupSheet()
-                if case .completed = result {
+                if case PaymentSheetResult.completed = result {
                     await paymentViewModel.fetchPaymentMethods()
                 }
             }

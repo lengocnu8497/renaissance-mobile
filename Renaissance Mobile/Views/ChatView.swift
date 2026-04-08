@@ -7,7 +7,6 @@
 
 import SwiftUI
 import PhotosUI
-import StripePaymentSheet
 import Supabase
 import Auth
 import Network
@@ -36,11 +35,9 @@ struct ChatView: View {
     @State private var selectedImage: PhotosPickerItem?
     @State private var selectedImageData: Data?
     @State private var showQuotaExceeded = false
-    @State private var subscriptionViewModel = SubscriptionViewModel()
     @State private var onboardingPaymentViewModel = OnboardingPaymentViewModel()
     @State private var showPaymentError = false
     @State private var paymentErrorMessage = ""
-    @State private var hasCheckedSubscription = false
     @FocusState private var isTextFieldFocused: Bool
     @State private var isOnline = true
     @State private var hasInitialized = false
@@ -84,22 +81,21 @@ struct ChatView: View {
         .sheet(isPresented: $showQuotaExceeded) {
             QuotaExceededView(
                 reason: viewModel.quotaExceededReason ?? "You've exceeded your quota",
-                silverPrice: onboardingPaymentViewModel.silverPriceInfo?.displayPrice ?? "...",
-                goldPrice: onboardingPaymentViewModel.goldPriceInfo?.displayPrice ?? "...",
-                annualPrice: onboardingPaymentViewModel.annualPriceInfo?.displayPrice ?? "...",
+                weeklyPrice: onboardingPaymentViewModel.weeklyPriceInfo?.displayPrice ?? "...",
+                monthlyPrice: onboardingPaymentViewModel.monthlyPriceInfo?.displayPrice ?? "...",
+                yearlyPrice: onboardingPaymentViewModel.yearlyPlanPriceInfo?.displayPrice ?? "...",
                 onUpgrade: { tier in
                     await handleUpgrade(tier: tier)
                 },
                 onDismiss: {
                     showQuotaExceeded = false
-                    hasCheckedSubscription = false
                     viewModel.quotaExceeded = false
                     viewModel.quotaExceededReason = nil
                     viewModel.errorMessage = nil
                 }
             )
             .task {
-                if onboardingPaymentViewModel.silverPriceInfo == nil {
+                if onboardingPaymentViewModel.weeklyPriceInfo == nil {
                     await onboardingPaymentViewModel.fetchPrices()
                 }
             }
@@ -170,180 +166,22 @@ struct ChatView: View {
         }
     }
 
-    private func checkSubscriptionStatus() async {
-        // Only check once per session
-        guard !hasCheckedSubscription else { return }
-        hasCheckedSubscription = true
-
-        // Check if user has silver or gold subscription
-        do {
-            guard let userId = supabase.auth.currentUser?.id else {
-                return
-            }
-
-            let profile: UserProfile = try await supabase.database
-                .from("user_profiles")
-                .select()
-                .eq("id", value: userId.uuidString)
-                .single()
-                .execute()
-                .value
-
-            // If user doesn't have an active paid tier, show subscription modal
-            if profile.billingPlan != .silver && profile.billingPlan != .gold && profile.billingPlan != .annual {
-                viewModel.quotaExceeded = true
-                viewModel.quotaExceededReason = "Subscribe to unlock AI chat and get personalized beauty recommendations"
-                viewModel.errorMessage = viewModel.quotaExceededReason
-            }
-        } catch {
-            print("Error checking subscription: \(error)")
-        }
-    }
-
     private func handleUpgrade(tier: SubscriptionTier) async {
-        // Store the selected tier for later use after payment
-        let selectedTier = tier
-
-        // Get price ID from environment config based on selected tier
-        let priceId: String
-        switch tier {
-        case .silver:
-            priceId = AppConfig.stripeSilverPriceId
-        case .gold:
-            priceId = AppConfig.stripeGoldPriceId
-        case .annual:
-            priceId = AppConfig.stripeAnnualPriceId
-        }
-
-        // Validate price ID is configured
-        guard !priceId.contains("REPLACE_WITH_YOUR") else {
-            paymentErrorMessage = "Subscription plan not configured. Please add Stripe price IDs to AppConfig."
-            showPaymentError = true
-            return
-        }
-
-        // Step 1: Create subscription and get client secret
-        guard let subscriptionResult = await subscriptionViewModel.createSubscription(
-            priceId: priceId,
-            tier: tier
-        ) else {
-            paymentErrorMessage = subscriptionViewModel.errorMessage ?? "Failed to create subscription"
-            showPaymentError = true
-            return
-        }
-
-        let clientSecret = subscriptionResult.clientSecret
-        let subscriptionId = subscriptionResult.subscriptionId
-
-        // Step 2: Configure Payment Sheet for subscription
-        var configuration = PaymentSheet.Configuration()
-        configuration.merchantDisplayName = "Renaissance"
-        configuration.allowsDelayedPaymentMethods = true
-        configuration.returnURL = "renaissance://payment-complete"
-
-        // Appearance customization - light theme for input fields
-        var appearance = PaymentSheet.Appearance()
-        appearance.colors.primary = UIColor(red: 208/255, green: 187/255, blue: 149/255, alpha: 1.0) // Renaissance gold
-        appearance.colors.background = UIColor(red: 247/255, green: 247/255, blue: 246/255, alpha: 1.0)
-        appearance.colors.componentBackground = UIColor.white
-        appearance.colors.componentBorder = UIColor(red: 230/255, green: 230/255, blue: 230/255, alpha: 1.0)
-        appearance.colors.componentDivider = UIColor(red: 230/255, green: 230/255, blue: 230/255, alpha: 1.0)
-        appearance.colors.text = UIColor(red: 51/255, green: 51/255, blue: 51/255, alpha: 1.0)
-        appearance.colors.textSecondary = UIColor(red: 130/255, green: 130/255, blue: 130/255, alpha: 1.0)
-        appearance.cornerRadius = 16
-        configuration.appearance = appearance
-
-        // Billing details
-        configuration.billingDetailsCollectionConfiguration.name = .always
-        configuration.billingDetailsCollectionConfiguration.email = .always
-        configuration.billingDetailsCollectionConfiguration.phone = .always
-        configuration.billingDetailsCollectionConfiguration.address = .full
-
-        // Enable Apple Pay for subscriptions
-        configuration.applePay = PaymentSheet.ApplePayConfiguration(
-            merchantId: AppConfig.appleMerchantId,
-            merchantCountryCode: "US"
-        )
-
-        // Step 3: Initialize Payment Sheet with subscription setup intent client secret
-        // For subscriptions, the client secret is from the payment intent attached to the subscription
-        let paymentSheet = PaymentSheet(
-            paymentIntentClientSecret: clientSecret,
-            configuration: configuration
-        )
-
-        // Get the topmost view controller
-        guard let topViewController = UIApplication.shared.topViewController else {
-            paymentErrorMessage = "Unable to present payment screen"
-            showPaymentError = true
-            return
-        }
-
-        // Present Payment Sheet and wait for result
-        let result = await withCheckedContinuation { continuation in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                paymentSheet.present(from: topViewController) { result in
-                    continuation.resume(returning: result)
-                }
-            }
-        }
-
-        // Step 4: Handle payment result
+        let result = await onboardingPaymentViewModel.purchaseSubscription(tier: tier)
         switch result {
-        case .completed:
-            // Payment successful - update profile immediately (webhook is backup)
-            await updateSubscriptionInProfile(tier: selectedTier, subscriptionId: subscriptionId)
-
-            // Close modal and reset state
+        case .success:
             showQuotaExceeded = false
             viewModel.quotaExceeded = false
             viewModel.quotaExceededReason = nil
             viewModel.errorMessage = nil
-
-            // Reset subscription check flag so they can use the chat
-            hasCheckedSubscription = false
-
-        case .canceled:
-            // User canceled - keep modal open so they can try again
+        case .cancelled:
             break
-
-        case .failed(let error):
-            // Payment failed - show error but keep modal open
-            paymentErrorMessage = error.localizedDescription
+        case .pending:
+            paymentErrorMessage = onboardingPaymentViewModel.errorMessage ?? "Your App Store purchase is pending approval."
             showPaymentError = true
-        }
-    }
-
-    /// Updates the user's subscription info in Supabase after successful payment.
-    /// This is the primary update path - webhook serves as backup/redundancy.
-    private func updateSubscriptionInProfile(tier: SubscriptionTier, subscriptionId: String) async {
-        do {
-            guard let userId = supabase.auth.currentUser?.id else {
-                print("❌ Failed to get user ID for subscription update")
-                return
-            }
-
-            let tierValue = tier.rawValue
-            let userIdString = userId.uuidString.lowercased()
-            print("📝 Updating subscription for user: \(userIdString)")
-            print("📝 - billing_plan: '\(tierValue)'")
-            print("📝 - stripe_subscription_id: '\(subscriptionId)'")
-
-            try await supabase.database
-                .from("user_profiles")
-                .update([
-                    "billing_plan": tierValue,
-                    "stripe_subscription_id": subscriptionId,
-                    "subscription_status": "active",
-                    "subscription_tier": tierValue
-                ])
-                .eq("id", value: userIdString)
-                .execute()
-
-            print("✅ Subscription updated successfully")
-        } catch {
-            print("❌ Error updating subscription: \(error)")
-            // Non-fatal: webhook will eventually update it
+        case .failed(let message):
+            paymentErrorMessage = message
+            showPaymentError = true
         }
     }
 
@@ -422,7 +260,12 @@ struct ChatView: View {
                     dateDivider
 
                     ForEach(viewModel.messages) { message in
-                        MessageBubbleView(message: message)
+                        MessageBubbleView(
+                            message: message,
+                            onUnlockTap: message.isLockedPreview ? {
+                                showQuotaExceeded = true
+                            } : nil
+                        )
                             .id(message.id)
                     }
 
@@ -565,13 +408,6 @@ struct ChatView: View {
                             .focused($isTextFieldFocused)
                             .onSubmit {
                                 sendMessage()
-                            }
-                            .onChange(of: isTextFieldFocused) { _, isFocused in
-                                if isFocused {
-                                    Task {
-                                        await checkSubscriptionStatus()
-                                    }
-                                }
                             }
                     }
                     .padding(.horizontal, 18)

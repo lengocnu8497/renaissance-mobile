@@ -10,7 +10,6 @@ import SwiftUI
 struct WelcomeView: View {
     @State private var showSignIn = false
     @State private var showSignUp = false
-    @State private var showOnboarding = false
 
     // MARK: - Loading animation state
     private enum LoadingPhase { case idle, appearing, spinning, expanding, complete }
@@ -78,14 +77,7 @@ struct WelcomeView: View {
                 onSignIn: {
                     showSignUp = false
                     showSignIn = true
-                },
-                prefillEmail: OnboardingStore.pendingEmail ?? ""
-            )
-        }
-        .fullScreenCover(isPresented: $showOnboarding) {
-            OnboardingFlowView(
-                onGetStarted: { showSignUp = true },
-                onSignIn: { showSignIn = true }
+                }
             )
         }
     }
@@ -219,7 +211,7 @@ struct WelcomeView: View {
     private var footerSection: some View {
         VStack(spacing: 0) {
             Button(action: {
-                showOnboarding = true
+                showSignUp = true
             }) {
                 Text("Start My Consultation")
                     .font(.system(size: 14, weight: .semibold))

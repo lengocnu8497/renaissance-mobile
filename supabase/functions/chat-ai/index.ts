@@ -531,7 +531,7 @@ Deno.serve(async (req) => {
         JSON.stringify({
           error: 'No active subscription',
           code: 'NO_SUBSCRIPTION',
-          message: 'Please upgrade to a Silver or Gold plan to use the AI concierge.'
+          message: 'Please upgrade to a Weekly or Monthly plan to use the AI concierge.'
         }),
         { status: 403, headers: { 'Content-Type': 'application/json' } }
       )

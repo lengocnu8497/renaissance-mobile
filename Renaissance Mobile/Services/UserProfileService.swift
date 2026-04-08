@@ -104,6 +104,13 @@ class UserProfileService {
             zipCode: zipCode ?? currentProfile.zipCode,
             billingPlan: billingPlan ?? currentProfile.billingPlan,
             profileImageUrl: profileImageUrl ?? currentProfile.profileImageUrl,
+            subscriptionStatus: currentProfile.subscriptionStatus,
+            subscriptionCurrentPeriodEnd: currentProfile.subscriptionCurrentPeriodEnd,
+            subscriptionProvider: currentProfile.subscriptionProvider,
+            subscriptionId: currentProfile.subscriptionId,
+            appStoreProductId: currentProfile.appStoreProductId,
+            appStoreOriginalTransactionId: currentProfile.appStoreOriginalTransactionId,
+            appStoreEnvironment: currentProfile.appStoreEnvironment,
             createdAt: currentProfile.createdAt,
             updatedAt: Date(),
             metadata: currentProfile.metadata,
@@ -148,6 +155,13 @@ class UserProfileService {
                 zipCode: zipCode,
                 billingPlan: billingPlan ?? .free,
                 profileImageUrl: profileImageUrl,
+                subscriptionStatus: currentProfile.subscriptionStatus,
+                subscriptionCurrentPeriodEnd: currentProfile.subscriptionCurrentPeriodEnd,
+                subscriptionProvider: currentProfile.subscriptionProvider,
+                subscriptionId: currentProfile.subscriptionId,
+                appStoreProductId: currentProfile.appStoreProductId,
+                appStoreOriginalTransactionId: currentProfile.appStoreOriginalTransactionId,
+                appStoreEnvironment: currentProfile.appStoreEnvironment,
                 gender: gender,
                 ageRange: ageRange,
                 raceEthnicity: raceEthnicity,
@@ -191,6 +205,20 @@ class UserProfileService {
             .value
 
         return response
+    }
+
+    /// Merge metadata keys into the current profile metadata payload.
+    func updateMetadata(_ updates: [String: AnyCodable]) async throws -> UserProfile {
+        var profile = try await getUserProfile()
+        var mergedMetadata = profile.metadata ?? [:]
+
+        for (key, value) in updates {
+            mergedMetadata[key] = value
+        }
+
+        profile.metadata = mergedMetadata
+        profile.updatedAt = Date()
+        return try await updateUserProfile(profile)
     }
 
     // MARK: - Profile Image Management

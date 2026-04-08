@@ -22,6 +22,8 @@ class ProceduresViewModel {
             pool = procedures
         } else {
             switch filter {
+            case "All":
+                pool = procedures
             case "Non-Surgical":
                 pool = procedures.filter { !$0.isSurgical }
             case "Surgical":

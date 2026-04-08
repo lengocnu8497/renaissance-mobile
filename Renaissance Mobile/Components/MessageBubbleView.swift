@@ -23,6 +23,7 @@ private enum ChatBubbleStyle {
 
 struct MessageBubbleView: View {
     let message: ChatMessage
+    var onUnlockTap: (() -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 10) {
@@ -88,6 +89,12 @@ struct MessageBubbleView: View {
                     if !message.text.isEmpty {
                         if isConsultationPrepResponse {
                             ConsultationPrepCardBubble(text: message.text)
+                        } else if message.isLockedPreview {
+                            LockedPreviewBubble(
+                                title: message.lockedPreviewTitle ?? "Rena drafted an answer",
+                                text: message.text,
+                                onUnlockTap: onUnlockTap
+                            )
                         } else {
                             Text(message.text)
                                 .font(.custom("PlusJakartaSans-Regular", size: 14))
@@ -153,6 +160,92 @@ struct MessageBubbleView: View {
             .font(.custom("PlusJakartaSans-SemiBold", size: 10))
             .foregroundColor(ChatBubbleStyle.muted)
             .frame(maxWidth: .infinity, alignment: isLeading ? .leading : .trailing)
+    }
+}
+
+private struct LockedPreviewBubble: View {
+    let title: String
+    let text: String
+    var onUnlockTap: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(ChatBubbleStyle.rose)
+                    .frame(width: 24, height: 24)
+                    .background(ChatBubbleStyle.roseSoft)
+                    .clipShape(Circle())
+
+                Text(title.uppercased())
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 9))
+                    .tracking(2)
+                    .foregroundColor(ChatBubbleStyle.rose)
+            }
+
+            ZStack {
+                Text(text)
+                    .font(.custom("PlusJakartaSans-Regular", size: 14))
+                    .foregroundColor(ChatBubbleStyle.text)
+                    .lineSpacing(6)
+                    .blur(radius: 6)
+                    .overlay(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.15),
+                                Color.white.opacity(0.6),
+                                Color.white.opacity(0.85)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+
+                VStack(spacing: 10) {
+                    Text("Unlock this answer")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                        .foregroundColor(ChatBubbleStyle.primaryInk)
+
+                    Text("Subscribe to reveal Rena's personalized response and continue the conversation.")
+                        .font(.custom("PlusJakartaSans-Regular", size: 12))
+                        .foregroundColor(ChatBubbleStyle.muted)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(3)
+
+                    Button(action: { onUnlockTap?() }) {
+                        Text("Unlock with Subscription")
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 12))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(ChatBubbleStyle.primaryInk)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 18)
+            }
+            .frame(maxWidth: .infinity, minHeight: 150, alignment: .center)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .fill(ChatBubbleStyle.assistantSurface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .stroke(ChatBubbleStyle.assistantBorder, lineWidth: 1)
+                )
+                .shadow(color: ChatBubbleStyle.shadow, radius: 12, x: 0, y: 3)
+        )
+        .clipShape(
+            UnevenRoundedRectangle(
+                topLeadingRadius: 26,
+                bottomLeadingRadius: 10,
+                bottomTrailingRadius: 26,
+                topTrailingRadius: 26
+            )
+        )
     }
 }
 

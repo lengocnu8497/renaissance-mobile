@@ -142,7 +142,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({
         error: 'No active subscription',
         code: 'NO_SUBSCRIPTION',
-        message: 'Please upgrade to a Silver or Gold plan to use AI photo analysis.'
+        message: 'Please upgrade to a Weekly or Monthly plan to use AI photo analysis.'
       }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 

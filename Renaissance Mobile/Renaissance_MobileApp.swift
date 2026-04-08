@@ -7,22 +7,19 @@
 
 import SwiftUI
 import GoogleSignIn
-import StripePaymentSheet
 import Auth
 import Supabase
 
 @main
 struct Renaissance_MobileApp: App {
     @State private var authViewModel = AuthViewModel()
+    @State private var subscriptionStore = SubscriptionStore.shared
 
     init() {
         // Configure Google Sign-In with your iOS Client ID
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(
             clientID: "636103668184-sflddmlbj90salbiit9ted0m0lhrdmag.apps.googleusercontent.com"
         )
-
-        // Configure Stripe SDK
-        STPAPIClient.shared.publishableKey = AppConfig.stripePublishableKey
     }
 
     var body: some Scene {
@@ -31,6 +28,7 @@ struct Renaissance_MobileApp: App {
                 if authViewModel.isAuthenticated {
                     ContentView()
                         .environment(authViewModel)
+                        .environment(subscriptionStore)
                 } else {
                     WelcomeView(
                         onStartConsultation: {
@@ -41,6 +39,7 @@ struct Renaissance_MobileApp: App {
                         }
                     )
                     .environment(authViewModel)
+                    .environment(subscriptionStore)
                 }
             }
             .sheet(isPresented: Binding(
@@ -56,6 +55,8 @@ struct Renaissance_MobileApp: App {
                 }
             }
             .task {
+                await subscriptionStore.prepare()
+
                 // Warm up Supabase's internal swift-dependencies type metadata
                 // on the main actor at launch. Without this, the first access
                 // from a concurrent thread triggers a CODESIGNING fault on iOS 26

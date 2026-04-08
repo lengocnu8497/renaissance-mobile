@@ -28,13 +28,13 @@ private enum PaywallUI {
 
 struct QuotaExceededView: View {
     let reason: String
-    var silverPrice: String = "..."
-    var goldPrice: String = "..."
-    var annualPrice: String = "..."
+    var weeklyPrice: String = "..."
+    var monthlyPrice: String = "..."
+    var yearlyPrice: String = "..."
     let onUpgrade: (SubscriptionTier) async -> Void
     let onDismiss: () -> Void
 
-    @State private var selectedPlan: SubscriptionTier = .annual
+    @State private var selectedPlan: SubscriptionTier = .yearly
     @State private var isProcessing = false
 
     var body: some View {
@@ -53,46 +53,55 @@ struct QuotaExceededView: View {
         .background(PaywallUI.bg.ignoresSafeArea())
     }
 
-    private var annualSupportText: String {
-        annualPrice == "..." ? "Billed yearly" : "About $17.99/mo billed yearly"
+    private var yearlySupportText: String {
+        yearlyPrice == "..." ? "Billed yearly" : "About $17.99/mo billed yearly"
     }
 
     private func planPerks(for tier: SubscriptionTier) -> [String] {
         switch tier {
-        case .annual, .gold:
-            return ["75 msgs", "15 imgs", "210 credits"]
-        case .silver:
-            return ["30 msgs", "5 imgs", "80 credits"]
+        case .yearly, .monthly:
+            return ["210 AI credits"]
+        case .weekly:
+            return ["80 AI credits"]
         }
     }
 
     private func planDescription(for tier: SubscriptionTier) -> String {
         switch tier {
-        case .annual:
-            return "Everything in Gold with the strongest long-term value."
-        case .gold:
+        case .yearly:
+            return "Everything in Monthly at the strongest long-term value."
+        case .monthly:
             return "For consistent support across chat, research, and journal."
-        case .silver:
+        case .weekly:
             return "A lighter starting point for occasional AI help."
         }
     }
 
     private var selectedPlanPrice: String {
         switch selectedPlan {
-        case .annual: return annualPrice
-        case .gold: return goldPrice
-        case .silver: return silverPrice
+        case .yearly: return yearlyPrice
+        case .monthly: return monthlyPrice
+        case .weekly: return weeklyPrice
         }
     }
 
     private func planUnit(for tier: SubscriptionTier) -> String {
-        tier == .annual ? "/yr" : "/mo"
+        switch tier {
+        case .yearly: return "/yr"
+        case .weekly: return "/wk"
+        case .monthly: return "/mo"
+        }
     }
 
     private func priceDisplay(_ rawPrice: String, tier: SubscriptionTier) -> some View {
         HStack(alignment: .lastTextBaseline, spacing: 0) {
-            Text(rawPrice == "..." ? "..." : rawPrice.replacingOccurrences(of: "/yr", with: "").replacingOccurrences(of: "/mo", with: ""))
-                .font(.custom("Manrope", size: tier == .annual ? 30 : 27))
+            Text(
+                rawPrice == "..." ? "..." : rawPrice
+                    .replacingOccurrences(of: "/yr", with: "")
+                    .replacingOccurrences(of: "/mo", with: "")
+                    .replacingOccurrences(of: "/wk", with: "")
+            )
+                .font(.custom("Manrope", size: tier == .yearly ? 30 : 27))
                 .fontWeight(.bold)
                 .foregroundColor(PaywallUI.primaryInk)
             Text(planUnit(for: tier))
@@ -127,26 +136,33 @@ struct QuotaExceededView: View {
     // MARK: - Header
 
     private var header: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack {
+            HStack {
+                Color.clear
+                    .frame(width: 40, height: 40)
+                Spacer()
+
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(PaywallUI.primaryInk)
+                        .frame(width: 40, height: 40)
+                        .background(Color.white.opacity(0.82))
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(PaywallUI.border, lineWidth: 1)
+                        )
+                }
+            }
+
             Text("Unlock the full experience")
                 .font(.custom("Manrope", size: 29))
                 .fontWeight(.heavy)
                 .foregroundColor(PaywallUI.primaryInk)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
-
-            Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(PaywallUI.primaryInk)
-                    .frame(width: 40, height: 40)
-                    .background(Color.white.opacity(0.82))
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(PaywallUI.border, lineWidth: 1)
-                    )
-            }
+                .padding(.horizontal, 56)
         }
         .padding(.horizontal, 20)
         .padding(.top, 24)
@@ -158,8 +174,8 @@ struct QuotaExceededView: View {
     private var planCards: some View {
         VStack(spacing: 7) {
             featuredAnnualCard
-            compactPlanCard(name: "Gold", price: goldPrice, tier: .gold)
-            compactPlanCard(name: "Silver", price: silverPrice, tier: .silver)
+            compactPlanCard(name: "Monthly", price: monthlyPrice, tier: .monthly)
+            compactPlanCard(name: "Weekly", price: weeklyPrice, tier: .weekly)
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 14)
@@ -177,7 +193,7 @@ struct QuotaExceededView: View {
 
             VStack(spacing: 10) {
                 unlockCard(
-                    icon: "forum",
+                    icon: "ellipsis.message",
                     tint: PaywallUI.primarySoft,
                     iconColor: PaywallUI.primary,
                     title: "Continue Ask Rena without interruptions",
@@ -284,8 +300,8 @@ struct QuotaExceededView: View {
     // MARK: - Helpers
 
     private var featuredAnnualCard: some View {
-        let isSelected = selectedPlan == .annual
-        return Button { selectedPlan = .annual } label: {
+        let isSelected = selectedPlan == .yearly
+        return Button { selectedPlan = .yearly } label: {
             VStack(alignment: .leading, spacing: 15) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -303,21 +319,21 @@ struct QuotaExceededView: View {
                                 .background(PaywallUI.rose)
                                 .clipShape(Capsule())
                         }
-                        Text(planDescription(for: .annual))
+                        Text(planDescription(for: .yearly))
                             .font(.custom("PlusJakartaSans-Regular", size: 13))
                             .foregroundColor(PaywallUI.muted)
                             .lineSpacing(3)
                     }
 
                     Spacer()
-                    selectionDot(for: .annual)
+                    selectionDot(for: .yearly)
                         .padding(.top, 2)
                 }
 
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 2) {
-                        priceDisplay(annualPrice, tier: .annual)
-                        Text(annualSupportText)
+                        priceDisplay(yearlyPrice, tier: .yearly)
+                        Text(yearlySupportText)
                             .font(.custom("PlusJakartaSans-Regular", size: 11))
                             .foregroundColor(PaywallUI.roseDeep)
                     }
@@ -330,7 +346,7 @@ struct QuotaExceededView: View {
                             .tracking(1.6)
                             .foregroundColor(PaywallUI.muted)
                             .textCase(.uppercase)
-                        Text(planPerks(for: .annual).joined(separator: " • "))
+                        Text(planPerks(for: .yearly).joined(separator: " • "))
                             .font(.custom("PlusJakartaSans-SemiBold", size: 11))
                             .foregroundColor(PaywallUI.primaryInk)
                             .multilineTextAlignment(.trailing)
@@ -432,9 +448,9 @@ struct QuotaExceededView: View {
 #Preview {
     QuotaExceededView(
         reason: "You've reached your monthly AI credit limit.",
-        silverPrice: "$14.99/mo",
-        goldPrice: "$29.99/mo",
-        annualPrice: "$215.99/yr",
+        weeklyPrice: "$14.99/wk",
+        monthlyPrice: "$29.99/mo",
+        yearlyPrice: "$215.99/yr",
         onUpgrade: { _ in },
         onDismiss: {}
     )

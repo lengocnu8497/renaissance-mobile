@@ -4,7 +4,7 @@ ALTER TABLE public.user_profiles
 ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT UNIQUE,
 ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT,
 ADD COLUMN IF NOT EXISTS subscription_status TEXT CHECK (subscription_status IN ('active', 'canceled', 'past_due', 'trialing', 'incomplete', 'incomplete_expired', 'unpaid')),
-ADD COLUMN IF NOT EXISTS subscription_tier TEXT CHECK (subscription_tier IN ('silver', 'gold')),
+ADD COLUMN IF NOT EXISTS subscription_tier TEXT CHECK (subscription_tier IN ('weekly', 'monthly')),
 ADD COLUMN IF NOT EXISTS subscription_current_period_end TIMESTAMPTZ;
 
 -- Add index for Stripe customer lookups

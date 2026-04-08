@@ -1,13 +1,13 @@
--- Add 'annual' to the subscription_tier CHECK constraint in usage_tracking
+-- Add 'yearly' to the subscription_tier CHECK constraint in usage_tracking
 ALTER TABLE public.usage_tracking
     DROP CONSTRAINT IF EXISTS usage_tracking_subscription_tier_check;
 
 ALTER TABLE public.usage_tracking
     ADD CONSTRAINT usage_tracking_subscription_tier_check
-    CHECK (subscription_tier IN ('silver', 'gold', 'annual'));
+    CHECK (subscription_tier IN ('weekly', 'monthly', 'yearly'));
 
--- Update get_or_create_usage_record to handle the 'annual' tier
--- Annual: same message/image limits as Gold, but 300 credits/mo
+-- Update get_or_create_usage_record to handle the 'yearly' tier
+-- Yearly: same message/image limits as Monthly, but 300 credits/mo
 CREATE OR REPLACE FUNCTION public.get_or_create_usage_record(
     p_user_id UUID,
     p_period_start TIMESTAMPTZ,
@@ -22,20 +22,20 @@ DECLARE
     v_credits_limit INTEGER;
 BEGIN
     -- Set tier limits
-    IF p_tier = 'silver' THEN
+    IF p_tier = 'weekly' THEN
         v_messages_limit := 30;
         v_images_limit := 5;
         v_credits_limit := 80;
-    ELSIF p_tier = 'gold' THEN
+    ELSIF p_tier = 'monthly' THEN
         v_messages_limit := 75;
         v_images_limit := 15;
         v_credits_limit := 210;
-    ELSIF p_tier = 'annual' THEN
+    ELSIF p_tier = 'yearly' THEN
         v_messages_limit := 75;
         v_images_limit := 15;
         v_credits_limit := 300;
     ELSE
-        RAISE EXCEPTION 'Invalid tier: %. Must be silver, gold, or annual.', p_tier;
+        RAISE EXCEPTION 'Invalid tier: %. Must be weekly, monthly, or yearly.', p_tier;
     END IF;
 
     -- Try to get existing record for this period

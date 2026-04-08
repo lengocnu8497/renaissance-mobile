@@ -64,6 +64,34 @@ final class MockRecoveryInsightsService: RecoveryInsightsServiceProtocol {
     }
 }
 
+// MARK: - Mock Recovery Plan Copy Service
+
+final class MockRecoveryPlanCopyService: RecoveryPlanCopyGenerating {
+    var generatedCopy: RecoveryPlanGeneratedCopy?
+    var generateError: Error?
+    var generateCallCount = 0
+
+    func generateCopy(
+        input: RecoveryPlanInput,
+        timelinePhase: RecoveryPlanTimelinePhase,
+        journalSignals: RecoveryPlanJournalSignals?
+    ) async throws -> RecoveryPlanGeneratedCopy {
+        generateCallCount += 1
+
+        if let generateError {
+            throw generateError
+        }
+
+        return generatedCopy ?? RecoveryPlanGeneratedCopy(
+            summary: "AI-generated summary",
+            focusAreas: [
+                "AI-generated focus area one.",
+                "AI-generated focus area two."
+            ]
+        )
+    }
+}
+
 // MARK: - RecoveryInsights Test Fixture
 
 extension RecoveryInsights {
@@ -140,5 +168,77 @@ extension JournalEntry {
             createdAt: Date(),
             updatedAt: Date()
         )
+    }
+}
+
+// MARK: - Recovery Plan Fixtures
+
+extension RecoveryPlanInput {
+    static func stub(
+        procedureName: String = "Rhinoplasty",
+        procedureDate: Date = Date(timeIntervalSince1970: 1_700_000_000),
+        daysSinceProcedure: Int = 35,
+        currentWeek: Int = 6,
+        currentPhaseTitle: String = "Weeks 5-8: compare trends, not daily changes",
+        procedureFamily: RecoveryPlanProcedureFamily = .rhinoplasty,
+        gender: String? = nil,
+        ageRange: String? = "25-34",
+        raceEthnicity: String? = nil,
+        aestheticGoals: [String] = ["Symmetry"],
+        bodyAreas: [String] = ["Face"],
+        proceduresOfInterest: [String] = [],
+        previousProcedures: [String] = ["Fillers"],
+        healthFlags: [String] = ["Sensitive healing"],
+        latestJournalSignals: RecoveryPlanJournalSignals? = nil
+    ) -> RecoveryPlanInput {
+        RecoveryPlanInput(
+            procedureName: procedureName,
+            procedureDate: procedureDate,
+            daysSinceProcedure: daysSinceProcedure,
+            currentWeek: currentWeek,
+            currentPhaseTitle: currentPhaseTitle,
+            procedureFamily: procedureFamily,
+            gender: gender,
+            ageRange: ageRange,
+            raceEthnicity: raceEthnicity,
+            aestheticGoals: aestheticGoals,
+            bodyAreas: bodyAreas,
+            proceduresOfInterest: proceduresOfInterest,
+            previousProcedures: previousProcedures,
+            healthFlags: healthFlags,
+            latestJournalSignals: latestJournalSignals
+        )
+    }
+}
+
+extension RecoveryPlanTimelinePhase {
+    static func stub(
+        id: String = "rhino-mid-refinement",
+        title: String = "Weeks 5-8: compare trends, not daily changes",
+        weekStart: Int = 5,
+        weekEnd: Int = 8,
+        status: RecoveryPlanPhaseStatus = .current,
+        summary: String = "This phase is better for weekly photo comparison and follow-up questions about lingering asymmetry."
+    ) -> RecoveryPlanTimelinePhase {
+        RecoveryPlanTimelinePhase(
+            id: id,
+            title: title,
+            weekStart: weekStart,
+            weekEnd: weekEnd,
+            status: status,
+            summary: summary
+        )
+    }
+}
+
+extension RecoveryPlanGeneratedCopy {
+    static func stub(
+        summary: String = "Your recovery is now better judged by weekly comparison than daily checking.",
+        focusAreas: [String] = [
+            "Stay consistent with photos this week.",
+            "Track anything that feels persistently uneven."
+        ]
+    ) -> RecoveryPlanGeneratedCopy {
+        RecoveryPlanGeneratedCopy(summary: summary, focusAreas: focusAreas)
     }
 }

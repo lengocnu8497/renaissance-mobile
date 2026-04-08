@@ -64,6 +64,14 @@ struct ChatMessage: Identifiable, Codable {
 
     // Computed properties for backward compatibility with UI
     var text: String { messageText }
+    var isLockedPreview: Bool {
+        (metadata?["is_locked_preview"]?.value as? Bool) == true
+    }
+
+    var lockedPreviewTitle: String? {
+        metadata?["locked_preview_title"]?.value as? String
+    }
+
     var timestamp: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
@@ -158,6 +166,11 @@ struct UserProfile: Identifiable, Codable {
     var profileImageUrl: String?
     var subscriptionStatus: SubscriptionStatus?
     var subscriptionCurrentPeriodEnd: Date?
+    var subscriptionProvider: SubscriptionProvider?
+    var subscriptionId: String?
+    var appStoreProductId: String?
+    var appStoreOriginalTransactionId: String?
+    var appStoreEnvironment: AppStoreEnvironment?
     let createdAt: Date
     var updatedAt: Date
     var metadata: [String: AnyCodable]?
@@ -182,6 +195,11 @@ struct UserProfile: Identifiable, Codable {
         case profileImageUrl = "profile_image_url"
         case subscriptionStatus = "subscription_status"
         case subscriptionCurrentPeriodEnd = "subscription_current_period_end"
+        case subscriptionProvider = "subscription_provider"
+        case subscriptionId = "subscription_id"
+        case appStoreProductId = "app_store_product_id"
+        case appStoreOriginalTransactionId = "app_store_original_transaction_id"
+        case appStoreEnvironment = "app_store_environment"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case metadata
@@ -205,6 +223,11 @@ struct UserProfile: Identifiable, Codable {
         profileImageUrl: String? = nil,
         subscriptionStatus: SubscriptionStatus? = nil,
         subscriptionCurrentPeriodEnd: Date? = nil,
+        subscriptionProvider: SubscriptionProvider? = nil,
+        subscriptionId: String? = nil,
+        appStoreProductId: String? = nil,
+        appStoreOriginalTransactionId: String? = nil,
+        appStoreEnvironment: AppStoreEnvironment? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         metadata: [String: AnyCodable]? = nil,
@@ -226,6 +249,11 @@ struct UserProfile: Identifiable, Codable {
         self.profileImageUrl = profileImageUrl
         self.subscriptionStatus = subscriptionStatus
         self.subscriptionCurrentPeriodEnd = subscriptionCurrentPeriodEnd
+        self.subscriptionProvider = subscriptionProvider
+        self.subscriptionId = subscriptionId
+        self.appStoreProductId = appStoreProductId
+        self.appStoreOriginalTransactionId = appStoreOriginalTransactionId
+        self.appStoreEnvironment = appStoreEnvironment
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.metadata = metadata
@@ -240,22 +268,58 @@ struct UserProfile: Identifiable, Codable {
     }
 }
 
+enum SubscriptionProvider: String, Codable {
+    case stripe
+    case appStore = "app_store"
+}
+
+enum AppStoreEnvironment: String, Codable {
+    case sandbox
+    case production
+    case xcode
+}
+
 // MARK: - Billing Plan Enum
 enum BillingPlan: String, Codable {
     case free = "free"
-    case silver = "silver"
-    case gold = "gold"
-    case annual = "annual"
+    case weekly = "weekly"
+    case monthly = "monthly"
+    case yearly = "yearly"
 
-    var displayName: String {
-        switch self {
-        case .free:   return "Free"
-        case .silver: return "Silver"
-        case .gold:   return "Gold"
-        case .annual: return "Annual"
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+
+        switch value {
+        case "free":
+            self = .free
+        case "weekly", "silver":
+            self = .weekly
+        case "monthly", "gold":
+            self = .monthly
+        case "yearly", "annual":
+            self = .yearly
+        default:
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown billing plan: \(value)"
+            )
         }
     }
 
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    var displayName: String {
+        switch self {
+        case .free:    return "Free"
+        case .weekly:  return "Weekly"
+        case .monthly: return "Monthly"
+        case .yearly:  return "Annual"
+        }
+    }
 }
 
 /// MARK: - Procedure Model
@@ -360,17 +424,36 @@ struct SavedProcedure: Identifiable, Codable, Hashable {
 }
 
 // MARK: - Subscription Models
-struct SubscriptionModel: Codable {
-    let id: String
-    let status: SubscriptionStatus
+struct SubscriptionModel: Decodable {
+    let id: String?
+    let status: SubscriptionStatus?
     let tier: SubscriptionTier?
     let currentPeriodEnd: Date?
+    let provider: SubscriptionProvider?
+    let productId: String?
+    let originalTransactionId: String?
 
     enum CodingKeys: String, CodingKey {
-        case id = "stripe_subscription_id"
+        case id = "subscription_id"
+        case legacyStripeSubscriptionId = "stripe_subscription_id"
         case status = "subscription_status"
         case tier = "subscription_tier"
         case currentPeriodEnd = "subscription_current_period_end"
+        case provider = "subscription_provider"
+        case productId = "app_store_product_id"
+        case originalTransactionId = "app_store_original_transaction_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id)
+            ?? (try container.decodeIfPresent(String.self, forKey: .legacyStripeSubscriptionId))
+        status = try container.decodeIfPresent(SubscriptionStatus.self, forKey: .status)
+        tier = try container.decodeIfPresent(SubscriptionTier.self, forKey: .tier)
+        currentPeriodEnd = try container.decodeIfPresent(Date.self, forKey: .currentPeriodEnd)
+        provider = try container.decodeIfPresent(SubscriptionProvider.self, forKey: .provider)
+        productId = try container.decodeIfPresent(String.self, forKey: .productId)
+        originalTransactionId = try container.decodeIfPresent(String.self, forKey: .originalTransactionId)
     }
 }
 
@@ -385,19 +468,55 @@ enum SubscriptionStatus: String, Codable {
 }
 
 enum SubscriptionTier: String, Codable {
-    case silver
-    case gold
-    case annual
+    case weekly = "weekly"
+    case monthly = "monthly"
+    case yearly = "yearly"
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+
+        switch value {
+        case "weekly", "silver":
+            self = .weekly
+        case "monthly", "gold":
+            self = .monthly
+        case "yearly", "annual":
+            self = .yearly
+        default:
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown subscription tier: \(value)"
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    var displayName: String {
+        switch self {
+        case .weekly:  return "Weekly"
+        case .monthly: return "Monthly"
+        case .yearly:  return "Annual"
+        }
+    }
 }
 
 // MARK: - Transaction Model
-struct TransactionModel: Codable, Identifiable {
+struct TransactionModel: Decodable, Identifiable {
     let id: String
     let userId: String
     let transactionType: TransactionType
     let amountCents: Int
     let currency: String
     let status: TransactionStatus
+    let paymentProvider: SubscriptionProvider?
+    let subscriptionId: String?
+    let storeTransactionId: String?
+    let originalTransactionId: String?
     let stripePaymentIntentId: String?
     let stripeSubscriptionId: String?
     let stripeInvoiceId: String?
@@ -412,12 +531,38 @@ struct TransactionModel: Codable, Identifiable {
         case amountCents = "amount_cents"
         case currency
         case status
+        case paymentProvider = "payment_provider"
+        case subscriptionId = "subscription_id"
+        case storeTransactionId = "store_transaction_id"
+        case originalTransactionId = "original_transaction_id"
         case stripePaymentIntentId = "stripe_payment_intent_id"
         case stripeSubscriptionId = "stripe_subscription_id"
         case stripeInvoiceId = "stripe_invoice_id"
         case metadata
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        userId = try container.decode(String.self, forKey: .userId)
+        transactionType = try container.decode(TransactionType.self, forKey: .transactionType)
+        amountCents = try container.decode(Int.self, forKey: .amountCents)
+        currency = try container.decode(String.self, forKey: .currency)
+        status = try container.decode(TransactionStatus.self, forKey: .status)
+        paymentProvider = try container.decodeIfPresent(SubscriptionProvider.self, forKey: .paymentProvider)
+        subscriptionId = try container.decodeIfPresent(String.self, forKey: .subscriptionId)
+            ?? (try container.decodeIfPresent(String.self, forKey: .stripeSubscriptionId))
+        storeTransactionId = try container.decodeIfPresent(String.self, forKey: .storeTransactionId)
+            ?? (try container.decodeIfPresent(String.self, forKey: .stripePaymentIntentId))
+        originalTransactionId = try container.decodeIfPresent(String.self, forKey: .originalTransactionId)
+        stripePaymentIntentId = try container.decodeIfPresent(String.self, forKey: .stripePaymentIntentId)
+        stripeSubscriptionId = try container.decodeIfPresent(String.self, forKey: .stripeSubscriptionId)
+        stripeInvoiceId = try container.decodeIfPresent(String.self, forKey: .stripeInvoiceId)
+        metadata = try container.decodeIfPresent(AnyCodable.self, forKey: .metadata)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
     }
 }
 
@@ -571,11 +716,11 @@ struct TierQuotaLimits {
 
     static func limits(for tier: SubscriptionTier) -> TierQuotaLimits {
         switch tier {
-        case .silver:
+        case .weekly:
             return TierQuotaLimits(messagesLimit: 30, imagesLimit: 5, creditsLimit: 80)
-        case .gold:
+        case .monthly:
             return TierQuotaLimits(messagesLimit: 75, imagesLimit: 15, creditsLimit: 210)
-        case .annual:
+        case .yearly:
             return TierQuotaLimits(messagesLimit: 75, imagesLimit: 15, creditsLimit: 300)
         }
     }

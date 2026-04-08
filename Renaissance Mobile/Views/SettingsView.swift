@@ -6,8 +6,11 @@
 //
 
 import SwiftUI
+import StoreKit
 
 struct SettingsView: View {
+    @Environment(SubscriptionStore.self) private var subscriptionStore
+    @Environment(\.requestReview) private var requestReview
     @State private var userProfile: UserProfile?
     @State private var isLoadingProfile = true
     @State private var usageViewModel = UsageViewModel()
@@ -32,6 +35,8 @@ struct SettingsView: View {
                         // Current Subscription Section
                         subscriptionSection
 
+                        reviewSection
+
                         // Cancel Subscription Button
                         cancelSubscriptionButton
                     }
@@ -50,7 +55,11 @@ struct SettingsView: View {
                     Task { await cancelSubscription() }
                 }
             } message: {
-                Text("Are you sure you want to cancel your subscription? You will lose access to premium features at the end of your billing period.")
+                Text(
+                    isAppStoreManagedSubscription
+                        ? "We’ll open Apple’s subscription management screen so you can update or cancel your plan there."
+                        : "Are you sure you want to cancel your subscription? You will lose access to premium features at the end of your billing period."
+                )
             }
             .task { await loadData() }
         }
@@ -58,6 +67,7 @@ struct SettingsView: View {
 
     // MARK: - Profile Loading
     private func loadData() async {
+        await subscriptionStore.prepare()
         await loadProfile()
         await usageViewModel.fetchUsage()
     }
@@ -94,7 +104,7 @@ struct SettingsView: View {
 
                         Spacer()
 
-                        if let status = userProfile?.subscriptionStatus, isPaidPlan {
+                        if let status = resolvedSubscriptionStatus, isPaidPlan {
                             Text(statusDisplayName(for: status))
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(statusColor(for: status))
@@ -158,11 +168,75 @@ struct SettingsView: View {
         }
     }
 
+    private var reviewSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            sectionHeader(title: "FEEDBACK")
+
+            Button(action: {
+                requestReview()
+            }) {
+                HStack(spacing: Theme.Spacing.md) {
+                    Image(systemName: "star.bubble")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Theme.Colors.gold)
+                        .frame(width: 34, height: 34)
+                        .background(Theme.Colors.backgroundProfile)
+                        .cornerRadius(Theme.CornerRadius.medium)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Rate Renaissance")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(Theme.Colors.textProfilePrimary)
+                        Text("Leave a quick Apple rating")
+                            .font(.system(size: 13))
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Theme.Colors.textSecondary)
+                }
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.vertical, Theme.Spacing.md)
+                .background(Theme.Colors.cardBackground)
+                .cornerRadius(Theme.CornerRadius.large)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
+                        .stroke(Theme.Colors.borderLight, lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
     // MARK: - Cancel Subscription Button
     private var cancelSubscriptionButton: some View {
         VStack(spacing: Theme.Spacing.md) {
-            // Only show cancel button for active paid subscriptions (not already canceled)
-            if isPaidPlan && userProfile?.subscriptionStatus != .canceled {
+            if isPaidPlan && isAppStoreManagedSubscription {
+                Button(action: {
+                    showCancelConfirmation = true
+                }) {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        if isCanceling {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .red))
+                        } else {
+                            Image(systemName: "xmark.circle")
+                                .font(.system(size: 20))
+                        }
+                        Text(isCanceling ? "Opening..." : "Manage in App Store")
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    .foregroundColor(.red)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(Color.red.opacity(0.1))
+                    .cornerRadius(Theme.CornerRadius.medium)
+                }
+                .disabled(isCanceling)
+            } else if isPaidPlan && resolvedSubscriptionStatus != .canceled {
                 Button(action: {
                     showCancelConfirmation = true
                 }) {
@@ -186,10 +260,14 @@ struct SettingsView: View {
                 .disabled(isCanceling)
             }
         }
-        .alert("Subscription Canceled", isPresented: $showCancelSuccess) {
+        .alert(isAppStoreManagedSubscription ? "Manage Subscription" : "Subscription Canceled", isPresented: $showCancelSuccess) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Your subscription has been canceled. You will continue to have access until \(formattedEndDate).")
+            Text(
+                isAppStoreManagedSubscription
+                    ? "Your App Store subscription settings are now open."
+                    : "Your subscription has been canceled. You will continue to have access until \(formattedEndDate)."
+            )
         }
         .alert("Error", isPresented: $showCancelError) {
             Button("OK", role: .cancel) {}
@@ -252,12 +330,26 @@ struct SettingsView: View {
 
     // MARK: - Computed Properties
     private var planDisplayName: String {
-        userProfile?.billingPlan.displayName ?? "Free"
+        if let tier = subscriptionStore.activeTier {
+            return BillingPlan(rawValue: tier.rawValue)?.displayName ?? tier.displayName
+        }
+        return userProfile?.billingPlan.displayName ?? "Free"
     }
 
     private var isPaidPlan: Bool {
+        if subscriptionStore.hasActiveSubscription {
+            return true
+        }
         guard let plan = userProfile?.billingPlan else { return false }
-        return plan == .silver || plan == .gold || plan == .annual
+        return plan == .weekly || plan == .monthly || plan == .yearly
+    }
+
+    private var resolvedSubscriptionStatus: SubscriptionStatus? {
+        subscriptionStore.subscriptionStatus ?? userProfile?.subscriptionStatus
+    }
+
+    private var isAppStoreManagedSubscription: Bool {
+        subscriptionStore.hasActiveSubscription || userProfile?.subscriptionProvider == .appStore
     }
 
     private var currentLimits: TierQuotaLimits? {
@@ -269,25 +361,27 @@ struct SettingsView: View {
             )
         }
 
+        if let tier = subscriptionStore.activeTier {
+            return TierQuotaLimits.limits(for: tier)
+        }
+
         guard let plan = userProfile?.billingPlan else { return nil }
         switch plan {
         case .free:
             return nil
-        case .silver:
-            return TierQuotaLimits.limits(for: .silver)
-        case .gold:
-            return TierQuotaLimits.limits(for: .gold)
-        case .annual:
-            return TierQuotaLimits.limits(for: .annual)
+        case .weekly:
+            return TierQuotaLimits.limits(for: .weekly)
+        case .monthly:
+            return TierQuotaLimits.limits(for: .monthly)
+        case .yearly:
+            return TierQuotaLimits.limits(for: .yearly)
         }
     }
 
     private var planHighlights: [String] {
         guard let limits = currentLimits else { return [] }
         return [
-            "\(limits.messagesLimit) Messages",
-            "\(limits.imagesLimit) Images",
-            "\(limits.creditsLimit) Credits"
+            "\(limits.creditsLimit) AI Credits"
         ]
     }
 
@@ -305,8 +399,9 @@ struct SettingsView: View {
 
         if result.success {
             subscriptionEndDate = result.periodEndDate
-            // Reload profile to reflect the updated status
-            await loadData()
+            if !isAppStoreManagedSubscription {
+                await loadData()
+            }
             showCancelSuccess = true
         } else {
             cancelErrorMessage = subscriptionViewModel.errorMessage ?? "Failed to cancel subscription. Please try again."
