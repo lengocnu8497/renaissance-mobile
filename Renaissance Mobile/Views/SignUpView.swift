@@ -30,6 +30,10 @@ struct SignUpView: View {
         password == confirmPassword
     }
 
+    private var isBusy: Bool {
+        authViewModel.isLoading
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -180,13 +184,11 @@ struct SignUpView: View {
                         Task {
                             await authViewModel.signUp(email: email, password: password)
                             if authViewModel.isAuthenticated {
-                                await OnboardingStore.linkSubscriptionIfNeeded()
-                                await OnboardingStore.syncUserContextIfNeeded(using: UserProfileService(supabase: supabase))
                                 onSignUp?()
                             }
                         }
                     }) {
-                        if authViewModel.isLoading {
+                        if isBusy {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                 .frame(maxWidth: .infinity)
@@ -203,7 +205,7 @@ struct SignUpView: View {
                                 .cornerRadius(12)
                         }
                     }
-                    .disabled(authViewModel.isLoading || !isFormValid)
+                    .disabled(isBusy || !isFormValid)
                     .padding(.horizontal, 24)
                     .padding(.bottom, 24)
 
@@ -234,8 +236,6 @@ struct SignUpView: View {
                             }
                             await authViewModel.signInWithGoogle(presentingViewController: viewController)
                             if authViewModel.isAuthenticated {
-                                await OnboardingStore.linkSubscriptionIfNeeded()
-                                await OnboardingStore.syncUserContextIfNeeded(using: UserProfileService(supabase: supabase))
                                 onSignUp?()
                             }
                         }
@@ -256,6 +256,7 @@ struct SignUpView: View {
                         )
                         .cornerRadius(12)
                     }
+                    .disabled(isBusy)
                     .padding(.horizontal, 24)
                     .padding(.bottom, 16)
 
@@ -264,8 +265,6 @@ struct SignUpView: View {
                         Task {
                             await authViewModel.signInWithApple()
                             if authViewModel.isAuthenticated {
-                                await OnboardingStore.linkSubscriptionIfNeeded()
-                                await OnboardingStore.syncUserContextIfNeeded(using: UserProfileService(supabase: supabase))
                                 onSignUp?()
                             }
                         }
@@ -288,6 +287,7 @@ struct SignUpView: View {
                         )
                         .cornerRadius(12)
                     }
+                    .disabled(isBusy)
                     .padding(.horizontal, 24)
                     .padding(.bottom, 40)
 
@@ -384,6 +384,7 @@ struct SignUpView: View {
 
         return topController
     }
+
 }
 
 #Preview {

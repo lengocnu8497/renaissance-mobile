@@ -645,6 +645,7 @@ class JournalViewModel {
     /// Restores cached weekly summaries for all completed check-ins.
     /// Call after insightsEnabled is confirmed true.
     func loadCachedWeeklySummaries() {
+        guard insightsEnabled else { return }
         for group in groupedByProcedure {
             guard let procedureId = group.entries.first?.procedureId else { continue }
             let checkIns = checkIns(for: procedureId)
@@ -661,6 +662,7 @@ class JournalViewModel {
 
     @MainActor
     func loadRemoteWeeklySummaries() async {
+        guard insightsEnabled else { return }
         for group in groupedByProcedure {
             guard let procedureId = group.entries.first?.procedureId else { continue }
             do {
@@ -673,6 +675,13 @@ class JournalViewModel {
                 print("Remote weekly summary load failed for \(group.key): \(error)")
             }
         }
+    }
+
+    func clearAIOutputs() {
+        insights.removeAll()
+        insightsGenerating.removeAll()
+        weeklySummaries.removeAll()
+        weeklySummaryGenerating.removeAll()
     }
 
     /// Generates a weekly summary for the given procedure week.

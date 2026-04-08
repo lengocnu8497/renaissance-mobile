@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import StoreKit
 
 private enum HomeUI {
     static let shell = Color(hex: "#EEF1E8")
@@ -29,7 +30,43 @@ private enum HomeMode {
     case research
 }
 
+private enum HomeProcedureImageResolver {
+    static func image(for procedure: Procedure) -> UIImage? {
+        let slug = slug(for: procedure.name)
+        let candidateAssetNames = [
+            slug,
+            "procedure-\(slug)",
+            "\(slug)-hero",
+            "\(slug)_hero"
+        ]
+
+        for name in candidateAssetNames {
+            if let image = UIImage(named: name) {
+                return image
+            }
+        }
+
+        return nil
+    }
+
+    private static func slug(for name: String) -> String {
+        let normalized = name.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: " "))
+        let cleanedScalars = normalized.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar) : " "
+        }
+
+        return String(cleanedScalars)
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+            .joined(separator: "_")
+            .lowercased()
+    }
+}
+
 struct PostLoginHomeView: View {
+    @Environment(SubscriptionStore.self) private var subscriptionStore
+    @Environment(\.requestReview) private var requestReview
     @State private var firstName = ""
     @State private var journalViewModel = JournalViewModel()
     @State private var proceduresViewModel = ProceduresViewModel()
@@ -41,6 +78,11 @@ struct PostLoginHomeView: View {
     @State private var recentSessions: [ChatConversation] = []
     @State private var loadingRecentSessions = false
     @State private var showExploreSheet = false
+    @State private var onboardingPaymentViewModel = OnboardingPaymentViewModel()
+    @State private var showPaywall = false
+    @State private var paymentErrorMessage = ""
+    @State private var showPaymentError = false
+    @State private var showRecoveryPlan = false
 
     var onNavigateToChat: ((String) -> Void)?
     var onNavigateToJournal: (() -> Void)?
@@ -68,10 +110,11 @@ struct PostLoginHomeView: View {
                     onNavigateToChat: { msg, _ in
                         onNavigateToChat?(msg)
                     },
-                    onSaveProcedure: { proc in
+                    onSaveProcedure: { [researchViewModel] proc in
                         Task { await researchViewModel.toggleSave(proc) }
                     },
-                    isSaved: researchViewModel.isSaved(procedure.id)
+                    isSaved: researchViewModel.isSaved(procedure.id),
+                    isSavedProcedure: { [researchViewModel] in researchViewModel.isSaved($0) }
                 )
             }
             .navigationDestination(item: $selectedSavedForDetail) { saved in
@@ -87,20 +130,48 @@ struct PostLoginHomeView: View {
                     )
                 }
             }
+            .navigationDestination(isPresented: $showRecoveryPlan) {
+                RecoveryPlanView(
+                    journalViewModel: journalViewModel,
+                    isLocked: !isSubscribed,
+                    onUpgrade: {
+                        showRecoveryPlan = false
+                        showPaywall = true
+                    }
+                )
+            }
             .sheet(isPresented: $showExploreSheet) {
                 NavigationStack {
                     ProceduresListView(
                         initialSavedIds: Set(researchViewModel.savedProcedures.map { $0.procedureId }),
+                        researchViewModel: researchViewModel,
                         onBackButtonTapped: { showExploreSheet = false },
                         onNavigateToChat: { msg, _ in
                             showExploreSheet = false
                             onNavigateToChat?(msg)
-                        },
-                        onSaveProcedure: { proc in
-                            Task { await researchViewModel.toggleSave(proc) }
                         }
                     )
                 }
+            }
+            .sheet(isPresented: $showPaywall) {
+                QuotaExceededView(
+                    reason: "Subscribe to unlock weekly automated reports, AI insights, and personalized guidance from Rena.",
+                    weeklyPrice: onboardingPaymentViewModel.weeklyPriceInfo?.displayPrice ?? "...",
+                    monthlyPrice: onboardingPaymentViewModel.monthlyPriceInfo?.displayPrice ?? "...",
+                    yearlyPrice: onboardingPaymentViewModel.yearlyPlanPriceInfo?.displayPrice ?? "...",
+                    onUpgrade: { tier in await handleUpgrade(tier: tier) },
+                    onDismiss: { showPaywall = false }
+                )
+                .task {
+                    if onboardingPaymentViewModel.weeklyPriceInfo == nil {
+                        await onboardingPaymentViewModel.fetchPrices()
+                    }
+                }
+            }
+            .alert("Payment Error", isPresented: $showPaymentError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(paymentErrorMessage)
             }
             .onChange(of: showExploreSheet) { _, isPresented in
                 guard !isPresented else { return }
@@ -110,10 +181,15 @@ struct PostLoginHomeView: View {
                 }
             }
             .task {
+                await subscriptionStore.prepare()
                 await loadHomeData()
+                requestValueMomentReviewIfNeeded()
             }
-            .onReceive(NotificationCenter.default.publisher(for: .subscriptionLinked)) { _ in
-                Task { await loadHomeData() }
+            .onReceive(NotificationCenter.default.publisher(for: .subscriptionStatusChanged)) { _ in
+                Task {
+                    await loadHomeData()
+                    requestValueMomentReviewIfNeeded()
+                }
             }
         }
     }
@@ -127,17 +203,23 @@ struct PostLoginHomeView: View {
                 firstName = fullName.components(separatedBy: " ").first ?? fullName
             }
 
-            let subscribed = profile.billingPlan == .silver
-                || profile.billingPlan == .gold
-                || profile.billingPlan == .annual
+            let subscribed = subscriptionStore.hasActiveSubscription || hasLegacyPaidSubscription(profile)
             isSubscribed = subscribed
             journalViewModel.insightsEnabled = subscribed
+            if !subscribed {
+                journalViewModel.clearAIOutputs()
+            }
         } catch {
             print("Failed to load user profile: \(error)")
+            isSubscribed = false
+            journalViewModel.insightsEnabled = false
+            journalViewModel.clearAIOutputs()
         }
 
         await journalViewModel.load()
-        await OnboardingStore.applyIfNeeded(to: journalViewModel)
+        if OnboardingStore.hasCompleted {
+            await OnboardingStore.applyIfNeeded(to: journalViewModel)
+        }
         await proceduresViewModel.fetchProcedures()
         await researchViewModel.load()
         await loadRecentSessions()
@@ -145,6 +227,41 @@ struct PostLoginHomeView: View {
         guard isSubscribed else { return }
         journalViewModel.loadCachedWeeklySummaries()
         await journalViewModel.loadRemoteWeeklySummaries()
+    }
+
+    private func hasLegacyPaidSubscription(_ profile: UserProfile) -> Bool {
+        profile.billingPlan == .weekly
+            || profile.billingPlan == .monthly
+            || profile.billingPlan == .yearly
+    }
+
+    private func requestValueMomentReviewIfNeeded() {
+        guard ReviewPromptStore.shouldRequestAutomaticReview else { return }
+        guard isSubscribed else { return }
+        guard journalViewModel.entries.count >= 3 else { return }
+        guard latestPrimaryWeeklySummary != nil else { return }
+
+        ReviewPromptStore.markAutomaticReviewRequested()
+        requestReview()
+    }
+
+    private func handleUpgrade(tier: SubscriptionTier) async {
+        let result = await onboardingPaymentViewModel.purchaseSubscription(tier: tier)
+
+        switch result {
+        case .success:
+            showPaywall = false
+            await loadHomeData()
+            requestValueMomentReviewIfNeeded()
+        case .pending:
+            paymentErrorMessage = onboardingPaymentViewModel.errorMessage ?? "Your App Store purchase is pending approval."
+            showPaymentError = true
+        case .failed(let message):
+            paymentErrorMessage = message
+            showPaymentError = true
+        case .cancelled:
+            break
+        }
     }
 
     private var primaryProcedureName: String {
@@ -173,6 +290,18 @@ struct PostLoginHomeView: View {
     }
 
     private var resolvedWeeklyPreview: JournalWeeklyReportPreview {
+        if !isSubscribed {
+            return JournalWeeklyReportPreview(
+                weekNumber: 1,
+                title: "Premium feature: Weekly AI reports.",
+                subtitle: "Subscribe to unlock automated weekly reports, AI insights, and personalized recovery guidance.",
+                statusLabel: "Premium feature",
+                progress: 0,
+                actionTitle: "Unlock Premium",
+                summary: nil
+            )
+        }
+
         if let preview = journalViewModel.weeklyReportPreview {
             return preview
         }
@@ -305,9 +434,15 @@ struct PostLoginHomeView: View {
                 JournalAlertCard(alert: alert)
             }
 
+            recoveryRoadmapCard
+
             JournalWeeklyReportCard(
                 preview: resolvedWeeklyPreview,
                 onOpenReport: {
+                    guard isSubscribed else {
+                        showPaywall = true
+                        return
+                    }
                     onNavigateToJournal?()
                 }
             )
@@ -319,6 +454,73 @@ struct PostLoginHomeView: View {
                 onOpenGallery: { onNavigateToJournal?() }
             )
         }
+    }
+
+    private var recoveryRoadmapCard: some View {
+        ModernHomeCard(background: .white, padding: 18) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HomeEyebrow(isSubscribed ? "Recovery roadmap" : "Premium feature", color: HomeUI.rose)
+
+                    Text(isSubscribed ? "See your recovery roadmap" : "Your next weeks are already mapped")
+                        .font(.custom("Manrope", size: 23))
+                        .fontWeight(.bold)
+                        .foregroundColor(HomeUI.primaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(
+                        isSubscribed
+                        ? "Open your personalized week-by-week roadmap, watch-fors, and provider prompts."
+                        : "Preview the roadmap built from your procedure and timing, then unlock the full phase-by-phase plan."
+                    )
+                    .font(.custom("Outfit-Regular", size: 13.5))
+                    .foregroundColor(HomeUI.muted)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 8) {
+                        roadmapChip("Starts from today")
+                        roadmapChip(isSubscribed ? "Unlocked" : "Locked ahead")
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                Button {
+                    if isSubscribed {
+                        showRecoveryPlan = true
+                    } else {
+                        showPaywall = true
+                    }
+                } label: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(isSubscribed ? HomeUI.primarySoft : HomeUI.roseSoft)
+                            .frame(width: 64, height: 64)
+
+                        Image(systemName: isSubscribed ? "map.fill" : "lock.fill")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundColor(isSubscribed ? HomeUI.primary : HomeUI.rose)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            showRecoveryPlan = true
+        }
+    }
+
+    private func roadmapChip(_ title: String) -> some View {
+        Text(title)
+            .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+            .foregroundColor(HomeUI.primaryInk)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(HomeUI.card)
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(Color.black.opacity(0.05), lineWidth: 1))
     }
 
     private var researchModeContent: some View {
@@ -423,27 +625,77 @@ struct PostLoginHomeView: View {
                 }
 
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 14) {
                         ForEach(proceduresToResearch, id: \.id) { procedure in
                             Button {
                                 selectedProcedure = procedure
                             } label: {
-                                Text(procedure.name)
-                                    .font(.custom("PlusJakartaSans-SemiBold", size: 13))
-                                    .foregroundColor(HomeUI.primaryInk)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 12)
-                                    .background(Color.white)
-                                    .clipShape(Capsule())
-                                    .overlay(Capsule().stroke(Color.black.opacity(0.05), lineWidth: 1))
+                                procedureResearchCard(procedure)
                             }
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(.vertical, 1)
+                    .padding(.vertical, 2)
                 }
             }
         }
+    }
+
+    private func procedureResearchCard(_ procedure: Procedure) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            Group {
+                if let image = HomeProcedureImageResolver.image(for: procedure) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    LinearGradient(
+                        colors: [HomeUI.primarySoft.opacity(0.96), Color.white.opacity(0.92)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .overlay(
+                        Image(systemName: "photo")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(HomeUI.primary.opacity(0.75))
+                    )
+                }
+            }
+            .frame(width: 176, height: 214)
+            .clipped()
+
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.02),
+                    Color.black.opacity(0.12),
+                    Color.black.opacity(0.64),
+                    Color.black.opacity(0.82)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(procedure.name)
+                    .font(.custom("Manrope", size: 18))
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+
+                Text(procedure.recoveryDurationLabel.isEmpty ? (procedure.isSurgical ? "Surgical" : "Non-surgical") : procedure.recoveryDurationLabel)
+                    .font(.custom("PlusJakartaSans-Regular", size: 12))
+                    .foregroundColor(.white.opacity(0.84))
+                    .lineLimit(1)
+            }
+            .padding(16)
+        }
+        .frame(width: 176, height: 214, alignment: .leading)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.black.opacity(0.05), lineWidth: 1)
+        )
+        .shadow(color: HomeUI.shadow, radius: 10, x: 0, y: 3)
     }
 
     private var askRenaRecoveryCard: some View {
@@ -582,32 +834,61 @@ struct PostLoginHomeView: View {
                             Button {
                                 selectedSavedForDetail = researchViewModel.savedEntry(for: card.procedure.id)
                             } label: {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text(card.procedure.category.uppercased())
-                                        .font(.custom("PlusJakartaSans-SemiBold", size: 9))
-                                        .tracking(1.8)
-                                        .foregroundColor(HomeUI.muted)
-                                    Text(card.procedure.name)
-                                        .font(.custom("Manrope", size: 21))
-                                        .fontWeight(.bold)
-                                        .foregroundColor(HomeUI.text)
-                                        .lineLimit(2)
-                                    HStack(spacing: 6) {
-                                        if !card.procedure.recoveryDurationLabel.isEmpty {
-                                            researchPill(card.procedure.recoveryDurationLabel, tint: HomeUI.card, textColor: HomeUI.muted)
-                                        }
-                                        if card.questionCount > 0 {
-                                            researchPill("\(card.questionCount) questions", tint: HomeUI.roseSoft, textColor: HomeUI.primaryInk)
+                                ZStack(alignment: .bottomLeading) {
+                                    Group {
+                                        if let image = HomeProcedureImageResolver.image(for: card.procedure) {
+                                            Image(uiImage: image)
+                                                .resizable()
+                                                .scaledToFill()
+                                        } else {
+                                            LinearGradient(
+                                                colors: [HomeUI.primarySoft.opacity(0.92), HomeUI.cardStrong.opacity(0.96)],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
                                         }
                                     }
+                                    .frame(width: 210, height: 164)
+                                    .clipped()
+
+                                    LinearGradient(
+                                        colors: [
+                                            Color.black.opacity(0.02),
+                                            Color.black.opacity(0.12),
+                                            Color.black.opacity(0.64),
+                                            Color.black.opacity(0.82)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        Text(card.procedure.category.uppercased())
+                                            .font(.custom("PlusJakartaSans-SemiBold", size: 9))
+                                            .tracking(1.8)
+                                            .foregroundColor(.white.opacity(0.82))
+                                        Text(card.procedure.name)
+                                            .font(.custom("Manrope", size: 21))
+                                            .fontWeight(.bold)
+                                            .foregroundColor(.white)
+                                            .lineLimit(2)
+                                        HStack(spacing: 6) {
+                                            if !card.procedure.recoveryDurationLabel.isEmpty {
+                                                researchPill(card.procedure.recoveryDurationLabel, tint: Color.black.opacity(0.28), textColor: .white)
+                                            }
+                                            if card.questionCount > 0 {
+                                                researchPill("\(card.questionCount) questions", tint: HomeUI.roseSoft.opacity(0.92), textColor: HomeUI.primaryInk)
+                                            }
+                                        }
+                                    }
+                                    .padding(18)
                                 }
                                 .frame(width: 210)
-                                .frame(minHeight: 144, alignment: .leading)
-                                .padding(18)
-                                .background(shortlistSurface(for: card.id))
+                                .frame(minHeight: 164, alignment: .leading)
                                 .cornerRadius(26)
                                 .overlay(RoundedRectangle(cornerRadius: 26).stroke(Color.black.opacity(0.05), lineWidth: 1))
                                 .shadow(color: HomeUI.shadow, radius: 10, x: 0, y: 3)
+                                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
                             }
                             .buttonStyle(.plain)
                         }

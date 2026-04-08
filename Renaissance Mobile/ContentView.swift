@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var chatSessionId: UUID = UUID()
     @State private var journalAddTrigger = false
     @State private var isKeyboardVisible = false
+    @State private var showOnboarding = !OnboardingStore.hasCompleted
 
     init() {
         UITabBar.appearance().isHidden = true
@@ -91,6 +92,16 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             isKeyboardVisible = false
+        }
+        .onAppear {
+            if !OnboardingStore.hasCompleted {
+                showOnboarding = true
+            }
+        }
+        .fullScreenCover(isPresented: $showOnboarding) {
+            OnboardingFlowView {
+                showOnboarding = false
+            }
         }
     }
 

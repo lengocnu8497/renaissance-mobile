@@ -167,28 +167,6 @@ class ChatViewModel {
     func sendMessage(_ text: String, imageData: Data? = nil) async {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || imageData != nil else { return }
 
-        // CHECK QUOTA BEFORE SENDING
-        let hasImage = imageData != nil
-        do {
-            let (canSend, reason) = try await usageService.canSendMessage(hasImage: hasImage)
-
-            if !canSend {
-                quotaExceeded = true
-                quotaExceededReason = reason
-                errorMessage = reason
-                return
-            }
-
-            // Clear quota exceeded state
-            quotaExceeded = false
-            quotaExceededReason = nil
-        } catch {
-            quotaExceeded = true
-            quotaExceededReason = error.localizedDescription
-            errorMessage = error.localizedDescription
-            return
-        }
-
         // Ensure we have a conversation
         if currentConversation == nil {
             await loadOrCreateConversation()
@@ -204,6 +182,8 @@ class ChatViewModel {
             errorMessage = "User not authenticated"
             return
         }
+
+        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Upload image if provided
         var imageUrl: String?
@@ -227,7 +207,7 @@ class ChatViewModel {
             id: messageId,
             conversationId: conversation.id,
             userId: userId,
-            messageText: text,
+            messageText: normalizedText,
             isFromUser: true,
             createdAt: Date(),
             hasImage: imageData != nil,
@@ -243,6 +223,40 @@ class ChatViewModel {
             } catch {
                 print("Failed to save user message: \(error)")
             }
+        }
+
+        // CHECK QUOTA AFTER SHOWING THE USER MESSAGE SO THE UPGRADE MOMENT
+        // FEELS LIKE A CONTINUATION OF THE CONVERSATION RATHER THAN A BLOCKER.
+        let hasImage = imageData != nil
+        do {
+            let (canSend, reason) = try await usageService.canSendMessage(hasImage: hasImage)
+
+            if !canSend {
+                quotaExceeded = true
+                quotaExceededReason = reason
+                errorMessage = reason
+                appendLockedPreviewMessage(
+                    in: conversation,
+                    userId: userId,
+                    prompt: normalizedText,
+                    includedImage: hasImage
+                )
+                return
+            }
+
+            quotaExceeded = false
+            quotaExceededReason = nil
+        } catch {
+            quotaExceeded = true
+            quotaExceededReason = error.localizedDescription
+            errorMessage = error.localizedDescription
+            appendLockedPreviewMessage(
+                in: conversation,
+                userId: userId,
+                prompt: normalizedText,
+                includedImage: hasImage
+            )
+            return
         }
 
         // Clear error state
@@ -354,6 +368,42 @@ class ChatViewModel {
 
             print("Error calling AI function: \(error.localizedDescription)")
         }
+    }
+
+    private func appendLockedPreviewMessage(
+        in conversation: ChatConversation,
+        userId: UUID,
+        prompt: String,
+        includedImage: Bool
+    ) {
+        let preview = ChatMessage(
+            conversationId: conversation.id,
+            userId: userId,
+            messageText: buildLockedPreviewText(for: prompt, includedImage: includedImage),
+            isFromUser: false,
+            createdAt: Date(),
+            metadata: [
+                "is_locked_preview": AnyCodable(true),
+                "locked_preview_title": AnyCodable("Rena drafted an answer")
+            ]
+        )
+        messages.append(preview)
+    }
+
+    private func buildLockedPreviewText(for prompt: String, includedImage: Bool) -> String {
+        let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let topic = trimmedPrompt.isEmpty ? "your question" : "“\(trimmedPrompt)”"
+        let imageLine = includedImage
+            ? "I also reviewed the image you attached and tailored the response around what it could suggest."
+            : "I tailored the response around your question and your recovery context."
+
+        return """
+        Here’s Rena’s personalized answer for \(topic).
+
+        \(imageLine)
+        I outlined the most likely explanation, what feels normal versus worth watching, and the next question I’d ask your provider.
+        Unlock your subscription to read the full answer.
+        """
     }
 
     /// Add an initial message (e.g., from search bar)

@@ -30,16 +30,16 @@ DECLARE
     v_credits_limit   INTEGER;
 BEGIN
     -- Set tier limits (hardcoded — caller cannot influence these values)
-    IF p_tier = 'silver' THEN
+    IF p_tier = 'weekly' THEN
         v_messages_limit := 30;
         v_images_limit   := 5;
         v_credits_limit  := 80;
-    ELSIF p_tier = 'gold' THEN
+    ELSIF p_tier = 'monthly' THEN
         v_messages_limit := 75;
         v_images_limit   := 15;
         v_credits_limit  := 210;
     ELSE
-        RAISE EXCEPTION 'Invalid tier: %. Must be silver or gold.', p_tier;
+        RAISE EXCEPTION 'Invalid tier: %. Must be weekly or monthly.', p_tier;
     END IF;
 
     -- Try to get existing record for this period

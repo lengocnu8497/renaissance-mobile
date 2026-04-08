@@ -41,6 +41,10 @@ class PaymentViewModel {
     private var currentAmountCents: Int = 0
     private var currentCurrency: String = "USD"
 
+    init() {
+        STPAPIClient.shared.publishableKey = AppConfig.stripePublishableKey
+    }
+
     // MARK: - Prepare Payment Sheet with IntentConfiguration
 
     /// Prepares the Payment Sheet using IntentConfiguration (modern approach)

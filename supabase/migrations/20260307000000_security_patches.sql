@@ -70,7 +70,7 @@ GRANT EXECUTE ON FUNCTION public.increment_usage TO authenticated;
 -- PATCH 4: Revoke get_or_create_usage_record from authenticated role
 -- -----------------------------------------------------------------------------
 -- Authenticated users could previously call this function directly with an
--- arbitrary p_tier value (e.g. 'gold') to manufacture a high-limit usage
+-- arbitrary p_tier value (e.g. 'monthly') to manufacture a high-limit usage
 -- record. After Patch 1 blocks tier self-escalation, this is lower risk, but
 -- the function should only be callable by service_role / Edge Functions that
 -- authenticate with the service key.

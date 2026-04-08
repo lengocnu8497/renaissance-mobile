@@ -20,11 +20,14 @@ struct SignInView: View {
 
     var onSignIn: (() -> Void)?
 
+    private var isBusy: Bool {
+        authViewModel.isLoading
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
-                    // Welcome back text
                     Text("Welcome back")
                         .font(.system(size: 32, weight: .semibold))
                         .foregroundColor(Theme.Colors.textWelcomePrimary)
@@ -33,7 +36,6 @@ struct SignInView: View {
                         .padding(.top, 32)
                         .padding(.bottom, 32)
 
-                    // Email field
                     VStack(alignment: .leading, spacing: 8) {
                         TextField("", text: $email, prompt: Text("Email").foregroundColor(.gray.opacity(0.7)))
                             .font(.system(size: 16))
@@ -52,7 +54,6 @@ struct SignInView: View {
                     .padding(.horizontal, 24)
                     .padding(.bottom, 16)
 
-                    // Password field
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             if isPasswordVisible {
@@ -84,7 +85,6 @@ struct SignInView: View {
                     }
                     .padding(.horizontal, 24)
 
-                    // Forgot password
                     Button(action: {
                         showResetPassword = true
                     }) {
@@ -97,7 +97,6 @@ struct SignInView: View {
                     .padding(.top, 12)
                     .padding(.bottom, 24)
 
-                    // Error message
                     if let errorMessage = authViewModel.errorMessage {
                         Text(errorMessage)
                             .font(.system(size: 14))
@@ -108,7 +107,6 @@ struct SignInView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    // Sign in button
                     Button(action: {
                         Task {
                             await authViewModel.signIn(email: email, password: password)
@@ -117,7 +115,7 @@ struct SignInView: View {
                             }
                         }
                     }) {
-                        if authViewModel.isLoading {
+                        if isBusy {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                 .frame(maxWidth: .infinity)
@@ -134,11 +132,10 @@ struct SignInView: View {
                                 .cornerRadius(12)
                         }
                     }
-                    .disabled(authViewModel.isLoading || email.isEmpty || password.isEmpty)
+                    .disabled(isBusy || email.isEmpty || password.isEmpty)
                     .padding(.horizontal, 24)
                     .padding(.bottom, 24)
 
-                    // Divider with "or"
                     HStack {
                         Rectangle()
                             .frame(height: 1)
@@ -156,7 +153,6 @@ struct SignInView: View {
                     .padding(.horizontal, 24)
                     .padding(.bottom, 24)
 
-                    // Continue with Google
                     Button(action: {
                         Task {
                             guard let viewController = getRootViewController() else {
@@ -185,10 +181,10 @@ struct SignInView: View {
                         )
                         .cornerRadius(12)
                     }
+                    .disabled(isBusy)
                     .padding(.horizontal, 24)
                     .padding(.bottom, 16)
 
-                    // Continue with Apple
                     Button(action: {
                         Task {
                             await authViewModel.signInWithApple()
@@ -215,10 +211,10 @@ struct SignInView: View {
                         )
                         .cornerRadius(12)
                     }
+                    .disabled(isBusy)
                     .padding(.horizontal, 24)
                     .padding(.bottom, 40)
 
-                    // Create account link
                     HStack(spacing: 4) {
                         Text("First time here?")
                             .font(.system(size: 14))
@@ -274,7 +270,6 @@ struct SignInView: View {
         }
     }
 
-    // MARK: - Google Icon
     private var googleColorIcon: some View {
         Canvas { context, size in
             let cx = size.width / 2
@@ -282,28 +277,33 @@ struct SignInView: View {
             let r = size.width * 0.36
             let lw = size.width * 0.22
 
-            let blue   = Color(red: 0.259, green: 0.522, blue: 0.957)  // #4285F4
-            let red    = Color(red: 0.918, green: 0.263, blue: 0.208)  // #EA4335
-            let yellow = Color(red: 0.984, green: 0.737, blue: 0.020)  // #FBBC05
-            let green  = Color(red: 0.204, green: 0.659, blue: 0.325)  // #34A853
+            let blue = Color(red: 0.259, green: 0.522, blue: 0.957)
+            let red = Color(red: 0.918, green: 0.263, blue: 0.208)
+            let yellow = Color(red: 0.984, green: 0.737, blue: 0.020)
+            let green = Color(red: 0.204, green: 0.659, blue: 0.325)
 
-            // Four arc segments (0° = right, increasing = clockwise on screen)
             let segments: [(Color, Double, Double)] = [
-                (blue,   -15,  75),   // right side
-                (red,     75, 195),   // top + left
-                (yellow, 195, 255),   // lower-left
-                (green,  255, 345)    // bottom
+                (blue, -15, 75),
+                (red, 75, 195),
+                (yellow, 195, 255),
+                (green, 255, 345)
             ]
             for (color, start, end) in segments {
                 var arc = Path()
-                arc.addArc(center: CGPoint(x: cx, y: cy), radius: r,
-                           startAngle: .degrees(start), endAngle: .degrees(end),
-                           clockwise: false)
-                context.stroke(arc, with: .color(color),
-                               style: StrokeStyle(lineWidth: lw, lineCap: .butt))
+                arc.addArc(
+                    center: CGPoint(x: cx, y: cy),
+                    radius: r,
+                    startAngle: .degrees(start),
+                    endAngle: .degrees(end),
+                    clockwise: false
+                )
+                context.stroke(
+                    arc,
+                    with: .color(color),
+                    style: StrokeStyle(lineWidth: lw, lineCap: .butt)
+                )
             }
 
-            // Blue horizontal bar (right half, at midline)
             let half = lw * 0.3
             var bar = Path()
             bar.addRect(CGRect(x: cx, y: cy - half, width: r + lw * 0.5, height: half * 2))
@@ -312,7 +312,6 @@ struct SignInView: View {
         .frame(width: 22, height: 22)
     }
 
-    // Helper function to get the root view controller for presenting Google Sign-In
     private func getRootViewController() -> UIViewController? {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first,
@@ -320,7 +319,6 @@ struct SignInView: View {
             return nil
         }
 
-        // Get the topmost presented view controller
         var topController = rootViewController
         while let presented = topController.presentedViewController {
             topController = presented
@@ -328,6 +326,7 @@ struct SignInView: View {
 
         return topController
     }
+
 }
 
 #Preview {

@@ -100,30 +100,46 @@ class ResearchViewModel {
     // MARK: - Toggle Save
 
     func toggleSave(_ procedure: Procedure) async {
+        print("[ProcedureSave][ResearchVM] toggleSave start for \(procedure.name) id=\(procedure.id) savedProceduresCount=\(savedProcedures.count) procedureModelsCount=\(procedures.count)")
         if let existing = savedProcedures.first(where: { $0.procedureId == procedure.id }) {
             // Unsave
+            print("[ProcedureSave][ResearchVM] Existing saved procedure found savedId=\(existing.id). Entering unsave branch.")
             savedProcedures.removeAll { $0.id == existing.id }
             procedures.removeAll { $0.id == procedure.id }
             do {
+                print("[ProcedureSave][ResearchVM] Calling unsave service for procedure id=\(procedure.id)")
                 try await savedService.unsave(procedureId: procedure.id)
+                print("[ProcedureSave][ResearchVM] Unsave service succeeded for procedure id=\(procedure.id). Reloading data.")
+                await load()
+                print("[ProcedureSave][ResearchVM] Reload finished after unsave for procedure id=\(procedure.id). savedProceduresCount=\(savedProcedures.count)")
             } catch {
                 // Revert on failure
                 savedProcedures.append(existing)
                 if !procedures.contains(where: { $0.id == procedure.id }) {
                     procedures.append(procedure)
                 }
-                print("Failed to unsave: \(error)")
+                print("[ProcedureSave][ResearchVM] Failed to unsave procedure id=\(procedure.id): \(error)")
             }
         } else {
             // Save
+            print("[ProcedureSave][ResearchVM] No existing saved procedure found. Entering save branch for procedure id=\(procedure.id)")
             do {
+                print("[ProcedureSave][ResearchVM] Calling save service for procedure id=\(procedure.id)")
                 let saved = try await savedService.save(procedureId: procedure.id)
-                savedProcedures.insert(saved, at: 0)
+                print("[ProcedureSave][ResearchVM] Save service returned savedId=\(saved.id) procedureId=\(saved.procedureId)")
+                if !savedProcedures.contains(where: { $0.id == saved.id }) {
+                    savedProcedures.insert(saved, at: 0)
+                    print("[ProcedureSave][ResearchVM] Inserted saved procedure into local cache. savedProceduresCount=\(savedProcedures.count)")
+                }
                 if !procedures.contains(where: { $0.id == procedure.id }) {
                     procedures.insert(procedure, at: 0)
+                    print("[ProcedureSave][ResearchVM] Inserted procedure model into local cache. procedureModelsCount=\(procedures.count)")
                 }
+                print("[ProcedureSave][ResearchVM] Reloading data after save for procedure id=\(procedure.id)")
+                await load()
+                print("[ProcedureSave][ResearchVM] Reload finished after save for procedure id=\(procedure.id). savedProceduresCount=\(savedProcedures.count)")
             } catch {
-                print("Failed to save: \(error)")
+                print("[ProcedureSave][ResearchVM] Failed to save procedure id=\(procedure.id): \(error)")
             }
         }
     }

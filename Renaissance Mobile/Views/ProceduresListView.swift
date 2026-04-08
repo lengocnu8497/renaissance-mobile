@@ -21,27 +21,35 @@ private enum PLV {
 struct ProceduresListView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
-    @State private var selectedFilter = "Face"
+    @State private var selectedFilter = "All"
     @State private var viewModel = ProceduresViewModel()
     @State private var selectedProcedure: Procedure?
-    @State private var savedProcedureIds: Set<UUID>
+    @State private var optimisticSavedStates: [UUID: Bool] = [:]
+    @State private var savingProcedureIds: Set<UUID> = []
+    private let initialSavedIds: Set<UUID>
+    private let researchViewModel: ResearchViewModel?
     var onBackButtonTapped: (() -> Void)?
     var onNavigateToChat: ((String, Procedure?) -> Void)?
-    var onSaveProcedure: ((Procedure) -> Void)?
+    var onSaveProcedure: ((Procedure) async -> Void)?
+    var isSavedProcedure: ((UUID) -> Bool)?
 
     init(
         initialSavedIds: Set<UUID> = [],
+        researchViewModel: ResearchViewModel? = nil,
         onBackButtonTapped: (() -> Void)? = nil,
         onNavigateToChat: ((String, Procedure?) -> Void)? = nil,
-        onSaveProcedure: ((Procedure) -> Void)? = nil
+        onSaveProcedure: ((Procedure) async -> Void)? = nil,
+        isSavedProcedure: ((UUID) -> Bool)? = nil
     ) {
-        self._savedProcedureIds = State(initialValue: initialSavedIds)
+        self.initialSavedIds = initialSavedIds
+        self.researchViewModel = researchViewModel
         self.onBackButtonTapped = onBackButtonTapped
         self.onNavigateToChat = onNavigateToChat
         self.onSaveProcedure = onSaveProcedure
+        self.isSavedProcedure = isSavedProcedure
     }
 
-    let filters = ["Face", "Body", "Skin", "Injectables", "Non-Surgical", "Surgical"]
+    let filters = ["All", "Face", "Body", "Skin", "Injectables", "Non-Surgical", "Surgical"]
 
     private var displayedProcedures: [Procedure] {
         viewModel.filtered(by: selectedFilter, searchText: searchText)
@@ -71,15 +79,10 @@ struct ProceduresListView: View {
                 allProcedures: viewModel.procedures,
                 onNavigateToChat: { msg, proc in onNavigateToChat?(msg, proc) },
                 onSaveProcedure: { proc in
-                    if savedProcedureIds.contains(proc.id) {
-                        savedProcedureIds.remove(proc.id)
-                    } else {
-                        savedProcedureIds.insert(proc.id)
-                    }
-                    onSaveProcedure?(proc)
+                    toggleSave(for: proc)
                 },
-                isSaved: savedProcedureIds.contains(procedure.id),
-                isSavedProcedure: { savedProcedureIds.contains($0) }
+                isSaved: isProcedureSaved(procedure.id),
+                isSavedProcedure: { isProcedureSaved($0) }
             )
         }
     }
@@ -179,7 +182,7 @@ struct ProceduresListView: View {
                         ForEach(displayedProcedures) { procedure in
                             ProcedureListItemView(
                                 procedure: procedure,
-                                isSaved: savedProcedureIds.contains(procedure.id),
+                                isSaved: isProcedureSaved(procedure.id),
                                 onOpenDetails: {
                                     selectedProcedure = procedure
                                 },
@@ -187,12 +190,7 @@ struct ProceduresListView: View {
                                     onNavigateToChat?("Help me explore \(procedure.name) and decide whether it fits my goals.", procedure)
                                 },
                                 onToggleSave: {
-                                    if savedProcedureIds.contains(procedure.id) {
-                                        savedProcedureIds.remove(procedure.id)
-                                    } else {
-                                        savedProcedureIds.insert(procedure.id)
-                                    }
-                                    onSaveProcedure?(procedure)
+                                    toggleSave(for: procedure)
                                 }
                             )
                         }
@@ -224,6 +222,46 @@ struct ProceduresListView: View {
                 .shadow(color: PLV.shadow, radius: 14, x: 0, y: 8)
             }
             .padding(.bottom, 24)
+        }
+    }
+
+    private func isProcedureSaved(_ procedureId: UUID) -> Bool {
+        if let optimisticValue = optimisticSavedStates[procedureId] {
+            return optimisticValue
+        }
+        if let researchViewModel {
+            return researchViewModel.isSaved(procedureId)
+        }
+        return isSavedProcedure?(procedureId) ?? initialSavedIds.contains(procedureId)
+    }
+
+    private func toggleSave(for procedure: Procedure) {
+        guard !savingProcedureIds.contains(procedure.id) else {
+            print("[ProcedureSave][List] Ignoring duplicate tap for \(procedure.name) id=\(procedure.id)")
+            return
+        }
+
+        let nextSavedState = !isProcedureSaved(procedure.id)
+        print("[ProcedureSave][List] toggleSave tapped for \(procedure.name) id=\(procedure.id) currentSaved=\(!nextSavedState) nextSaved=\(nextSavedState)")
+        optimisticSavedStates[procedure.id] = nextSavedState
+
+        savingProcedureIds.insert(procedure.id)
+        print("[ProcedureSave][List] Starting async save task for \(procedure.name) id=\(procedure.id)")
+
+        Task {
+            print("[ProcedureSave][List] Entered async save task for \(procedure.name) id=\(procedure.id)")
+            if let researchViewModel {
+                await researchViewModel.toggleSave(procedure)
+            } else if let onSaveProcedure {
+                await onSaveProcedure(procedure)
+            } else {
+                print("[ProcedureSave][List] Missing save handler for \(procedure.name) id=\(procedure.id)")
+            }
+            await MainActor.run {
+                print("[ProcedureSave][List] Async save task completed for \(procedure.name) id=\(procedure.id); clearing optimistic state")
+                savingProcedureIds.remove(procedure.id)
+                optimisticSavedStates.removeValue(forKey: procedure.id)
+            }
         }
     }
 }

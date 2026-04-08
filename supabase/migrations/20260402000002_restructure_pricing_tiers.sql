@@ -1,30 +1,11 @@
--- Restructure pricing tiers: silver/gold/annual → weekly/monthly/yearly
--- Silver archived on Stripe; Gold→Monthly, Annual→Yearly, new Weekly plan added.
+-- Reassert canonical pricing tiers: weekly/monthly/yearly.
+-- Earlier migrations now create and update data using these names directly.
 
--- 1. Drop old constraints first so data migration doesn't violate them
+-- 1. Drop existing constraints first so we can re-add the canonical checks
 ALTER TABLE user_profiles DROP CONSTRAINT IF EXISTS user_profiles_subscription_tier_check;
 ALTER TABLE user_profiles DROP CONSTRAINT IF EXISTS user_profiles_billing_plan_check;
 
--- 2. Migrate existing data
-UPDATE user_profiles
-SET subscription_tier = CASE subscription_tier
-  WHEN 'gold'   THEN 'monthly'
-  WHEN 'annual' THEN 'yearly'
-  WHEN 'silver' THEN 'weekly'
-  ELSE subscription_tier
-END
-WHERE subscription_tier IN ('silver', 'gold', 'annual');
-
-UPDATE user_profiles
-SET billing_plan = CASE billing_plan
-  WHEN 'gold'   THEN 'monthly'
-  WHEN 'annual' THEN 'yearly'
-  WHEN 'silver' THEN 'weekly'
-  ELSE billing_plan
-END
-WHERE billing_plan IN ('silver', 'gold', 'annual');
-
--- 3. Add updated constraints
+-- 2. Re-add updated constraints
 ALTER TABLE user_profiles
   ADD CONSTRAINT user_profiles_subscription_tier_check
   CHECK (subscription_tier IN ('weekly', 'monthly', 'yearly'));

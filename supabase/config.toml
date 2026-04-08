@@ -15,27 +15,12 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/stripe-webhook-handler/index.ts"
 
-[functions.create-subscription]
-enabled = true
-verify_jwt = false
-entrypoint = "./functions/create-subscription/index.ts"
-
 [functions.confirm-payment]
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/confirm-payment/index.ts"
 
-[functions.create-onboarding-subscription]
+[functions.sync-subscription-status]
 enabled = true
-verify_jwt = false
-entrypoint = "./functions/create-onboarding-subscription/index.ts"
-
-[functions.link-onboarding-subscription]
-enabled = true
-verify_jwt = false
-entrypoint = "./functions/link-onboarding-subscription/index.ts"
-
-[functions.fetch-stripe-prices]
-enabled = true
-verify_jwt = false
-entrypoint = "./functions/fetch-stripe-prices/index.ts"
+verify_jwt = true
+entrypoint = "./functions/sync-subscription-status/index.ts"

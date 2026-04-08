@@ -5,7 +5,6 @@
 
 import SwiftUI
 import UserNotifications
-import StripePaymentSheet
 import Supabase
 
 // MARK: - Design tokens — sourced directly from rena-journal-ai-insights.html
@@ -56,6 +55,7 @@ private struct InsightsPresentation: Identifiable {
 }
 
 struct PhotoJournalView: View {
+    @Environment(SubscriptionStore.self) private var subscriptionStore
     var addEntryTrigger: Binding<Bool> = .constant(false)
     var onBackButtonTapped: (() -> Void)? = nil
 
@@ -66,7 +66,6 @@ struct PhotoJournalView: View {
     @State private var showReminderSet = false
     @State private var upcomingReminders: [TreatmentReminder] = []
     @State private var reminderPromptItem: ReminderPromptItem? = nil
-    @State private var subscriptionViewModel = SubscriptionViewModel()
     @State private var onboardingPaymentViewModel = OnboardingPaymentViewModel()
     @State private var showPaywall = false
     @State private var isSubscribed = false
@@ -148,6 +147,11 @@ struct PhotoJournalView: View {
             TreatmentReminderStore.shared.pruneExpired()
             upcomingReminders = TreatmentReminderStore.shared.activeUpcoming()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .subscriptionStatusChanged)) { _ in
+            Task {
+                await checkSubscription()
+            }
+        }
         .onChange(of: addEntryTrigger.wrappedValue) { _, triggered in
             if triggered {
                 vm.tapAddEntry()
@@ -189,14 +193,14 @@ struct PhotoJournalView: View {
         .sheet(isPresented: $showPaywall) {
             QuotaExceededView(
                 reason: "Subscribe to unlock AI-powered recovery insights personalized to your healing journey.",
-                silverPrice: onboardingPaymentViewModel.silverPriceInfo?.displayPrice ?? "...",
-                goldPrice: onboardingPaymentViewModel.goldPriceInfo?.displayPrice ?? "...",
-                annualPrice: onboardingPaymentViewModel.annualPriceInfo?.displayPrice ?? "...",
+                weeklyPrice: onboardingPaymentViewModel.weeklyPriceInfo?.displayPrice ?? "...",
+                monthlyPrice: onboardingPaymentViewModel.monthlyPriceInfo?.displayPrice ?? "...",
+                yearlyPrice: onboardingPaymentViewModel.yearlyPlanPriceInfo?.displayPrice ?? "...",
                 onUpgrade: { tier in await handleUpgrade(tier: tier) },
                 onDismiss: { showPaywall = false }
             )
             .task {
-                if onboardingPaymentViewModel.silverPriceInfo == nil {
+                if onboardingPaymentViewModel.weeklyPriceInfo == nil {
                     await onboardingPaymentViewModel.fetchPrices()
                 }
             }
@@ -292,6 +296,10 @@ struct PhotoJournalView: View {
                 JournalWeeklyReportCard(
                     preview: resolvedWeeklyPreview,
                     onOpenReport: {
+                        guard isSubscribed else {
+                            showPaywall = true
+                            return
+                        }
                         guard let procedureId = vm.primaryProcedureId,
                               let procedureName = vm.primaryProcedureName else { return }
                         insightPresentation = InsightsPresentation(
@@ -448,6 +456,18 @@ struct PhotoJournalView: View {
     }
 
     private var resolvedWeeklyPreview: JournalWeeklyReportPreview {
+        if !isSubscribed {
+            return JournalWeeklyReportPreview(
+                weekNumber: 1,
+                title: "Premium feature: Weekly AI reports.",
+                subtitle: "Subscribe to unlock automated weekly reports, AI insights, and personalized recovery guidance.",
+                statusLabel: "Premium feature",
+                progress: 0,
+                actionTitle: "Unlock Premium",
+                summary: nil
+            )
+        }
+
         if let preview = vm.weeklyReportPreview {
             return preview
         }
@@ -475,6 +495,8 @@ struct PhotoJournalView: View {
     // MARK: - Subscription
 
     private func checkSubscription() async {
+        await subscriptionStore.prepare()
+
         do {
             guard let userId = supabase.auth.currentUser?.id.uuidString else { return }
             let profile: UserProfile = try await supabase.database
@@ -484,9 +506,14 @@ struct PhotoJournalView: View {
                 .single()
                 .execute()
                 .value
-            let subscribed = profile.billingPlan == .silver || profile.billingPlan == .gold || profile.billingPlan == .annual
+            let subscribed = subscriptionStore.hasActiveSubscription || hasLegacyPaidSubscription(profile)
             isSubscribed = subscribed
             vm.insightsEnabled = subscribed
+
+            if !subscribed {
+                vm.clearAIOutputs()
+                return
+            }
 
             // Load the cache only now that insightsEnabled is set, so free users never
             // briefly see stale cached insights from a lapsed subscription.
@@ -505,116 +532,42 @@ struct PhotoJournalView: View {
             }
         } catch {
             print("Journal subscription check failed: \(error)")
+            isSubscribed = false
+            vm.insightsEnabled = false
+            vm.clearAIOutputs()
         }
     }
 
     private func handleUpgrade(tier: SubscriptionTier) async {
-        let priceId: String
-        switch tier {
-        case .silver:  priceId = AppConfig.stripeSilverPriceId
-        case .gold:    priceId = AppConfig.stripeGoldPriceId
-        case .annual:  priceId = AppConfig.stripeAnnualPriceId
-        }
-
-        guard !priceId.contains("REPLACE_WITH_YOUR") else {
-            paymentErrorMessage = "Subscription plan not configured."
-            showPaymentError = true
-            return
-        }
-
-        guard let subscriptionResult = await subscriptionViewModel.createSubscription(
-            priceId: priceId,
-            tier: tier
-        ) else {
-            paymentErrorMessage = subscriptionViewModel.errorMessage ?? "Failed to create subscription"
-            showPaymentError = true
-            return
-        }
-
-        let clientSecret = subscriptionResult.clientSecret
-        let subscriptionId = subscriptionResult.subscriptionId
-
-        var configuration = PaymentSheet.Configuration()
-        configuration.merchantDisplayName = "Renaissance"
-        configuration.allowsDelayedPaymentMethods = true
-        configuration.returnURL = "renaissance://payment-complete"
-
-        var appearance = PaymentSheet.Appearance()
-        appearance.colors.primary = UIColor(red: 208/255, green: 187/255, blue: 149/255, alpha: 1.0)
-        appearance.colors.background = UIColor(red: 247/255, green: 247/255, blue: 246/255, alpha: 1.0)
-        appearance.colors.componentBackground = UIColor.white
-        appearance.colors.componentBorder = UIColor(red: 230/255, green: 230/255, blue: 230/255, alpha: 1.0)
-        appearance.colors.componentDivider = UIColor(red: 230/255, green: 230/255, blue: 230/255, alpha: 1.0)
-        appearance.colors.text = UIColor(red: 51/255, green: 51/255, blue: 51/255, alpha: 1.0)
-        appearance.colors.textSecondary = UIColor(red: 130/255, green: 130/255, blue: 130/255, alpha: 1.0)
-        appearance.cornerRadius = 16
-        configuration.appearance = appearance
-
-        configuration.billingDetailsCollectionConfiguration.name = .always
-        configuration.billingDetailsCollectionConfiguration.email = .always
-        configuration.billingDetailsCollectionConfiguration.phone = .always
-        configuration.billingDetailsCollectionConfiguration.address = .full
-        configuration.applePay = PaymentSheet.ApplePayConfiguration(
-            merchantId: AppConfig.appleMerchantId,
-            merchantCountryCode: "US"
-        )
-
-        let paymentSheet = PaymentSheet(
-            paymentIntentClientSecret: clientSecret,
-            configuration: configuration
-        )
-
-        guard let topViewController = UIApplication.shared.topViewController else {
-            paymentErrorMessage = "Unable to present payment screen"
-            showPaymentError = true
-            return
-        }
-
-        let result = await withCheckedContinuation { continuation in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                paymentSheet.present(from: topViewController) { result in
-                    continuation.resume(returning: result)
-                }
-            }
-        }
+        let result = await onboardingPaymentViewModel.purchaseSubscription(tier: tier)
 
         switch result {
-        case .completed:
-            await updateSubscriptionInProfile(tier: tier, subscriptionId: subscriptionId)
+        case .success:
             showPaywall = false
             isSubscribed = true
             vm.insightsEnabled = true
             vm.loadCachedInsights()
+            vm.loadCachedWeeklySummaries()
+            await vm.loadRemoteWeeklySummaries()
             // Generate insights for every eligible procedure now that user is subscribed
             for group in vm.groupedByProcedure where group.entries.count >= 2 {
                 guard let procedureId = group.entries.first?.procedureId,
                       vm.insights[procedureId] == nil else { continue }
                 await vm.refreshInsights(for: procedureId, procedureName: group.key)
             }
-        case .failed(let error):
-            paymentErrorMessage = error.localizedDescription
+        case .pending:
+            paymentErrorMessage = onboardingPaymentViewModel.errorMessage ?? "Your App Store purchase is pending approval."
             showPaymentError = true
-        case .canceled:
+        case .failed(let message):
+            paymentErrorMessage = message
+            showPaymentError = true
+        case .cancelled:
             break
         }
     }
 
-    private func updateSubscriptionInProfile(tier: SubscriptionTier, subscriptionId: String) async {
-        do {
-            guard let userId = supabase.auth.currentUser?.id else { return }
-            try await supabase.database
-                .from("user_profiles")
-                .update([
-                    "billing_plan": tier.rawValue,
-                    "stripe_subscription_id": subscriptionId,
-                    "subscription_status": "active",
-                    "subscription_tier": tier.rawValue
-                ])
-                .eq("id", value: userId.uuidString.lowercased())
-                .execute()
-        } catch {
-            print("Subscription profile update failed: \(error)")
-        }
+    private func hasLegacyPaidSubscription(_ profile: UserProfile) -> Bool {
+        profile.billingPlan == .weekly || profile.billingPlan == .monthly || profile.billingPlan == .yearly
     }
 
     /// Looks up the earliest journal entry date for a procedure, falling back to today.
@@ -1014,11 +967,11 @@ private struct JournalInsightsSection: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 9) {
                     if isEmpty {
-                        InsightCard(type: .placeholder, message: "Log your first entry to unlock AI-powered recovery insights.")
+                        InsightCard(type: .placeholder, message: "Premium feature. Subscribe to unlock AI-powered recovery insights from your journal.")
                     } else if !isSubscribed {
                         InsightCard(
                             type: .locked,
-                            message: "Upgrade to unlock AI-powered recovery insights personalized to your healing journey.",
+                            message: "Premium feature. Subscribe to unlock AI-powered recovery insights personalized to your healing journey.",
                             onCTA: onUnlock
                         )
                     } else if isGenerating && insights == nil {
@@ -1050,7 +1003,7 @@ private struct JournalInsightsSection: View {
                                         onCTA: { onShowInsights?("nextSteps") })
                         }
                     } else {
-                        InsightCard(type: .placeholder, message: "Keep logging entries to unlock AI-powered recovery insights.")
+                        InsightCard(type: .placeholder, message: "Premium feature. Keep logging if you want, then subscribe to unlock AI-powered recovery insights.")
                     }
                 }
                 .padding(.horizontal, 18)

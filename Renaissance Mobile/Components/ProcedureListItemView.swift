@@ -28,6 +28,40 @@ private enum PLC {
     static let tintBottom = Color.white.opacity(0.82)
 }
 
+private enum ProcedureListImageResolver {
+    static func image(for procedure: Procedure) -> UIImage? {
+        let slug = slug(for: procedure.name)
+        let candidateAssetNames = [
+            slug,
+            "procedure-\(slug)",
+            "\(slug)-hero",
+            "\(slug)_hero"
+        ]
+
+        for name in candidateAssetNames {
+            if let image = UIImage(named: name) {
+                return image
+            }
+        }
+
+        return nil
+    }
+
+    private static func slug(for name: String) -> String {
+        let normalized = name.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: " "))
+        let cleanedScalars = normalized.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar) : " "
+        }
+
+        return String(cleanedScalars)
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+            .joined(separator: "_")
+            .lowercased()
+    }
+}
+
 struct ProcedureListItemView: View {
     let procedure: Procedure
     let isSaved: Bool
@@ -59,22 +93,29 @@ struct ProcedureListItemView: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 12) {
+                    procedureAvatar
+
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(procedure.category.uppercased())
-                            .font(.custom("PlusJakartaSans-SemiBold", size: 10))
-                            .tracking(2.2)
-                            .foregroundColor(PLCColor.muted)
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(procedure.category.uppercased())
+                                .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                                .tracking(2.2)
+                                .foregroundColor(PLCColor.muted)
+
+                            Spacer(minLength: 0)
+
+                            statusBadge(label: badgeLabel, isSaved: isSaved)
+                        }
 
                         Text(procedure.name)
-                            .font(.custom("Manrope", size: 26))
+                            .font(.custom("Manrope", size: 24))
                             .fontWeight(.bold)
                             .foregroundColor(PLCColor.text)
                             .multilineTextAlignment(.leading)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-
-                    Spacer(minLength: 8)
-
-                    statusBadge(label: badgeLabel, isSaved: isSaved)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 Text(summaryText)
@@ -127,6 +168,35 @@ struct ProcedureListItemView: View {
                 .stroke(Color.white.opacity(0.78), lineWidth: 1)
         )
         .shadow(color: PLCColor.shadow.opacity(0.85), radius: 14, x: 0, y: 6)
+    }
+
+    @ViewBuilder
+    private var procedureAvatar: some View {
+        ZStack {
+            if let image = ProcedureListImageResolver.image(for: procedure) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                LinearGradient(
+                    colors: [PLCColor.primarySoft.opacity(0.96), Color.white.opacity(0.92)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .overlay(
+                    Image(systemName: "photo")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(PLCColor.primary.opacity(0.78))
+                )
+            }
+        }
+        .frame(width: 82, height: 82)
+        .background(PLCColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.white.opacity(0.78), lineWidth: 1)
+        )
     }
 
     @ViewBuilder

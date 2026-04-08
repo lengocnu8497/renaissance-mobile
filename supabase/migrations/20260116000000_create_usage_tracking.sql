@@ -18,7 +18,7 @@ CREATE TABLE public.usage_tracking (
     credits_limit INTEGER NOT NULL,
 
     -- Subscription reference
-    subscription_tier TEXT CHECK (subscription_tier IN ('silver', 'gold')),
+    subscription_tier TEXT CHECK (subscription_tier IN ('weekly', 'monthly')),
 
     -- Timestamps
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -78,16 +78,16 @@ DECLARE
     v_credits_limit INTEGER;
 BEGIN
     -- Set tier limits
-    IF p_tier = 'silver' THEN
+    IF p_tier = 'weekly' THEN
         v_messages_limit := 30;
         v_images_limit := 5;
         v_credits_limit := 80;
-    ELSIF p_tier = 'gold' THEN
+    ELSIF p_tier = 'monthly' THEN
         v_messages_limit := 75;
         v_images_limit := 15;
         v_credits_limit := 210;
     ELSE
-        RAISE EXCEPTION 'Invalid tier: %. Must be silver or gold.', p_tier;
+        RAISE EXCEPTION 'Invalid tier: %. Must be weekly or monthly.', p_tier;
     END IF;
 
     -- Try to get existing record for this period
@@ -155,21 +155,21 @@ SELECT
     0 as images_used,
     0 as credits_used,
     CASE
-        WHEN subscription_tier = 'silver' THEN 30
-        WHEN subscription_tier = 'gold' THEN 75
+        WHEN subscription_tier = 'weekly' THEN 30
+        WHEN subscription_tier = 'monthly' THEN 75
     END as messages_limit,
     CASE
-        WHEN subscription_tier = 'silver' THEN 5
-        WHEN subscription_tier = 'gold' THEN 15
+        WHEN subscription_tier = 'weekly' THEN 5
+        WHEN subscription_tier = 'monthly' THEN 15
     END as images_limit,
     CASE
-        WHEN subscription_tier = 'silver' THEN 80
-        WHEN subscription_tier = 'gold' THEN 210
+        WHEN subscription_tier = 'weekly' THEN 80
+        WHEN subscription_tier = 'monthly' THEN 210
     END as credits_limit,
     subscription_tier
 FROM public.user_profiles
 WHERE subscription_status = 'active'
-    AND subscription_tier IN ('silver', 'gold')
+    AND subscription_tier IN ('weekly', 'monthly')
     AND subscription_current_period_end IS NOT NULL
 ON CONFLICT (user_id, period_start) DO NOTHING;
 
