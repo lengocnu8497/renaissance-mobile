@@ -14,9 +14,15 @@ struct SavedProcedureService {
     }
 
     func fetchSaved() async throws -> [SavedProcedure] {
-        try await supabase.database
+        guard let userId = supabase.auth.currentUser?.id else {
+            throw NSError(domain: "SavedProcedureService", code: 401,
+                          userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
+        }
+
+        return try await supabase.database
             .from("saved_procedures")
             .select()
+            .eq("user_id", value: userId.uuidString.lowercased())
             .order("created_at", ascending: false)
             .execute()
             .value
@@ -24,30 +30,54 @@ struct SavedProcedureService {
 
     func save(procedureId: UUID) async throws -> SavedProcedure {
         guard let userId = supabase.auth.currentUser?.id else {
+            print("[ProcedureSave][Service] save aborted because there is no authenticated user for procedure id=\(procedureId)")
             throw NSError(domain: "SavedProcedureService", code: 401,
                           userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
+        }
+
+        print("[ProcedureSave][Service] save start procedureId=\(procedureId) userId=\(userId)")
+
+        if let existing = try await fetchSaved(procedureId: procedureId, userId: userId) {
+            print("[ProcedureSave][Service] Found existing saved procedure savedId=\(existing.id) for procedure id=\(procedureId)")
+            return existing
         }
 
         struct SavePayload: Encodable {
             let user_id: String
             let procedure_id: String
             let questions: [String]
-            let conversation_ids: [String]
         }
 
         let body = SavePayload(
             user_id: userId.uuidString.lowercased(),
             procedure_id: procedureId.uuidString.lowercased(),
-            questions: [],
-            conversation_ids: []
+            questions: []
         )
-        return try await supabase.database
+        print("[ProcedureSave][Service] No existing saved procedure found. Performing upsert for procedure id=\(procedureId)")
+        let saved: SavedProcedure = try await supabase.database
             .from("saved_procedures")
-            .insert(body)
+            .upsert(body, onConflict: "user_id,procedure_id")
             .select()
             .single()
             .execute()
             .value
+        print("[ProcedureSave][Service] Upsert completed savedId=\(saved.id) procedureId=\(saved.procedureId)")
+        return saved
+    }
+
+    func fetchSaved(procedureId: UUID, userId: UUID) async throws -> SavedProcedure? {
+        do {
+            return try await supabase.database
+                .from("saved_procedures")
+                .select()
+                .eq("user_id", value: userId.uuidString.lowercased())
+                .eq("procedure_id", value: procedureId.uuidString.lowercased())
+                .single()
+                .execute()
+                .value
+        } catch {
+            return nil
+        }
     }
 
     func unsave(procedureId: UUID) async throws {
@@ -122,13 +152,22 @@ struct SavedProcedureService {
             let conversation_ids: [String]
             let updated_at: String
         }
-        try await supabase.database
-            .from("saved_procedures")
-            .update(ConversationIdsUpdate(
-                conversation_ids: updated.map { $0.uuidString.lowercased() },
-                updated_at: ISO8601DateFormatter().string(from: Date())
-            ))
-            .eq("id", value: savedId.uuidString.lowercased())
-            .execute()
+        do {
+            try await supabase.database
+                .from("saved_procedures")
+                .update(ConversationIdsUpdate(
+                    conversation_ids: updated.map { $0.uuidString.lowercased() },
+                    updated_at: ISO8601DateFormatter().string(from: Date())
+                ))
+                .eq("id", value: savedId.uuidString.lowercased())
+                .execute()
+        } catch {
+            let errorDescription = String(describing: error)
+            if errorDescription.contains("conversation_ids") {
+                print("[ProcedureSave][Service] Skipping conversation link because saved_procedures.conversation_ids is unavailable in this database schema.")
+                return
+            }
+            throw error
+        }
     }
 }

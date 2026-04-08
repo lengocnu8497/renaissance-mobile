@@ -7,11 +7,14 @@ import SwiftUI
 
 enum JournalCardsUI {
     static let primary = Color(hex: "#516048")
+    static let primaryDeep = Color(hex: "#314030")
+    static let primaryInk = Color(hex: "#314030")
     static let accent = Color(hex: "#B07B7A")
     static let roseSoft = Color(hex: "#F1DDDA")
     static let textHi = Color(hex: "#1F261D")
     static let textLo = Color(hex: "#687064")
     static let card = Color(hex: "#EDF1E8")
+    static let cardStrong = Color(hex: "#E1E7DA")
     static let cardWhite = Color.white
     static let border = Color.black.opacity(0.05)
     static let shadowS = (
@@ -105,7 +108,42 @@ struct JournalTodayCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            headlineBlock(maxWidth: nil, bodyMaxWidth: nil)
+            ZStack(alignment: .bottomLeading) {
+                Image("hero_recovery")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(height: 208)
+                    .offset(y: 14)
+                    .clipped()
+
+                LinearGradient(
+                    colors: [
+                        Color.clear,
+                        JournalCardsUI.primary.opacity(0.22),
+                        JournalCardsUI.primaryDeep.opacity(0.72)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("TODAY'S JOURNAL")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+                        .kerning(2.3)
+                        .foregroundColor(.white.opacity(0.78))
+
+                    Text("Log today's recovery in under a minute.")
+                        .font(.custom("Manrope", size: 27))
+                        .fontWeight(.heavy)
+                        .foregroundColor(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 18)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 208)
+            .clipShape(RoundedRectangle(cornerRadius: JournalCardsUI.heroRadius, style: .continuous))
 
             VStack(alignment: .leading, spacing: 11) {
                 HStack {
@@ -113,10 +151,10 @@ struct JournalTodayCard: View {
                         Text("QUICK ENTRY")
                             .font(.custom("PlusJakartaSans-SemiBold", size: 10))
                             .kerning(2.0)
-                            .foregroundColor(JournalCardsUI.textLo)
+                            .foregroundColor(.white.opacity(0.72))
                         Text("Pain, notes, and a photo")
                             .font(.custom("PlusJakartaSans-SemiBold", size: 15))
-                            .foregroundColor(JournalCardsUI.primary)
+                            .foregroundColor(.white)
                     }
 
                     Spacer()
@@ -124,10 +162,10 @@ struct JournalTodayCard: View {
                     Button(action: onLogToday) {
                         Text("Add entry")
                             .font(.custom("PlusJakartaSans-SemiBold", size: 13))
-                            .foregroundColor(.white)
+                            .foregroundColor(JournalCardsUI.primaryDeep)
                             .padding(.horizontal, 15)
                             .padding(.vertical, 11)
-                            .background(JournalCardsUI.primary)
+                            .background(Color.white.opacity(0.92))
                             .clipShape(Capsule())
                     }
                 }
@@ -138,18 +176,18 @@ struct JournalTodayCard: View {
                             Text("PAIN")
                                 .font(.custom("PlusJakartaSans-SemiBold", size: 10))
                                 .kerning(1.8)
-                                .foregroundColor(JournalCardsUI.textLo)
+                                .foregroundColor(.white.opacity(0.72))
                             Spacer()
                             Text("\(painValue)/10")
                                 .font(.custom("PlusJakartaSans-SemiBold", size: 11))
-                                .foregroundColor(JournalCardsUI.textLo)
+                                .foregroundColor(.white.opacity(0.82))
                         }
 
                         GeometryReader { proxy in
                             ZStack(alignment: .leading) {
-                                Capsule().fill(JournalCardsUI.card)
+                                Capsule().fill(Color.white.opacity(0.20))
                                 Capsule()
-                                    .fill(painValue <= 3 ? Color(hex: "#4D7A58") : JournalCardsUI.accent)
+                                    .fill(JournalCardsUI.accent)
                                     .frame(width: proxy.size.width * CGFloat(painValue) / 10.0)
                             }
                         }
@@ -157,7 +195,7 @@ struct JournalTodayCard: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 14)
-                    .background(Color.white)
+                    .background(Color.white.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: JournalCardsUI.cardRadius, style: .continuous))
 
                     HStack(spacing: 10) {
@@ -175,16 +213,19 @@ struct JournalTodayCard: View {
                 }
             }
             .padding(14)
-            .background(Color(hex: "#F3F6EE"))
-            .clipShape(RoundedRectangle(cornerRadius: JournalCardsUI.heroRadius, style: .continuous))
         }
         .padding(18)
-        .background(JournalCardsUI.cardWhite)
-        .cornerRadius(JournalCardsUI.heroRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: JournalCardsUI.heroRadius)
-                .stroke(JournalCardsUI.border, lineWidth: JournalCardsUI.strokeWidth)
+        .background(
+            LinearGradient(
+                colors: [
+                    JournalCardsUI.primary.opacity(0.94),
+                    JournalCardsUI.primaryDeep.opacity(0.98)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
         )
+        .cornerRadius(JournalCardsUI.heroRadius)
         .shadow(
             color: JournalCardsUI.shadowS.color,
             radius: JournalCardsUI.shadowS.radius,
@@ -198,38 +239,22 @@ struct JournalTodayCard: View {
         return max(0, min(10, Int(rawPain)))
     }
 
-    private func headlineBlock(maxWidth: CGFloat?, bodyMaxWidth: CGFloat?) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("TODAY'S JOURNAL")
-                .font(.custom("PlusJakartaSans-SemiBold", size: 11))
-                .kerning(2.3)
-                .foregroundColor(JournalCardsUI.textLo)
-
-            Text("Log today's recovery in under a minute.")
-                .font(.custom("Manrope", size: 27))
-                .fontWeight(.heavy)
-                .foregroundColor(JournalCardsUI.primary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: maxWidth, alignment: .leading)
-        }
-    }
-
     private func quickPromptCard(title: String, body: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.custom("PlusJakartaSans-SemiBold", size: 10))
                 .kerning(1.8)
-                .foregroundColor(JournalCardsUI.textLo)
+                .foregroundColor(.white.opacity(0.72))
             Text(body)
                 .font(.custom("PlusJakartaSans-SemiBold", size: 14))
-                .foregroundColor(JournalCardsUI.primary)
+                .foregroundColor(.white)
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 13)
         .padding(.vertical, 13)
-        .background(Color.white)
+        .background(Color.white.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: JournalCardsUI.cardRadius, style: .continuous))
     }
 }
@@ -489,31 +514,31 @@ struct JournalWeeklyReportCard: View {
                 Spacer()
                 Text(preview.statusLabel)
                     .font(.custom("PlusJakartaSans-SemiBold", size: 10))
-                    .foregroundColor(JournalCardsUI.primary)
+                    .foregroundColor(JournalCardsUI.primaryInk)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 5)
-                    .background(JournalCardsUI.card)
+                    .background(Color.white.opacity(0.72))
                     .clipShape(Capsule())
             }
 
             Text(preview.title)
                 .font(.custom("Manrope", size: 27))
                 .fontWeight(.bold)
-                .foregroundColor(Color(hex: "#314030"))
+                .foregroundColor(JournalCardsUI.primaryInk)
 
             Text(preview.subtitle)
                 .font(.custom("PlusJakartaSans-Regular", size: 14))
-                .foregroundColor(JournalCardsUI.textLo)
+                .foregroundColor(JournalCardsUI.textHi.opacity(0.68))
                 .lineSpacing(4)
 
             VStack(alignment: .leading, spacing: 8) {
                 ZStack(alignment: .leading) {
                     Capsule()
-                        .fill(JournalCardsUI.primary.opacity(0.12))
+                        .fill(Color.white.opacity(0.55))
                         .frame(height: 8)
                     GeometryReader { proxy in
                         Capsule()
-                            .fill(JournalCardsUI.primary)
+                            .fill(JournalCardsUI.primaryDeep)
                             .frame(width: proxy.size.width * CGFloat(preview.progress) / 100.0, height: 8)
                     }
                     .frame(height: 8)
@@ -532,17 +557,16 @@ struct JournalWeeklyReportCard: View {
                         .font(.system(size: 11, weight: .semibold))
                 }
                 .font(.custom("PlusJakartaSans-SemiBold", size: 13))
-                .foregroundColor(Color(hex: "#314030"))
+                .foregroundColor(JournalCardsUI.primaryInk)
                 .padding(.horizontal, 15)
                 .padding(.vertical, 10)
-                .background(Color(hex: "#D9E3CE"))
+                .background(Color.white.opacity(0.8))
                 .clipShape(Capsule())
             }
         }
         .padding(20)
-        .background(JournalCardsUI.cardWhite)
+        .background(JournalCardsUI.cardStrong)
         .cornerRadius(28)
-        .overlay(RoundedRectangle(cornerRadius: 28).stroke(JournalCardsUI.border, lineWidth: JournalCardsUI.strokeWidth))
         .shadow(
             color: JournalCardsUI.shadowS.color,
             radius: JournalCardsUI.shadowS.radius,

@@ -24,6 +24,40 @@ private enum RC {
     static let border = Color.black.opacity(0.05)
 }
 
+private enum ResearchProcedureImageResolver {
+    static func image(for procedure: Procedure) -> UIImage? {
+        let slug = slug(for: procedure.name)
+        let candidateAssetNames = [
+            slug,
+            "procedure-\(slug)",
+            "\(slug)-hero",
+            "\(slug)_hero"
+        ]
+
+        for name in candidateAssetNames {
+            if let image = UIImage(named: name) {
+                return image
+            }
+        }
+
+        return nil
+    }
+
+    private static func slug(for name: String) -> String {
+        let normalized = name.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: " "))
+        let cleanedScalars = normalized.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar) : " "
+        }
+
+        return String(cleanedScalars)
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+            .joined(separator: "_")
+            .lowercased()
+    }
+}
+
 private struct ResearchDetailNavBar: View {
     let title: String
     let canExport: Bool
@@ -199,7 +233,7 @@ struct ResearchTabView: View {
                     onNavigateToChat: { msg, proc in
                         onNavigateToChat?(msg, proc, nil)
                     },
-                    onSaveProcedure: { proc in
+                    onSaveProcedure: { [viewModel] proc in
                         Task { await viewModel.toggleSave(proc) }
                     },
                     isSaved: viewModel.isSaved(procedure.id)
@@ -222,13 +256,11 @@ struct ResearchTabView: View {
                 NavigationStack {
                     ProceduresListView(
                         initialSavedIds: Set(viewModel.savedProcedures.map { $0.procedureId }),
+                        researchViewModel: viewModel,
                         onBackButtonTapped: { showExploreSheet = false },
                         onNavigateToChat: { msg, proc in
                             showExploreSheet = false
                             onNavigateToChat?(msg, proc, nil)
-                        },
-                        onSaveProcedure: { proc in
-                            Task { await viewModel.toggleSave(proc) }
                         }
                     )
                 }
@@ -353,34 +385,63 @@ struct ResearchTabView: View {
                             Button {
                                 selectedSavedForDetail = viewModel.savedEntry(for: card.procedure.id)
                             } label: {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text(card.procedure.category.uppercased())
-                                        .font(.custom("PlusJakartaSans-SemiBold", size: 9))
-                                        .tracking(1.8)
-                                        .foregroundColor(RC.muted)
-
-                                    Text(card.procedure.name)
-                                        .font(.custom("Manrope", size: 21))
-                                        .fontWeight(.bold)
-                                        .foregroundColor(RC.text)
-                                        .lineLimit(2)
-
-                                    HStack(spacing: 6) {
-                                        if !card.procedure.recoveryDurationLabel.isEmpty {
-                                            pillLabel(card.procedure.recoveryDurationLabel, tint: RC.card, textColor: RC.muted)
-                                        }
-                                        if card.questionCount > 0 {
-                                            pillLabel("\(card.questionCount) questions", tint: RC.roseSoft, textColor: RC.primaryInk)
+                                ZStack(alignment: .bottomLeading) {
+                                    Group {
+                                        if let image = ResearchProcedureImageResolver.image(for: card.procedure) {
+                                            Image(uiImage: image)
+                                                .resizable()
+                                                .scaledToFill()
+                                        } else {
+                                            LinearGradient(
+                                                colors: [RC.primarySoft.opacity(0.92), RC.cardStrong.opacity(0.96)],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
                                         }
                                     }
+                                    .frame(width: 210, height: 164)
+                                    .clipped()
+
+                                    LinearGradient(
+                                        colors: [
+                                            Color.black.opacity(0.02),
+                                            Color.black.opacity(0.12),
+                                            Color.black.opacity(0.64),
+                                            Color.black.opacity(0.82)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        Text(card.procedure.category.uppercased())
+                                            .font(.custom("PlusJakartaSans-SemiBold", size: 9))
+                                            .tracking(1.8)
+                                            .foregroundColor(.white.opacity(0.82))
+
+                                        Text(card.procedure.name)
+                                            .font(.custom("Manrope", size: 21))
+                                            .fontWeight(.bold)
+                                            .foregroundColor(.white)
+                                            .lineLimit(2)
+
+                                        HStack(spacing: 6) {
+                                            if !card.procedure.recoveryDurationLabel.isEmpty {
+                                                pillLabel(card.procedure.recoveryDurationLabel, tint: Color.black.opacity(0.28), textColor: .white)
+                                            }
+                                            if card.questionCount > 0 {
+                                                pillLabel("\(card.questionCount) questions", tint: RC.roseSoft.opacity(0.92), textColor: RC.primaryInk)
+                                            }
+                                        }
+                                    }
+                                    .padding(18)
                                 }
                                 .frame(width: 210)
-                                .frame(minHeight: 144, alignment: .leading)
-                                .padding(18)
-                                .background(shortlistSurface(for: card.id))
+                                .frame(minHeight: 164, alignment: .leading)
                                 .cornerRadius(26)
                                 .overlay(RoundedRectangle(cornerRadius: 26).stroke(RC.border, lineWidth: 1))
                                 .shadow(color: RC.shadow, radius: 10, x: 0, y: 3)
+                                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
                             }
                             .buttonStyle(.plain)
                         }
@@ -773,7 +834,7 @@ struct ResearchTabView: View {
         .shadow(color: RC.shadow, radius: 10, x: 0, y: 3)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
-                Task { await viewModel.toggleSave(card.procedure) }
+                Task { [viewModel] in await viewModel.toggleSave(card.procedure) }
             } label: {
                 Label("Remove", systemImage: "bookmark.slash")
             }
