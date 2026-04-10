@@ -283,14 +283,7 @@ final class WeeklySummaryService {
     }
 
     func fetchWeeklyStates(procedureId: String) async throws -> [WeeklyCheckIn] {
-        let rows: [WeeklyReportRow] = try await supabase.database
-            .from("weekly_recovery_reports")
-            .select()
-            .eq("procedure_id", value: procedureId)
-            .order("week_number", ascending: true)
-            .execute()
-            .value
-
+        let rows = try await fetchReportRows(procedureId: procedureId)
         return rows.map {
             WeeklyCheckIn(
                 id: $0.id,
@@ -309,17 +302,34 @@ final class WeeklySummaryService {
     }
 
     func fetchRemoteSummaries(procedureId: String) async throws -> [WeeklySummary] {
-        let rows: [WeeklyReportRow] = try await supabase.database
-            .from("weekly_recovery_reports")
-            .select()
-            .eq("procedure_id", value: procedureId)
-            .order("week_number", ascending: true)
-            .execute()
-            .value
-
+        let rows = try await fetchReportRows(procedureId: procedureId)
         let summaries = rows.compactMap(summary(from:))
         for summary in summaries { saveToCache(summary) }
         return summaries
+    }
+
+    func fetchRemoteContent(procedureId: String) async throws -> (summaries: [WeeklySummary], states: [WeeklyCheckIn]) {
+        let rows = try await fetchReportRows(procedureId: procedureId)
+        let summaries = rows.compactMap(summary(from:))
+        for summary in summaries { saveToCache(summary) }
+
+        let states = rows.map {
+            WeeklyCheckIn(
+                id: $0.id,
+                procedureId: $0.procedureId,
+                procedureName: $0.procedureName,
+                weekNumber: $0.weekNumber,
+                scheduledDate: $0.scheduledDate,
+                completedEntryId: $0.completedEntryId,
+                isCompleted: $0.isCompleted,
+                satisfactionRating: $0.satisfactionRating,
+                generatedAt: $0.generatedAt,
+                createdAt: $0.createdAt,
+                updatedAt: $0.updatedAt
+            )
+        }
+
+        return (summaries, states)
     }
 
     func generateSummary(
@@ -391,6 +401,7 @@ final class WeeklySummaryService {
         weekNumber: Int,
         entryId: UUID
     ) async throws {
+        let userId = try requireAuthenticatedUserId()
         _ = try await supabase.database
             .from("weekly_recovery_reports")
             .update(
@@ -399,6 +410,7 @@ final class WeeklySummaryService {
                     isCompleted: true
                 )
             )
+            .eq("user_id", value: userId.uuidString)
             .eq("procedure_id", value: procedureId)
             .eq("week_number", value: weekNumber)
             .execute()
@@ -409,20 +421,18 @@ final class WeeklySummaryService {
         weekNumber: Int,
         rating: Int
     ) async throws {
+        let userId = try requireAuthenticatedUserId()
         _ = try await supabase.database
             .from("weekly_recovery_reports")
             .update(WeeklyReportSatisfactionUpdate(satisfactionRating: rating))
+            .eq("user_id", value: userId.uuidString)
             .eq("procedure_id", value: procedureId)
             .eq("week_number", value: weekNumber)
             .execute()
     }
 
     func fetchCached(procedureId: String, weekNumber: Int) -> WeeklySummary? {
-        guard
-            let data = UserDefaults.standard.data(forKey: cacheKey(procedureId, weekNumber)),
-            let cached = try? JSONDecoder().decode(WeeklySummary.self, from: data)
-        else { return nil }
-        return cached
+        ProtectedLocalStore.load(WeeklySummary.self, forKey: cacheKey(procedureId, weekNumber))
     }
 
     private func summary(from row: WeeklyReportRow) -> WeeklySummary? {
@@ -453,12 +463,36 @@ final class WeeklySummaryService {
     }
 
     private func saveToCache(_ summary: WeeklySummary) {
-        guard let data = try? JSONEncoder().encode(summary) else { return }
-        UserDefaults.standard.set(data, forKey: cacheKey(summary.procedureId, summary.weekNumber))
+        try? ProtectedLocalStore.save(summary, forKey: cacheKey(summary.procedureId, summary.weekNumber))
     }
 
     private func cacheKey(_ procedureId: String, _ weekNumber: Int) -> String {
         "\(cachePrefix)\(procedureId)_wk\(weekNumber)"
+    }
+
+    private func fetchReportRows(procedureId: String) async throws -> [WeeklyReportRow] {
+        let userId = try requireAuthenticatedUserId()
+
+        return try await supabase.database
+            .from("weekly_recovery_reports")
+            .select()
+            .eq("user_id", value: userId.uuidString)
+            .eq("procedure_id", value: procedureId)
+            .order("week_number", ascending: true)
+            .execute()
+            .value
+    }
+
+    private func requireAuthenticatedUserId() throws -> UUID {
+        guard let userId = supabase.auth.currentUser?.id else {
+            throw NSError(
+                domain: "WeeklySummaryService",
+                code: 401,
+                userInfo: [NSLocalizedDescriptionKey: "Not authenticated"]
+            )
+        }
+
+        return userId
     }
 
     private static let dateFormatter: DateFormatter = {

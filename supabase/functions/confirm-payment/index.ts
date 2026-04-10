@@ -7,6 +7,14 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
   httpClient: Stripe.createFetchHttpClient(),
 })
 
+const allowedPriceIds = new Set(
+  [
+    Deno.env.get('STRIPE_PRICE_SILVER'),
+    Deno.env.get('STRIPE_PRICE_GOLD'),
+    Deno.env.get('STRIPE_PRICE_ANNUAL'),
+  ].filter((value): value is string => Boolean(value))
+)
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -49,7 +57,7 @@ serve(async (req) => {
     }
 
     // Parse request body
-    const { confirmation_token, amount_cents, currency, metadata } = await req.json()
+    const { confirmation_token, price_id, metadata } = await req.json()
 
     if (!confirmation_token) {
       return new Response(
@@ -58,10 +66,25 @@ serve(async (req) => {
       )
     }
 
-    if (!amount_cents || !currency) {
+    if (!price_id) {
       return new Response(
-        JSON.stringify({ error: 'Missing required parameters: amount_cents and currency' }),
+        JSON.stringify({ error: 'Missing required parameter: price_id' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (!allowedPriceIds.has(price_id)) {
+      return new Response(
+        JSON.stringify({ error: 'Unsupported price_id' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const price = await stripe.prices.retrieve(price_id)
+    if (!price.unit_amount || !price.currency) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid Stripe price configuration' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -95,13 +118,14 @@ serve(async (req) => {
     // Create Payment Intent with the confirmation token
     const paymentIntent = await stripe.paymentIntents.create({
       customer: customerId,
-      amount: amount_cents,
-      currency: currency.toLowerCase(),
+      amount: price.unit_amount,
+      currency: price.currency.toLowerCase(),
       confirm: true,
       confirmation_token: confirmation_token,
       return_url: 'renaissance://payment-complete',
       metadata: {
         user_id: user.id,
+        price_id,
         ...metadata,
       },
     })

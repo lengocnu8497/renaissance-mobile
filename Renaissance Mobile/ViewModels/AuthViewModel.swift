@@ -140,7 +140,7 @@ class AuthViewModel {
         do {
             try await supabase.auth.resetPasswordForEmail(
                 email,
-                redirectTo: URL(string: "renaissance://reset-callback")
+                redirectTo: AppConfig.passwordResetURL
             )
         } catch {
             errorMessage = error.localizedDescription
@@ -151,15 +151,16 @@ class AuthViewModel {
     // MARK: - Handle Deep Link
 
     func handleDeepLink(_ url: URL) async {
-        // Check if this is our app's URL scheme
-        guard url.scheme == "renaissance" else { return }
+        let isCustomScheme = url.scheme == "renaissance"
+        let isUniversalLink = url.scheme == "https"
+            && url.host == AppConfig.universalLinkHost
+            && url.path == AppConfig.passwordResetPath
 
-        print("Handling deep link: \(url.absoluteString)")
+        guard isCustomScheme || isUniversalLink else { return }
 
         do {
             // Exchange the code from the URL for a session
             let session = try await supabase.auth.session(from: url)
-            print("Session established for user: \(session.user.email ?? "unknown")")
 
             // Update state
             currentUser = session.user
@@ -168,7 +169,8 @@ class AuthViewModel {
             // Check if this is a password recovery flow
             // The URL will contain type=recovery after Supabase processes it
             if url.absoluteString.contains("type=recovery") ||
-               url.host == "reset-callback" {
+               url.host == "reset-callback" ||
+               isUniversalLink {
                 showUpdatePassword = true
             }
         } catch {
@@ -177,7 +179,7 @@ class AuthViewModel {
                 currentUser = session.user
                 isAuthenticated = true
                 // Still show update password screen for recovery flow
-                if url.host == "reset-callback" {
+                if url.host == "reset-callback" || isUniversalLink {
                     showUpdatePassword = true
                 }
             } else {

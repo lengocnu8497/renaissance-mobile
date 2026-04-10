@@ -72,6 +72,8 @@ struct PhotoJournalView: View {
     @State private var paymentErrorMessage = ""
     @State private var showPaymentError = false
 
+    private let userProfileService = UserProfileService(supabase: supabase)
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -142,14 +144,15 @@ struct PhotoJournalView: View {
             AddJournalEntryView(vm: vm, prefilledProcedureName: vm.pendingProcedureName)
         }
         .task {
+            await subscriptionStore.prepare()
             await vm.load()
-            await checkSubscription()
+            await refreshSubscriptionState()
             TreatmentReminderStore.shared.pruneExpired()
             upcomingReminders = TreatmentReminderStore.shared.activeUpcoming()
         }
         .onReceive(NotificationCenter.default.publisher(for: .subscriptionStatusChanged)) { _ in
             Task {
-                await checkSubscription()
+                await refreshSubscriptionState()
             }
         }
         .onChange(of: addEntryTrigger.wrappedValue) { _, triggered in
@@ -494,19 +497,11 @@ struct PhotoJournalView: View {
 
     // MARK: - Subscription
 
-    private func checkSubscription() async {
-        await subscriptionStore.prepare()
-
+    private func refreshSubscriptionState() async {
         do {
-            guard let userId = supabase.auth.currentUser?.id.uuidString else { return }
-            let profile: UserProfile = try await supabase.database
-                .from("user_profiles")
-                .select()
-                .eq("id", value: userId)
-                .single()
-                .execute()
-                .value
-            let subscribed = subscriptionStore.hasActiveSubscription || hasLegacyPaidSubscription(profile)
+            let profile = try await userProfileService.getUserProfile()
+            let subscribed = subscriptionStore.hasActiveSubscription
+                || SubscriptionAccessEvaluator.hasBackendPremiumAccess(profile)
             isSubscribed = subscribed
             vm.insightsEnabled = subscribed
 
@@ -564,10 +559,6 @@ struct PhotoJournalView: View {
         case .cancelled:
             break
         }
-    }
-
-    private func hasLegacyPaidSubscription(_ profile: UserProfile) -> Bool {
-        profile.billingPlan == .weekly || profile.billingPlan == .monthly || profile.billingPlan == .yearly
     }
 
     /// Looks up the earliest journal entry date for a procedure, falling back to today.

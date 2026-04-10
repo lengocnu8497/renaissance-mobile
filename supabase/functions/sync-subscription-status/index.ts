@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.192.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
+import { tierForAppStoreProductId } from '../_shared/appStoreProducts.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -67,17 +68,32 @@ serve(async (req) => {
     }
 
     if (body.isActive) {
-      if (!body.tier || !body.productId || !body.transactionId || !body.originalTransactionId) {
+      if (!body.productId || !body.transactionId || !body.originalTransactionId) {
         return new Response(
           JSON.stringify({ error: 'Missing required fields for active subscription sync' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         )
       }
 
+      const resolvedTier = tierForAppStoreProductId(body.productId)
+      if (!resolvedTier) {
+        return new Response(
+          JSON.stringify({ error: 'Unknown App Store product identifier' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        )
+      }
+
+      if (body.tier && body.tier !== resolvedTier) {
+        return new Response(
+          JSON.stringify({ error: 'Subscription tier does not match App Store product identifier' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        )
+      }
+
       const profileUpdate = {
-        billing_plan: body.tier,
+        billing_plan: resolvedTier,
         subscription_status: body.status ?? 'active',
-        subscription_tier: body.tier,
+        subscription_tier: resolvedTier,
         subscription_current_period_end: body.expirationDate ?? null,
         subscription_provider: 'app_store',
         subscription_id: body.originalTransactionId,

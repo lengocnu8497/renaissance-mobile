@@ -340,8 +340,7 @@ struct SettingsView: View {
         if subscriptionStore.hasActiveSubscription {
             return true
         }
-        guard let plan = userProfile?.billingPlan else { return false }
-        return plan == .weekly || plan == .monthly || plan == .yearly
+        return SubscriptionAccessEvaluator.hasBackendPremiumAccess(userProfile)
     }
 
     private var resolvedSubscriptionStatus: SubscriptionStatus? {
@@ -365,6 +364,7 @@ struct SettingsView: View {
             return TierQuotaLimits.limits(for: tier)
         }
 
+        guard SubscriptionAccessEvaluator.hasBackendPremiumAccess(userProfile) else { return nil }
         guard let plan = userProfile?.billingPlan else { return nil }
         switch plan {
         case .free:

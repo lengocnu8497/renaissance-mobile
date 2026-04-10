@@ -33,8 +33,7 @@ class UsageTrackingService {
             .execute()
             .value
 
-        // Check if user has active subscription (not free tier)
-        guard profile.billingPlan == .weekly || profile.billingPlan == .monthly || profile.billingPlan == .yearly else {
+        guard SubscriptionAccessEvaluator.hasBackendPremiumAccess(profile) else {
             throw UsageTrackingError.noActiveSubscription
         }
 

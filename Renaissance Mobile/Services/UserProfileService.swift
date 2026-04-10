@@ -11,6 +11,7 @@ import Supabase
 /// Service for managing user profiles in Supabase
 class UserProfileService {
     private let supabase: SupabaseClient
+    private let transientProfileRetryDelayNs: UInt64 = 400_000_000
 
     init(supabase: SupabaseClient) {
         self.supabase = supabase
@@ -20,25 +21,30 @@ class UserProfileService {
 
     /// Get the current user's profile
     func getUserProfile() async throws -> UserProfile {
+        let response = try await fetchStoredUserProfile()
+        return try await hydrateProfileImageURL(for: response)
+    }
+
+    private func fetchStoredUserProfile() async throws -> UserProfile {
         guard let userId = supabase.auth.currentUser?.id else {
             throw UserProfileError.notAuthenticated
         }
 
-        do {
-            let response: UserProfile = try await supabase.database
+        let profiles: [UserProfile] = try await retryProfileFetchIfNeeded {
+            try await supabase.database
                 .from("user_profiles")
                 .select()
                 .eq("id", value: userId.uuidString)
-                .single()
                 .execute()
                 .value
-
-            return response
-        } catch {
-            // If profile doesn't exist, create it
-            print("Profile not found, creating new profile...")
-            return try await createUserProfile()
         }
+
+        if let profile = profiles.first {
+            return profile
+        }
+
+        print("Profile not found, creating new profile...")
+        return try await createUserProfile()
     }
 
     /// Create a new user profile (typically called after sign up)
@@ -62,7 +68,7 @@ class UserProfileService {
             .execute()
             .value
 
-        return response
+        return try await hydrateProfileImageURL(for: response)
     }
 
     /// Update user profile with all displayable fields
@@ -103,7 +109,7 @@ class UserProfileService {
             phoneNumber: phoneNumber ?? currentProfile.phoneNumber,
             zipCode: zipCode ?? currentProfile.zipCode,
             billingPlan: billingPlan ?? currentProfile.billingPlan,
-            profileImageUrl: profileImageUrl ?? currentProfile.profileImageUrl,
+            profileImageUrl: profileImageUrl ?? storedProfileImageReference(from: currentProfile.profileImageUrl),
             subscriptionStatus: currentProfile.subscriptionStatus,
             subscriptionCurrentPeriodEnd: currentProfile.subscriptionCurrentPeriodEnd,
             subscriptionProvider: currentProfile.subscriptionProvider,
@@ -137,7 +143,7 @@ class UserProfileService {
                 .value
 
             print("✅ Successfully updated user profile")
-            return response
+            return try await hydrateProfileImageURL(for: response)
         } catch {
             // If update fails, the profile might not exist, so create it
             print("❌ Database update error: \(error)")
@@ -154,7 +160,7 @@ class UserProfileService {
                 phoneNumber: phoneNumber,
                 zipCode: zipCode,
                 billingPlan: billingPlan ?? .free,
-                profileImageUrl: profileImageUrl,
+                profileImageUrl: profileImageUrl ?? storedProfileImageReference(from: currentProfile.profileImageUrl),
                 subscriptionStatus: currentProfile.subscriptionStatus,
                 subscriptionCurrentPeriodEnd: currentProfile.subscriptionCurrentPeriodEnd,
                 subscriptionProvider: currentProfile.subscriptionProvider,
@@ -180,7 +186,7 @@ class UserProfileService {
                 .execute()
                 .value
 
-            return response
+            return try await hydrateProfileImageURL(for: response)
         }
     }
 
@@ -195,16 +201,44 @@ class UserProfileService {
             throw UserProfileError.unauthorized
         }
 
+        let storedProfile = UserProfile(
+            id: profile.id,
+            fullName: profile.fullName,
+            email: profile.email,
+            phoneNumber: profile.phoneNumber,
+            zipCode: profile.zipCode,
+            billingPlan: profile.billingPlan,
+            profileImageUrl: storedProfileImageReference(from: profile.profileImageUrl),
+            subscriptionStatus: profile.subscriptionStatus,
+            subscriptionCurrentPeriodEnd: profile.subscriptionCurrentPeriodEnd,
+            subscriptionProvider: profile.subscriptionProvider,
+            subscriptionId: profile.subscriptionId,
+            appStoreProductId: profile.appStoreProductId,
+            appStoreOriginalTransactionId: profile.appStoreOriginalTransactionId,
+            appStoreEnvironment: profile.appStoreEnvironment,
+            createdAt: profile.createdAt,
+            updatedAt: profile.updatedAt,
+            metadata: profile.metadata,
+            gender: profile.gender,
+            ageRange: profile.ageRange,
+            raceEthnicity: profile.raceEthnicity,
+            aestheticGoals: profile.aestheticGoals,
+            proceduresOfInterest: profile.proceduresOfInterest,
+            previousProcedures: profile.previousProcedures,
+            healthFlags: profile.healthFlags,
+            bodyAreasOfInterest: profile.bodyAreasOfInterest
+        )
+
         let response: UserProfile = try await supabase.database
             .from("user_profiles")
-            .update(profile)
+            .update(storedProfile)
             .eq("id", value: userId.uuidString)
             .select()
             .single()
             .execute()
             .value
 
-        return response
+        return try await hydrateProfileImageURL(for: response)
     }
 
     /// Merge metadata keys into the current profile metadata payload.
@@ -223,7 +257,7 @@ class UserProfileService {
 
     // MARK: - Profile Image Management
 
-    /// Upload profile image to Supabase Storage and return URL
+    /// Upload profile image to Supabase Storage and return the storage path.
     func uploadProfileImage(_ imageData: Data, userId: UUID) async throws -> String {
         // Determine file extension from image data
         let fileExtension = getImageExtension(from: imageData)
@@ -232,19 +266,13 @@ class UserProfileService {
         // IMPORTANT: Use lowercased UUID to match auth.uid() in PostgreSQL policies
         let filePath = "\(userId.uuidString.lowercased())/profile.\(fileExtension)"
 
-        print("📤 Uploading profile image to: \(filePath)")
-        print("📤 User ID (lowercase): \(userId.uuidString.lowercased())")
-        print("📤 Image size: \(imageData.count) bytes")
-
         // Check if file already exists and delete it
         do {
             try await supabase.storage
                 .from("profile-image")
                 .remove(paths: [filePath])
-            print("🗑️ Deleted existing profile image")
         } catch {
-            // Ignore error if file doesn't exist
-            print("ℹ️ No existing profile image to delete: \(error.localizedDescription)")
+            // Ignore error if file doesn't exist.
         }
 
         // Upload to storage bucket
@@ -259,26 +287,15 @@ class UserProfileService {
                         upsert: true
                     )
                 )
-            print("✅ Successfully uploaded profile image")
         } catch {
-            print("❌ Storage upload error: \(error)")
-            print("❌ Error details: \(error.localizedDescription)")
             throw UserProfileError.uploadFailed
         }
-
-        // Generate a signed URL that expires in 1 year (for authenticated access)
-        // This allows the image to be displayed without making the bucket public
-        let signedURL = try await supabase.storage
-            .from("profile-image")
-            .createSignedURL(path: filePath, expiresIn: 31536000) // 1 year in seconds
-
-        print("🔗 Signed URL: \(signedURL.absoluteString)")
 
         // Clear old cached image for this user (if any exists)
         // This ensures the new image is fetched on next load
         ImageCache.shared.clearCache()
 
-        return signedURL.absoluteString
+        return filePath
     }
 
     /// Delete profile image from Supabase Storage
@@ -294,15 +311,13 @@ class UserProfileService {
             return // No image to delete
         }
 
-        // Extract file path from URL
-        guard let url = URL(string: imageUrl),
-              let pathComponents = url.pathComponents.dropFirst(3).joined(separator: "/") as String? else {
+        guard let path = storedProfileImageReference(from: imageUrl) else {
             throw UserProfileError.invalidImageUrl
         }
 
         try await supabase.storage
             .from("profile-image")
-            .remove(paths: [pathComponents])
+            .remove(paths: [path])
 
         // Update profile to remove image URL
         let currentProfile = try await getUserProfile()
@@ -314,6 +329,13 @@ class UserProfileService {
             zipCode: currentProfile.zipCode,
             billingPlan: currentProfile.billingPlan,
             profileImageUrl: nil,
+            subscriptionStatus: currentProfile.subscriptionStatus,
+            subscriptionCurrentPeriodEnd: currentProfile.subscriptionCurrentPeriodEnd,
+            subscriptionProvider: currentProfile.subscriptionProvider,
+            subscriptionId: currentProfile.subscriptionId,
+            appStoreProductId: currentProfile.appStoreProductId,
+            appStoreOriginalTransactionId: currentProfile.appStoreOriginalTransactionId,
+            appStoreEnvironment: currentProfile.appStoreEnvironment,
             createdAt: currentProfile.createdAt,
             updatedAt: Date(),
             metadata: currentProfile.metadata,
@@ -332,6 +354,77 @@ class UserProfileService {
             .update(updatedProfile)
             .eq("id", value: userId.uuidString)
             .execute()
+    }
+
+    private func hydrateProfileImageURL(for profile: UserProfile) async throws -> UserProfile {
+        guard let storedReference = storedProfileImageReference(from: profile.profileImageUrl) else {
+            return profile
+        }
+
+        let signedURL = try await supabase.storage
+            .from("profile-image")
+            .createSignedURL(path: storedReference, expiresIn: 3_600)
+
+        var hydrated = profile
+        hydrated.profileImageUrl = signedURL.absoluteString
+        return hydrated
+    }
+
+    private func storedProfileImageReference(from storedValue: String?) -> String? {
+        guard let storedValue, !storedValue.isEmpty else { return nil }
+
+        if !storedValue.contains("://") {
+            return storedValue
+        }
+
+        guard let url = URL(string: storedValue) else { return nil }
+        let components = url.pathComponents
+
+        if let bucketIndex = components.firstIndex(of: "profile-image"), bucketIndex + 1 < components.count {
+            return components[(bucketIndex + 1)...].joined(separator: "/")
+        }
+
+        return nil
+    }
+
+    private func retryProfileFetchIfNeeded<T>(
+        operation: @escaping () async throws -> T
+    ) async throws -> T {
+        do {
+            return try await operation()
+        } catch {
+            guard shouldRetryProfileFetch(for: error) else {
+                throw error
+            }
+
+            try? await Task.sleep(nanoseconds: transientProfileRetryDelayNs)
+            return try await operation()
+        }
+    }
+
+    private func shouldRetryProfileFetch(for error: Error) -> Bool {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .networkConnectionLost, .timedOut, .notConnectedToInternet, .cannotConnectToHost, .cannotFindHost:
+                return true
+            default:
+                return false
+            }
+        }
+
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain else { return false }
+
+        switch nsError.code {
+        case URLError.networkConnectionLost.rawValue,
+             URLError.timedOut.rawValue,
+             URLError.notConnectedToInternet.rawValue,
+             URLError.cannotConnectToHost.rawValue,
+             URLError.cannotFindHost.rawValue:
+            return true
+        default:
+            return false
+        }
     }
 
     // MARK: - Helper Methods

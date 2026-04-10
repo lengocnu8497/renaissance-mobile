@@ -37,9 +37,17 @@ class PaymentViewModel {
     var paymentSheet: PaymentSheet?
     var paymentSheetResult: PaymentSheetResult?
 
-    // Store payment details for backend confirmation
-    private var currentAmountCents: Int = 0
-    private var currentCurrency: String = "USD"
+    private struct PaymentQuote {
+        let amountCents: Int
+        let currency: String
+        let serverPriceId: String
+        let metadata: [String: String]
+    }
+
+    // Store payment details for backend confirmation.
+    // The server now treats serverPriceId as the source of truth and ignores
+    // client-supplied price data beyond display.
+    private var currentQuote: PaymentQuote?
 
     init() {
         STPAPIClient.shared.publishableKey = AppConfig.stripePublishableKey
@@ -51,20 +59,25 @@ class PaymentViewModel {
     /// - Parameters:
     ///   - amountCents: Amount in cents (e.g., 5000 = $50.00)
     ///   - currency: Currency code (default: "USD")
+    ///   - serverPriceId: Server-owned Stripe Price ID used as the source of truth
     ///   - metadata: Optional metadata to attach to the payment
     /// - Returns: True if preparation was successful
     func preparePaymentSheet(
         amountCents: Int,
         currency: String = "USD",
+        serverPriceId: String,
         metadata: [String: String]? = nil
     ) -> Bool {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
 
-        // Store payment details for backend confirmation
-        self.currentAmountCents = amountCents
-        self.currentCurrency = currency
+        currentQuote = PaymentQuote(
+            amountCents: amountCents,
+            currency: currency,
+            serverPriceId: serverPriceId,
+            metadata: metadata ?? [:]
+        )
 
         // Create IntentConfiguration with payment mode
         let intentConfig = PaymentSheet.IntentConfiguration(
@@ -73,12 +86,13 @@ class PaymentViewModel {
             guard let self = self else {
                 throw PaymentError.cancelled
             }
+            guard let quote = self.currentQuote else {
+                throw PaymentError.invalidResponse
+            }
             // Handle the confirmation token by sending it to your backend
             return try await self.handleConfirmationToken(
                 confirmationToken,
-                amountCents: self.currentAmountCents,
-                currency: self.currentCurrency,
-                metadata: metadata
+                quote: quote
             )
         }
 
@@ -134,15 +148,12 @@ class PaymentViewModel {
     /// This is called automatically by PaymentSheet after the user confirms payment
     private func handleConfirmationToken(
         _ confirmationToken: STPConfirmationToken,
-        amountCents: Int,
-        currency: String,
-        metadata: [String: String]?
+        quote: PaymentQuote
     ) async throws -> String {
         // Create request with confirmation token and payment details
         struct ConfirmPaymentRequest: Encodable {
             let confirmation_token: String
-            let amount_cents: Int
-            let currency: String
+            let price_id: String
             let metadata: [String: String]
         }
 
@@ -154,9 +165,8 @@ class PaymentViewModel {
 
         let requestBody = ConfirmPaymentRequest(
             confirmation_token: confirmationToken.stripeId,
-            amount_cents: amountCents,
-            currency: currency,
-            metadata: metadata ?? [:]
+            price_id: quote.serverPriceId,
+            metadata: quote.metadata
         )
 
         do {
@@ -171,7 +181,6 @@ class PaymentViewModel {
             // The callback expects a client secret in format: "pi_xxx_secret_xxx"
             return response.client_secret
         } catch {
-            print("Error confirming payment: \(error)")
             throw PaymentError.confirmationFailed(error.localizedDescription)
         }
     }

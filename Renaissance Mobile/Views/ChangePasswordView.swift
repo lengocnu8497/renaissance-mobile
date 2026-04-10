@@ -379,7 +379,10 @@ struct ForgotPasswordView: View {
         defer { isLoading = false }
 
         do {
-            try await supabase.auth.resetPasswordForEmail(email)
+            try await supabase.auth.resetPasswordForEmail(
+                email,
+                redirectTo: AppConfig.passwordResetURL
+            )
             successMessage = "Reset link sent! Check your email."
 
             // Dismiss after short delay

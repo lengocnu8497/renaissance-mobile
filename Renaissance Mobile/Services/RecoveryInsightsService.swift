@@ -104,8 +104,7 @@ class RecoveryInsightsService {
     /// Returns cached insights if the entry count matches (i.e., no new entries since last generation).
     func fetchCached(procedureId: String, currentEntryCount: Int) -> RecoveryInsights? {
         guard
-            let data = UserDefaults.standard.data(forKey: cacheKey(procedureId)),
-            let cached = try? JSONDecoder().decode(RecoveryInsights.self, from: data)
+            let cached = ProtectedLocalStore.load(RecoveryInsights.self, forKey: cacheKey(procedureId))
         else { return nil }
 
         // Invalidate if entry count has changed
@@ -113,19 +112,13 @@ class RecoveryInsightsService {
     }
 
     private func saveToCache(_ insights: RecoveryInsights) {
-        guard let data = try? JSONEncoder().encode(insights) else { return }
-        UserDefaults.standard.set(data, forKey: cacheKey(insights.procedureId))
+        try? ProtectedLocalStore.save(insights, forKey: cacheKey(insights.procedureId))
     }
 
     /// Returns the most recently generated cached insight across all procedures.
     /// Does not validate entry count — suitable for context injection only.
     func fetchMostRecentCached() -> RecoveryInsights? {
-        UserDefaults.standard.dictionaryRepresentation()
-            .filter { $0.key.hasPrefix(cachePrefix) }
-            .compactMap { _, value -> RecoveryInsights? in
-                guard let data = value as? Data else { return nil }
-                return try? JSONDecoder().decode(RecoveryInsights.self, from: data)
-            }
+        ProtectedLocalStore.loadAll(RecoveryInsights.self, withPrefix: cachePrefix)
             .max(by: { $0.generatedAt < $1.generatedAt })
     }
 

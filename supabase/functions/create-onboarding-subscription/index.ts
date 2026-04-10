@@ -13,7 +13,18 @@ const corsHeaders = {
 
 interface CreateOnboardingSubscriptionRequest {
   email: string
-  priceId: string
+  tier: 'weekly' | 'monthly' | 'yearly'
+}
+
+function resolvePriceIdForTier(tier: 'weekly' | 'monthly' | 'yearly'): string | null {
+  switch (tier) {
+    case 'weekly':
+      return Deno.env.get('STRIPE_PRICE_WEEKLY') ?? Deno.env.get('STRIPE_PRICE_SILVER')
+    case 'monthly':
+      return Deno.env.get('STRIPE_PRICE_MONTHLY') ?? Deno.env.get('STRIPE_PRICE_GOLD')
+    case 'yearly':
+      return Deno.env.get('STRIPE_PRICE_YEARLY') ?? Deno.env.get('STRIPE_PRICE_ANNUAL')
+  }
 }
 
 serve(async (req) => {
@@ -22,12 +33,20 @@ serve(async (req) => {
   }
 
   try {
-    const { email, priceId }: CreateOnboardingSubscriptionRequest = await req.json()
+    const { email, tier }: CreateOnboardingSubscriptionRequest = await req.json()
 
-    if (!email || !priceId) {
+    if (!email || !tier) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: email, priceId' }),
+        JSON.stringify({ error: 'Missing required fields: email, tier' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const priceId = resolvePriceIdForTier(tier)
+    if (!priceId) {
+      return new Response(
+        JSON.stringify({ error: 'Stripe price is not configured for this tier' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -37,7 +56,7 @@ serve(async (req) => {
     // Derive tier from price interval / amount so link-onboarding-subscription
     // can write the correct tier to user_profiles without needing price IDs.
     const interval = price.recurring?.interval
-    const tier: string = interval === 'year'  ? 'yearly'
+    const resolvedTier: string = interval === 'year'  ? 'yearly'
                        : interval === 'week'  ? 'weekly'
                        : 'monthly'
 
@@ -68,7 +87,7 @@ serve(async (req) => {
       metadata: {
         email,
         source: 'onboarding',
-        tier,
+        tier: resolvedTier,
       },
     })
 

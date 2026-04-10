@@ -42,7 +42,6 @@ class ImageCache {
 
         // Check memory cache first
         if let cachedImage = cache.object(forKey: key as NSString) {
-            print("📸 Image cache HIT (memory): \(url)")
             return cachedImage
         }
 
@@ -50,11 +49,8 @@ class ImageCache {
         if let diskImage = loadFromDisk(key: key) {
             // Store in memory for faster access next time
             cache.setObject(diskImage, forKey: key as NSString)
-            print("📸 Image cache HIT (disk): \(url)")
             return diskImage
         }
-
-        print("📸 Image cache MISS: \(url)")
         return nil
     }
 
@@ -69,8 +65,6 @@ class ImageCache {
         Task.detached(priority: .background) { [weak self] in
             self?.saveToDisk(image: image, key: key)
         }
-
-        print("📸 Image cached: \(url)")
     }
 
     /// Remove cached image for URL
@@ -83,8 +77,6 @@ class ImageCache {
         // Remove from disk
         let fileURL = cacheDirectory.appendingPathComponent(key)
         try? fileManager.removeItem(at: fileURL)
-
-        print("📸 Image removed from cache: \(url)")
     }
 
     /// Clear all cached images
@@ -95,8 +87,6 @@ class ImageCache {
         // Clear disk cache
         try? fileManager.removeItem(at: cacheDirectory)
         try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
-
-        print("📸 All cached images cleared")
     }
 
     // MARK: - Private Methods

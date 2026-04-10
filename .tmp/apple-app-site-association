@@ -1,0 +1,19 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "CDWQYPD23H.renaesthetic.com.Renaissance-Mobile"
+        ],
+        "components": [
+          {
+            "/": "/reset-password"
+          },
+          {
+            "/": "/reset-password/*"
+          }
+        ]
+      }
+    ]
+  }
+}
