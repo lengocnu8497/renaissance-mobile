@@ -13,8 +13,18 @@ const corsHeaders = {
 }
 
 interface CreateSubscriptionRequest {
-  priceId: string
   tier: 'weekly' | 'monthly' | 'yearly'
+}
+
+function resolvePriceIdForTier(tier: 'weekly' | 'monthly' | 'yearly'): string | null {
+  switch (tier) {
+    case 'weekly':
+      return Deno.env.get('STRIPE_PRICE_WEEKLY') ?? Deno.env.get('STRIPE_PRICE_SILVER')
+    case 'monthly':
+      return Deno.env.get('STRIPE_PRICE_MONTHLY') ?? Deno.env.get('STRIPE_PRICE_GOLD')
+    case 'yearly':
+      return Deno.env.get('STRIPE_PRICE_YEARLY') ?? Deno.env.get('STRIPE_PRICE_ANNUAL')
+  }
 }
 
 serve(async (req) => {
@@ -57,12 +67,20 @@ serve(async (req) => {
     }
 
     // Parse request body
-    const { priceId, tier }: CreateSubscriptionRequest = await req.json()
+    const { tier }: CreateSubscriptionRequest = await req.json()
 
-    if (!priceId || !tier) {
+    if (!tier) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: priceId, tier' }),
+        JSON.stringify({ error: 'Missing required field: tier' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const priceId = resolvePriceIdForTier(tier)
+    if (!priceId) {
+      return new Response(
+        JSON.stringify({ error: 'Stripe price is not configured for this tier' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 

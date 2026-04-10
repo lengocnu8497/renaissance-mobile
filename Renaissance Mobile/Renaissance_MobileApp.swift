@@ -54,6 +54,12 @@ struct Renaissance_MobileApp: App {
                     await authViewModel.handleDeepLink(url)
                 }
             }
+            .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                guard let url = activity.webpageURL else { return }
+                Task {
+                    await authViewModel.handleDeepLink(url)
+                }
+            }
             .task {
                 await subscriptionStore.prepare()
 

@@ -17,17 +17,33 @@ serve(async (req) => {
   }
 
   try {
-    const { priceIds }: { priceIds: string[] } = await req.json()
+    const { tiers }: { tiers: Array<'weekly' | 'monthly' | 'yearly'> } = await req.json()
 
-    if (!priceIds || priceIds.length === 0) {
+    if (!tiers || tiers.length === 0) {
       return new Response(
-        JSON.stringify({ error: 'Missing required field: priceIds' }),
+        JSON.stringify({ error: 'Missing required field: tiers' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
+    const priceIdForTier = (tier: 'weekly' | 'monthly' | 'yearly') => {
+      switch (tier) {
+        case 'weekly':
+          return Deno.env.get('STRIPE_PRICE_WEEKLY') ?? Deno.env.get('STRIPE_PRICE_SILVER')
+        case 'monthly':
+          return Deno.env.get('STRIPE_PRICE_MONTHLY') ?? Deno.env.get('STRIPE_PRICE_GOLD')
+        case 'yearly':
+          return Deno.env.get('STRIPE_PRICE_YEARLY') ?? Deno.env.get('STRIPE_PRICE_ANNUAL')
+      }
+    }
+
     const results = await Promise.all(
-      priceIds.map(async (priceId) => {
+      tiers.map(async (tier) => {
+        const priceId = priceIdForTier(tier)
+        if (!priceId) {
+          throw new Error(`Stripe price not configured for tier: ${tier}`)
+        }
+
         const price = await stripe.prices.retrieve(priceId)
         const dollars = (price.unit_amount ?? 0) / 100
         const interval = price.recurring?.interval
@@ -44,6 +60,7 @@ serve(async (req) => {
         }
 
         return {
+          tier,
           priceId,
           unitAmount: price.unit_amount ?? 0,
           currency: price.currency,

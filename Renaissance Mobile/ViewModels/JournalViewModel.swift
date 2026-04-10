@@ -666,11 +666,11 @@ class JournalViewModel {
         for group in groupedByProcedure {
             guard let procedureId = group.entries.first?.procedureId else { continue }
             do {
-                let summaries = try await weeklySummaryService.fetchRemoteSummaries(procedureId: procedureId)
-                for summary in summaries {
+                let remoteContent = try await weeklySummaryService.fetchRemoteContent(procedureId: procedureId)
+                for summary in remoteContent.summaries {
                     weeklySummaries[weeklySummaryKey(procedureId, summary.weekNumber)] = summary
                 }
-                weeklyStates[procedureId] = try await weeklySummaryService.fetchWeeklyStates(procedureId: procedureId)
+                weeklyStates[procedureId] = remoteContent.states
             } catch {
                 print("Remote weekly summary load failed for \(group.key): \(error)")
             }

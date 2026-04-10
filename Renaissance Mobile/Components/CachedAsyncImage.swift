@@ -61,7 +61,6 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
             let (data, _) = try await URLSession.shared.data(from: url)
 
             guard let downloadedImage = UIImage(data: data) else {
-                print("❌ Failed to create image from data")
                 return
             }
 
@@ -72,9 +71,7 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
             await MainActor.run {
                 self.image = downloadedImage
             }
-        } catch {
-            print("❌ Failed to load image: \(error.localizedDescription)")
-        }
+        } catch {}
     }
 }
 

@@ -203,7 +203,8 @@ struct PostLoginHomeView: View {
                 firstName = fullName.components(separatedBy: " ").first ?? fullName
             }
 
-            let subscribed = subscriptionStore.hasActiveSubscription || hasLegacyPaidSubscription(profile)
+            let subscribed = subscriptionStore.hasActiveSubscription
+                || SubscriptionAccessEvaluator.hasBackendPremiumAccess(profile)
             isSubscribed = subscribed
             journalViewModel.insightsEnabled = subscribed
             if !subscribed {
@@ -227,12 +228,6 @@ struct PostLoginHomeView: View {
         guard isSubscribed else { return }
         journalViewModel.loadCachedWeeklySummaries()
         await journalViewModel.loadRemoteWeeklySummaries()
-    }
-
-    private func hasLegacyPaidSubscription(_ profile: UserProfile) -> Bool {
-        profile.billingPlan == .weekly
-            || profile.billingPlan == .monthly
-            || profile.billingPlan == .yearly
     }
 
     private func requestValueMomentReviewIfNeeded() {

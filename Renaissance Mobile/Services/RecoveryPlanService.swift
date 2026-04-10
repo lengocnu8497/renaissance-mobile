@@ -317,10 +317,7 @@ final class RecoveryPlanService {
             return true
         }
 
-        guard let profile else { return false }
-        return profile.billingPlan == .weekly
-            || profile.billingPlan == .monthly
-            || profile.billingPlan == .yearly
+        return SubscriptionAccessEvaluator.hasBackendPremiumAccess(profile)
     }
 
     private func makeFallbackPhase(for input: RecoveryPlanInput) -> RecoveryPlanPhase {

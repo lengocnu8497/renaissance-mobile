@@ -106,6 +106,24 @@ struct OnboardingStore {
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: userScopedKey(key))
         defaults.removeObject(forKey: key)
+        ProtectedLocalStore.remove(forKey: userScopedKey(key))
+        ProtectedLocalStore.remove(forKey: key)
+    }
+
+    private static func protectedString(forKey key: String) -> String? {
+        ProtectedLocalStore.load(String.self, forKey: key)
+    }
+
+    private static func protectedDate(forKey key: String) -> Date? {
+        ProtectedLocalStore.load(Date.self, forKey: key)
+    }
+
+    private static func protectedArray(forKey key: String) -> [String] {
+        ProtectedLocalStore.load([String].self, forKey: key) ?? []
+    }
+
+    private static func setProtected<Value: Codable>(_ value: Value, forKey key: String) {
+        try? ProtectedLocalStore.save(value, forKey: key)
     }
 
     // MARK: - Completion Flag
@@ -122,27 +140,27 @@ struct OnboardingStore {
     // MARK: - Pending Procedure Data
 
     static var pendingProcedureName: String? {
-        UserDefaults.standard.string(forKey: userScopedKey(procedureNameKey))
+        protectedString(forKey: userScopedKey(procedureNameKey))
     }
 
     static var pendingProcedureDate: Date? {
-        UserDefaults.standard.object(forKey: userScopedKey(procedureDateKey)) as? Date
+        protectedDate(forKey: userScopedKey(procedureDateKey))
     }
 
     // MARK: - Pending Account Data
     static var pendingEmail: String? {
-        UserDefaults.standard.string(forKey: emailKey)
+        protectedString(forKey: emailKey)
     }
 
     static var pendingSubscriptionTier: SubscriptionTier? {
-        guard let rawValue = UserDefaults.standard.string(forKey: subscriptionTierKey) else {
+        guard let rawValue = protectedString(forKey: subscriptionTierKey) else {
             return nil
         }
         return SubscriptionTier(rawValue: rawValue)
     }
 
     static var pendingAcquisitionSource: AcquisitionSource? {
-        guard let rawValue = UserDefaults.standard.string(forKey: userScopedKey(acquisitionSourceKey)) else {
+        guard let rawValue = protectedString(forKey: userScopedKey(acquisitionSourceKey)) else {
             return nil
         }
         return AcquisitionSource(rawValue: rawValue)
@@ -156,16 +174,16 @@ struct OnboardingStore {
     // MARK: - Persisted Bootstrapped Procedure (survives app restarts)
 
     static var savedBootstrappedProcedureId: String? {
-        UserDefaults.standard.string(forKey: userScopedKey(bootstrappedIdKey))
+        protectedString(forKey: userScopedKey(bootstrappedIdKey))
     }
 
     static var savedBootstrappedProcedureName: String? {
-        UserDefaults.standard.string(forKey: userScopedKey(bootstrappedNameKey))
+        protectedString(forKey: userScopedKey(bootstrappedNameKey))
     }
 
     static func saveBootstrappedProcedure(id: String, name: String) {
-        UserDefaults.standard.set(id, forKey: userScopedKey(bootstrappedIdKey))
-        UserDefaults.standard.set(name, forKey: userScopedKey(bootstrappedNameKey))
+        setProtected(id, forKey: userScopedKey(bootstrappedIdKey))
+        setProtected(name, forKey: userScopedKey(bootstrappedNameKey))
     }
 
     static func clearBootstrappedProcedure() {
@@ -174,15 +192,15 @@ struct OnboardingStore {
     }
 
     static func savePendingEmail(_ email: String) {
-        UserDefaults.standard.set(email, forKey: emailKey)
+        setProtected(email, forKey: emailKey)
     }
 
     static func savePendingSubscriptionTier(_ tier: SubscriptionTier) {
-        UserDefaults.standard.set(tier.rawValue, forKey: subscriptionTierKey)
+        setProtected(tier.rawValue, forKey: subscriptionTierKey)
     }
 
     static func savePendingAcquisitionSource(_ source: AcquisitionSource) {
-        UserDefaults.standard.set(source.rawValue, forKey: userScopedKey(acquisitionSourceKey))
+        setProtected(source.rawValue, forKey: userScopedKey(acquisitionSourceKey))
     }
 
     static func preparePostOnboardingFeedback() {
@@ -224,13 +242,13 @@ struct OnboardingStore {
     }
 
     private static func clearPendingEmail() {
-        UserDefaults.standard.removeObject(forKey: emailKey)
+        ProtectedLocalStore.remove(forKey: emailKey)
         UserDefaults.standard.removeObject(forKey: "rena_onboarding_stripe_customer_id")
         UserDefaults.standard.removeObject(forKey: "rena_onboarding_stripe_subscription_id")
     }
 
     private static func clearPendingSubscriptionTier() {
-        UserDefaults.standard.removeObject(forKey: subscriptionTierKey)
+        ProtectedLocalStore.remove(forKey: subscriptionTierKey)
     }
 
     private static func clearPendingAcquisitionSource() {
@@ -239,24 +257,24 @@ struct OnboardingStore {
 
     // MARK: - Pending User Context (AI personalization)
 
-    static var pendingGender: String? { UserDefaults.standard.string(forKey: userScopedKey(genderKey)) }
-    static var pendingZipCode: String? { UserDefaults.standard.string(forKey: userScopedKey(zipCodeKey)) }
-    static var pendingAgeRange: String? { UserDefaults.standard.string(forKey: userScopedKey(ageRangeKey)) }
-    static var pendingRaceEthnicity: String? { UserDefaults.standard.string(forKey: userScopedKey(raceEthnicityKey)) }
+    static var pendingGender: String? { protectedString(forKey: userScopedKey(genderKey)) }
+    static var pendingZipCode: String? { protectedString(forKey: userScopedKey(zipCodeKey)) }
+    static var pendingAgeRange: String? { protectedString(forKey: userScopedKey(ageRangeKey)) }
+    static var pendingRaceEthnicity: String? { protectedString(forKey: userScopedKey(raceEthnicityKey)) }
     static var pendingAestheticGoals: [String] {
-        UserDefaults.standard.stringArray(forKey: userScopedKey(aestheticGoalsKey)) ?? []
+        protectedArray(forKey: userScopedKey(aestheticGoalsKey))
     }
     static var pendingProceduresOfInterest: [String] {
-        UserDefaults.standard.stringArray(forKey: userScopedKey(proceduresOfInterestKey)) ?? []
+        protectedArray(forKey: userScopedKey(proceduresOfInterestKey))
     }
     static var pendingPreviousProcedures: [String] {
-        UserDefaults.standard.stringArray(forKey: userScopedKey(previousProceduresKey)) ?? []
+        protectedArray(forKey: userScopedKey(previousProceduresKey))
     }
     static var pendingHealthFlags: [String] {
-        UserDefaults.standard.stringArray(forKey: userScopedKey(healthFlagsKey)) ?? []
+        protectedArray(forKey: userScopedKey(healthFlagsKey))
     }
     static var pendingBodyAreas: [String] {
-        UserDefaults.standard.stringArray(forKey: userScopedKey(bodyAreasKey)) ?? []
+        protectedArray(forKey: userScopedKey(bodyAreasKey))
     }
 
     static func saveUserContext(
@@ -270,16 +288,15 @@ struct OnboardingStore {
         healthFlags: [String],
         bodyAreas: [String]
     ) {
-        let ud = UserDefaults.standard
-        if let v = gender { ud.set(v, forKey: userScopedKey(genderKey)) }
-        if let v = zipCode, !v.isEmpty { ud.set(v, forKey: userScopedKey(zipCodeKey)) }
-        if let v = ageRange { ud.set(v, forKey: userScopedKey(ageRangeKey)) }
-        if let v = raceEthnicity { ud.set(v, forKey: userScopedKey(raceEthnicityKey)) }
-        ud.set(aestheticGoals, forKey: userScopedKey(aestheticGoalsKey))
-        ud.set(proceduresOfInterest, forKey: userScopedKey(proceduresOfInterestKey))
-        ud.set(previousProcedures, forKey: userScopedKey(previousProceduresKey))
-        ud.set(healthFlags, forKey: userScopedKey(healthFlagsKey))
-        ud.set(bodyAreas, forKey: userScopedKey(bodyAreasKey))
+        if let v = gender { setProtected(v, forKey: userScopedKey(genderKey)) }
+        if let v = zipCode, !v.isEmpty { setProtected(v, forKey: userScopedKey(zipCodeKey)) }
+        if let v = ageRange { setProtected(v, forKey: userScopedKey(ageRangeKey)) }
+        if let v = raceEthnicity { setProtected(v, forKey: userScopedKey(raceEthnicityKey)) }
+        setProtected(aestheticGoals, forKey: userScopedKey(aestheticGoalsKey))
+        setProtected(proceduresOfInterest, forKey: userScopedKey(proceduresOfInterestKey))
+        setProtected(previousProcedures, forKey: userScopedKey(previousProceduresKey))
+        setProtected(healthFlags, forKey: userScopedKey(healthFlagsKey))
+        setProtected(bodyAreas, forKey: userScopedKey(bodyAreasKey))
     }
 
     /// Writes any pending onboarding user-context to the Supabase profile.
@@ -344,8 +361,8 @@ struct OnboardingStore {
     // MARK: - Save
 
     static func save(procedureName: String, procedureDate: Date) {
-        UserDefaults.standard.set(procedureName, forKey: userScopedKey(procedureNameKey))
-        UserDefaults.standard.set(procedureDate, forKey: userScopedKey(procedureDateKey))
+        setProtected(procedureName, forKey: userScopedKey(procedureNameKey))
+        setProtected(procedureDate, forKey: userScopedKey(procedureDateKey))
     }
 
     // MARK: - Apply Post-Auth

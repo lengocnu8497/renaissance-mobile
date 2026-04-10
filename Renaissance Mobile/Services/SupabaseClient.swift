@@ -26,7 +26,7 @@ let supabase = SupabaseClient(
     supabaseKey: AppConfig.supabaseAnonKey,
     options: SupabaseClientOptions(
         auth: .init(
-            redirectToURL: URL(string: "renaissance://reset-callback"),
+            redirectToURL: AppConfig.passwordResetURL,
             flowType: .pkce,
             autoRefreshToken: true
         )

@@ -101,7 +101,8 @@ class JournalService {
         if let procedureId { query["procedure_id"] = "eq.\(procedureId)" }
         let req = try makeRequest(base + "/journal_entries", method: "GET", query: query)
         let data = try await execute(req)
-        return try Self.decoder.decode([JournalEntry].self, from: data)
+        let entries = try Self.decoder.decode([JournalEntry].self, from: data)
+        return try await hydratePhotoURLs(entries)
     }
 
     func fetchEntry(id: UUID) async throws -> JournalEntry {
@@ -114,7 +115,8 @@ class JournalService {
             accept: "application/vnd.pgrst.object+json"
         )
         let data = try await execute(req)
-        return try Self.decoder.decode(JournalEntry.self, from: data)
+        let entry = try Self.decoder.decode(JournalEntry.self, from: data)
+        return try await hydratePhotoURL(entry)
     }
 
     // MARK: - Create
@@ -137,10 +139,8 @@ class JournalService {
 
         let entryId = UUID()
         var photoPath: String?
-        var photoUrl: String?
-
         if let data = photoData {
-            (photoPath, photoUrl) = try await uploadPhoto(data, entryId: entryId, userId: userId)
+            photoPath = try await uploadPhoto(data, entryId: entryId, userId: userId)
         }
 
         let formatter = DateFormatter()
@@ -154,7 +154,6 @@ class JournalService {
             entryDate: formatter.string(from: entryDate),
             notes: notes,
             photoPath: photoPath,
-            photoUrl: photoUrl,
             painLevel: painLevel,
             bruisingLevel: bruisingLevel,
             swellingLevel: swellingLevel,
@@ -169,7 +168,8 @@ class JournalService {
             accept: "application/vnd.pgrst.object+json"
         )
         let data = try await execute(req)
-        return try Self.decoder.decode(JournalEntry.self, from: data)
+        let entry = try Self.decoder.decode(JournalEntry.self, from: data)
+        return try await hydratePhotoURL(entry)
     }
 
     // MARK: - Update
@@ -206,7 +206,7 @@ class JournalService {
 
     // MARK: - Photo Upload
 
-    func uploadPhoto(_ data: Data, entryId: UUID, userId: UUID) async throws -> (String, String) {
+    func uploadPhoto(_ data: Data, entryId: UUID, userId: UUID) async throws -> String {
         let ext = imageExtension(from: data)
         let path = "\(userId.uuidString.lowercased())/\(entryId.uuidString).\(ext)"
 
@@ -234,20 +234,7 @@ class JournalService {
             throw JournalError.uploadFailed
         }
 
-        // Request signed URL (1 year)
-        var signReq = URLRequest(url: URL(string: "\(storageBase)/object/sign/journals/\(path)")!)
-        signReq.httpMethod = "POST"
-        signReq.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        signReq.setValue(key, forHTTPHeaderField: "apikey")
-        signReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        signReq.httpBody = try JSONEncoder().encode(["expiresIn": 31_536_000])
-        let signData = try await execute(signReq)
-
-        struct SignResponse: Decodable { let signedURL: String }
-        let signedPath = try JSONDecoder().decode(SignResponse.self, from: signData).signedURL
-        let fullURL = AppConfig.supabaseURL + "/storage/v1" + signedPath
-
-        return (path, fullURL)
+        return path
     }
 
     private func deletePhoto(path: String) async throws {
@@ -256,6 +243,40 @@ class JournalService {
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue(key, forHTTPHeaderField: "apikey")
         _ = try await execute(req)
+    }
+
+    private func hydratePhotoURLs(_ entries: [JournalEntry]) async throws -> [JournalEntry] {
+        var hydrated: [JournalEntry] = []
+        hydrated.reserveCapacity(entries.count)
+
+        for entry in entries {
+            hydrated.append(try await hydratePhotoURL(entry))
+        }
+
+        return hydrated
+    }
+
+    private func hydratePhotoURL(_ entry: JournalEntry) async throws -> JournalEntry {
+        guard let path = entry.photoPath else { return entry }
+
+        var hydrated = entry
+        hydrated.photoUrl = try await createSignedJournalPhotoURL(path: path, expiresIn: 3_600)
+        return hydrated
+    }
+
+    private func createSignedJournalPhotoURL(path: String, expiresIn: Int) async throws -> String {
+        var signReq = URLRequest(url: URL(string: "\(storageBase)/object/sign/journals/\(path)")!)
+        signReq.httpMethod = "POST"
+        signReq.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        signReq.setValue(key, forHTTPHeaderField: "apikey")
+        signReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        signReq.httpBody = try JSONEncoder().encode(["expiresIn": expiresIn])
+
+        let signData = try await execute(signReq)
+
+        struct SignResponse: Decodable { let signedURL: String }
+        let signedPath = try JSONDecoder().decode(SignResponse.self, from: signData).signedURL
+        return AppConfig.supabaseURL + "/storage/v1" + signedPath
     }
 
     // MARK: - Helpers

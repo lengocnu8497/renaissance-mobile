@@ -16,7 +16,7 @@ struct JournalEntry: Identifiable, Codable {
     let entryDate: String       // "YYYY-MM-DD" — Supabase date columns return plain strings
     var notes: String?
     var photoPath: String?      // Supabase Storage path
-    var photoUrl: String?       // cached URL
+    var photoUrl: String?       // transient signed URL for display
 
     // Recovery metrics (0–10 scale stored as NUMERIC in DB)
     var painLevel: Double?      // maps to pain_index
@@ -77,7 +77,6 @@ struct JournalEntryInsert: Encodable {
     let entryDate: String       // ISO date string "YYYY-MM-DD"
     var notes: String?
     var photoPath: String?
-    var photoUrl: String?
     var painLevel: Int?         // maps to pain_index
     var bruisingLevel: Int?     // maps to bruising_index
     var swellingLevel: Int?     // maps to swelling_index
@@ -91,7 +90,6 @@ struct JournalEntryInsert: Encodable {
         case dayNumber     = "day_number"
         case entryDate     = "entry_date"
         case photoPath     = "photo_path"
-        case photoUrl      = "photo_url"
         case painLevel     = "pain_index"
         case bruisingLevel = "bruising_index"
         case swellingLevel = "swelling_index"
