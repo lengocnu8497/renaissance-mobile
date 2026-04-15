@@ -60,6 +60,10 @@ final class SubscriptionStore {
         currentEntitlement != nil
     }
 
+    func hasLoadedProduct(for tier: SubscriptionTier) -> Bool {
+        productsByTier[tier] != nil
+    }
+
     func prepare() async {
         if !hasPrepared {
             hasPrepared = true
@@ -81,8 +85,19 @@ final class SubscriptionStore {
     func purchase(_ tier: SubscriptionTier) async -> SubscriptionPurchaseOutcome {
         await loadProductsIfNeeded()
 
+        if productsByTier[tier] == nil {
+            await loadProducts(forceRefresh: true)
+            if productsByTier[tier] == nil {
+                let message = productsByTier.isEmpty
+                    ? "Subscription options are still loading. Please try again in a moment."
+                    : "This subscription is not available right now."
+                errorMessage = message
+                return .failed(message)
+            }
+        }
+
         guard let product = productsByTier[tier] else {
-            let message = "This subscription is not available right now."
+            let message = "Subscription options are still loading. Please try again in a moment."
             errorMessage = message
             return .failed(message)
         }
@@ -181,6 +196,14 @@ final class SubscriptionStore {
 
     private func loadProductsIfNeeded() async {
         guard productsByTier.count != AppConfig.subscriptionProductIDs.count else { return }
+        await loadProducts(forceRefresh: false)
+    }
+
+    private func loadProducts(forceRefresh: Bool) async {
+        if isLoadingProducts {
+            await waitForProductsLoadCompletion()
+            return
+        }
 
         isLoadingProducts = true
         defer { isLoadingProducts = false }
@@ -193,8 +216,18 @@ final class SubscriptionStore {
                     return (tier, product)
                 }
             )
+
+            if forceRefresh && productsByTier.isEmpty {
+                errorMessage = "Subscription options are still loading. Please try again in a moment."
+            }
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func waitForProductsLoadCompletion() async {
+        while isLoadingProducts {
+            await Task.yield()
         }
     }
 
@@ -420,37 +453,8 @@ class SubscriptionViewModel {
             )
         }
 
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
-
-        do {
-            struct CancelSubscriptionResponse: Decodable {
-                let success: Bool
-                let currentPeriodEnd: Int
-            }
-
-            let response: CancelSubscriptionResponse = try await supabase.functions.invoke(
-                "cancel-subscription",
-                options: FunctionInvokeOptions()
-            )
-
-            return CancelSubscriptionResult(
-                success: response.success,
-                periodEndDate: Date(timeIntervalSince1970: TimeInterval(response.currentPeriodEnd))
-            )
-        } catch let error as FunctionsError {
-            switch error {
-            case .httpError(_, let data):
-                errorMessage = String(data: data, encoding: .utf8) ?? "Server error"
-            case .relayError:
-                errorMessage = "Network relay error"
-            }
-            return CancelSubscriptionResult(success: false, periodEndDate: nil)
-        } catch {
-            errorMessage = error.localizedDescription
-            return CancelSubscriptionResult(success: false, periodEndDate: nil)
-        }
+        errorMessage = "No active App Store subscription was found on this device. Restore purchases first if your plan should still be active."
+        return CancelSubscriptionResult(success: false, periodEndDate: nil)
     }
 }
 

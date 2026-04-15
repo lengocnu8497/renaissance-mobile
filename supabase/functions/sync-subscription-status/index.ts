@@ -1,6 +1,13 @@
 import { serve } from 'https://deno.land/std@0.192.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
-import { tierForAppStoreProductId } from '../_shared/appStoreProducts.ts'
+import {
+  AppStoreSignedTransactionVerificationError,
+  decodeSignedTransactionPayload,
+  fetchAuthoritativeSubscriptionLookup,
+  normalizeEnvironment,
+  stringifyNumericIdentifier,
+} from './appStoreAuthoritativeLookup.ts'
+import { applyVerifiedAppStoreTransaction } from '../_shared/appStoreSubscriptionPersistence.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,13 +16,9 @@ const corsHeaders = {
 
 interface SyncSubscriptionRequest {
   isActive: boolean
-  tier?: 'weekly' | 'monthly' | 'yearly'
-  status?: 'active' | 'canceled' | 'past_due'
   productId?: string
   transactionId?: string
   originalTransactionId?: string
-  expirationDate?: string
-  environment?: 'sandbox' | 'production' | 'xcode'
   signedTransactionInfo?: string
 }
 
@@ -68,93 +71,53 @@ serve(async (req) => {
     }
 
     if (body.isActive) {
-      if (!body.productId || !body.transactionId || !body.originalTransactionId) {
+      if (!body.signedTransactionInfo) {
         return new Response(
-          JSON.stringify({ error: 'Missing required fields for active subscription sync' }),
+          JSON.stringify({ error: 'Missing signed transaction info for active subscription sync' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         )
       }
 
-      const resolvedTier = tierForAppStoreProductId(body.productId)
-      if (!resolvedTier) {
-        return new Response(
-          JSON.stringify({ error: 'Unknown App Store product identifier' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        )
+      const decodedPayload = decodeSignedTransactionPayload(body.signedTransactionInfo)
+      const authoritativeLookup = await fetchAuthoritativeSubscriptionLookup({
+        transactionId: body.transactionId
+          ?? stringifyNumericIdentifier(decodedPayload.transactionId)
+          ?? null,
+        originalTransactionId: body.originalTransactionId
+          ?? stringifyNumericIdentifier(decodedPayload.originalTransactionId)
+          ?? null,
+        signedTransactionInfo: body.signedTransactionInfo,
+        expectedUserId: user.id,
+        hintEnvironment: normalizeEnvironment(decodedPayload.environment),
+      })
+
+      const verifiedTransaction = authoritativeLookup.verifiedTransaction
+      if (!verifiedTransaction.isCurrentlyActive) {
+        throw new AppStoreSignedTransactionVerificationError('Authoritative App Store lookup returned an inactive subscription')
       }
 
-      if (body.tier && body.tier !== resolvedTier) {
-        return new Response(
-          JSON.stringify({ error: 'Subscription tier does not match App Store product identifier' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        )
-      }
+      console.log('app_store_sync_verified', {
+        userId: user.id,
+        productId: verifiedTransaction.productId,
+        tier: verifiedTransaction.tier,
+        originalTransactionId: verifiedTransaction.originalTransactionId,
+        transactionId: verifiedTransaction.transactionId,
+        environment: verifiedTransaction.environment,
+        isCurrentlyActive: verifiedTransaction.isCurrentlyActive,
+        authoritativeStatus: authoritativeLookup.status,
+      })
 
-      const profileUpdate = {
-        billing_plan: resolvedTier,
-        subscription_status: body.status ?? 'active',
-        subscription_tier: resolvedTier,
-        subscription_current_period_end: body.expirationDate ?? null,
-        subscription_provider: 'app_store',
-        subscription_id: body.originalTransactionId,
-        app_store_product_id: body.productId,
-        app_store_original_transaction_id: body.originalTransactionId,
-        app_store_environment: body.environment ?? null,
-      }
-
-      const { error: updateError } = await adminClient
-        .from('user_profiles')
-        .update(profileUpdate)
-        .eq('id', user.id)
-
-      if (updateError) {
-        throw updateError
-      }
-
-      const transactionRecord = {
-        id: body.transactionId,
-        user_id: user.id,
-        transaction_type: 'subscription',
-        amount_cents: 0,
-        currency: 'USD',
-        status: 'succeeded',
-        payment_provider: 'app_store',
-        subscription_id: body.originalTransactionId,
-        store_transaction_id: body.transactionId,
-        original_transaction_id: body.originalTransactionId,
-        metadata: {
-          product_id: body.productId,
-          app_store_environment: body.environment ?? null,
-          signed_transaction_info: body.signedTransactionInfo ?? null,
-        },
-      }
-
-      const { error: transactionError } = await adminClient
-        .from('transactions')
-        .upsert(transactionRecord, { onConflict: 'id' })
-
-      if (transactionError) {
-        throw transactionError
-      }
+      await applyVerifiedAppStoreTransaction(
+        adminClient,
+        user.id,
+        verifiedTransaction,
+        'client_sync',
+      )
     } else if (currentProfile?.subscription_provider === 'app_store') {
-      const { error: clearError } = await adminClient
-        .from('user_profiles')
-        .update({
-          billing_plan: 'free',
-          subscription_status: 'canceled',
-          subscription_tier: null,
-          subscription_current_period_end: null,
-          subscription_provider: 'app_store',
-          subscription_id: null,
-          app_store_product_id: null,
-          app_store_original_transaction_id: null,
-          app_store_environment: null,
-        })
-        .eq('id', user.id)
-
-      if (clearError) {
-        throw clearError
-      }
+      console.warn(
+        'Ignoring client-originated inactive App Store sync request until server-side lifecycle verification is authoritative',
+        { userId: user.id }
+      )
     }
 
     return new Response(
@@ -164,8 +127,18 @@ serve(async (req) => {
   } catch (error) {
     console.error('sync-subscription-status error:', error)
 
+    if (error instanceof AppStoreSignedTransactionVerificationError) {
+      console.warn('app_store_sync_verification_failed', {
+        message: error.message,
+      })
+      return new Response(
+        JSON.stringify({ error: error.message }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
     return new Response(
-      JSON.stringify({ error: error.message ?? 'Unknown error' }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   }

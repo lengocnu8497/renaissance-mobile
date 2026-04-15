@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(SubscriptionStore.self) private var subscriptionStore
     @State private var selectedTab = 0
     @State private var searchQuery: String = ""
     @State private var chatProcedureContext: Procedure? = nil
@@ -14,7 +15,10 @@ struct ContentView: View {
     @State private var chatSessionId: UUID = UUID()
     @State private var journalAddTrigger = false
     @State private var isKeyboardVisible = false
-    @State private var showOnboarding = !OnboardingStore.hasCompleted
+    @State private var showOnboarding = false
+    @State private var hasResolvedOnboardingState = false
+
+    private let userProfileService = UserProfileService(supabase: supabase)
 
     init() {
         UITabBar.appearance().isHidden = true
@@ -94,8 +98,16 @@ struct ContentView: View {
             isKeyboardVisible = false
         }
         .onAppear {
-            if !OnboardingStore.hasCompleted {
-                showOnboarding = true
+            if !hasResolvedOnboardingState {
+                showOnboarding = false
+            }
+        }
+        .task {
+            await resolveOnboardingPresentation()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .subscriptionStatusChanged)) { _ in
+            Task {
+                await resolveOnboardingPresentation()
             }
         }
         .fullScreenCover(isPresented: $showOnboarding) {
@@ -206,6 +218,40 @@ struct ProfileTabView: View {
         }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+    }
+}
+
+private extension ContentView {
+    @MainActor
+    func resolveOnboardingPresentation() async {
+        if OnboardingStore.hasCompleted {
+            hasResolvedOnboardingState = true
+            showOnboarding = false
+            return
+        }
+
+        await subscriptionStore.prepare()
+
+        if subscriptionStore.hasActiveSubscription {
+            OnboardingStore.hasCompleted = true
+            hasResolvedOnboardingState = true
+            showOnboarding = false
+            return
+        }
+
+        do {
+            let profile = try await userProfileService.getUserProfile()
+            if SubscriptionAccessEvaluator.hasBackendPremiumAccess(profile) {
+                OnboardingStore.hasCompleted = true
+                showOnboarding = false
+            } else {
+                showOnboarding = true
+            }
+        } catch {
+            showOnboarding = !OnboardingStore.hasCompleted
+        }
+
+        hasResolvedOnboardingState = true
     }
 }
 

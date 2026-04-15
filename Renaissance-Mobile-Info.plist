@@ -4,8 +4,6 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>Renaissance</string>
-	<key>StripePublishableKey</key>
-	<string>$(STRIPE_PUBLISHABLE_KEY)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Renaissance uses your camera to capture recovery photos for your personal journal.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

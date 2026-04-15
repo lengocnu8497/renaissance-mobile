@@ -9,6 +9,7 @@ import SwiftUI
 
 struct HelpSupportView: View {
     @State private var expandedSection: FAQSection? = nil
+    private let supportEmailAddress = "renaestheticslab@gmail.com"
 
     var body: some View {
         NavigationStack {
@@ -61,10 +62,7 @@ struct HelpSupportView: View {
                     section: .account,
                     isExpanded: expandedSection == .account,
                     onTap: {
-                        // Navigate to privacy policy URL
-                        if let url = URL(string: "https://www.renaesthetic.com/privacy-policy") {
-                            UIApplication.shared.open(url)
-                        }
+                        UIApplication.shared.open(AppConfig.privacyPolicyURL)
                     }
                 )
             }
@@ -80,16 +78,17 @@ struct HelpSupportView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Theme.Spacing.xs)
 
-            // Email Us Button
+            // Contact Support Button
             Button(action: {
-                // Handle email
+                guard let emailURL = URL(string: "mailto:\(supportEmailAddress)") else { return }
+                UIApplication.shared.open(emailURL)
             }) {
                 HStack(spacing: Theme.Spacing.md) {
                     Image(systemName: "envelope.fill")
                         .font(.system(size: 20))
                         .foregroundColor(Theme.Colors.primaryProfile)
 
-                    Text("Email us")
+                    Text("Contact Support")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundColor(Theme.Colors.primaryProfile)
                 }

@@ -372,9 +372,7 @@ struct ProfileView: View {
                     iconBackground: Color.white,
                     iconColor: ProfilePalette.primary
                 ) {
-                    if let url = URL(string: "https://www.renaesthetic.com/terms-of-service") {
-                        UIApplication.shared.open(url)
-                    }
+                    UIApplication.shared.open(AppConfig.termsOfUseURL)
                 }
             }
         }

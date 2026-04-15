@@ -612,34 +612,6 @@ struct CreatePaymentIntentResponse: Codable {
     }
 }
 
-/// Request model for creating a Subscription
-struct CreateSubscriptionRequest: Codable {
-    let priceId: String
-    let tier: String
-
-    enum CodingKeys: String, CodingKey {
-        case priceId = "price_id"
-        case tier
-    }
-}
-
-/// Response model from create-subscription Edge Function
-struct CreateSubscriptionResponse: Codable {
-    let clientSecret: String
-    let subscriptionId: String
-    let ephemeralKey: String
-    let customer: String
-    let publishableKey: String
-
-    enum CodingKeys: String, CodingKey {
-        case clientSecret = "client_secret"
-        case subscriptionId = "subscription_id"
-        case ephemeralKey = "ephemeral_key"
-        case customer
-        case publishableKey = "publishable_key"
-    }
-}
-
 // MARK: - Usage Tracking Models
 
 struct UsageQuota: Identifiable, Codable {

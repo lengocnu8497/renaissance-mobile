@@ -25,9 +25,8 @@ final class SoundHapticManager {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
-    /// Incoming swoosh — plays when assistant reply arrives
+    /// Haptic-only feedback when an assistant reply arrives
     func playReplyWoosh() {
-        AudioServicesPlaySystemSound(1032) // glass ping
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 }

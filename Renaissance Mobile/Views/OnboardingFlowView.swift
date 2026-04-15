@@ -206,10 +206,6 @@ struct OnboardingFlowView: View {
     @State private var screen = 0
     @State private var selectedProcedure: ProcedureOption? = nil
     @State private var selectedWhen: WhenOption? = nil
-    @State private var selectedPlan = 0
-
-    // Paywall / payment state
-    @State private var paymentVM = OnboardingPaymentViewModel()
     @State private var isSkippingSubscription = false
 
     // User context quiz state (screens 5–7)
@@ -225,17 +221,6 @@ struct OnboardingFlowView: View {
 
     private let userProfileService = UserProfileService(supabase: supabase)
     private let recoveryPlanService = RecoveryPlanService()
-
-    private var selectedPlanTier: SubscriptionTier {
-        switch selectedPlan {
-        case 1:
-            .monthly
-        case 2:
-            .weekly
-        default:
-            .yearly
-        }
-    }
 
     private let totalScreens = 9
 
@@ -603,203 +588,23 @@ struct OnboardingFlowView: View {
     // MARK: - Screen 7: Paywall
 
     private var paywallScreen: some View {
-        VStack(spacing: 0) {
-            ScrollView(showsIndicators: false) {
-                onboardingScreenCard {
-                    HStack(spacing: 12) {
-                        Color.clear
-                            .frame(width: 32, height: 32)
-
-                        Text("Unlock the full experience")
-                            .font(.custom("Manrope", size: 25))
-                            .fontWeight(.black)
-                            .foregroundColor(OnboardingPaywallUI.primaryInk)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-
-                        Button {
-                            Task {
-                                await completeOnboardingWithoutSubscription()
-                            }
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(OnboardingPaywallUI.primaryInk)
-                                .frame(width: 32, height: 32)
-                                .background(Color.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .stroke(Color.black.opacity(0.05), lineWidth: 1)
-                                )
-                                .opacity(0.82)
-                        }
-                    }
-                    .padding(.bottom, 14)
-
-                    VStack(spacing: 10) {
-                        onboardingFeaturedAnnualCard
-                        onboardingCompactPlanCard(
-                            name: "Monthly",
-                            price: paymentVM.monthlyPriceInfo?.displayPrice ?? "—",
-                            tierIndex: 1
-                        )
-                        onboardingCompactPlanCard(
-                            name: "Weekly",
-                            price: paymentVM.weeklyPriceInfo?.displayPrice ?? "—",
-                            tierIndex: 2
-                        )
-                    }
-                    .padding(.bottom, 12)
-                    .task { await paymentVM.fetchPrices() }
-
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text("What your plan unlocks")
-                            .font(.custom("PlusJakartaSans-SemiBold", size: 10))
-                            .tracking(2.3)
-                            .foregroundColor(OnboardingPaywallUI.muted)
-                            .textCase(.uppercase)
-
-                        VStack(spacing: 10) {
-                            unlockCard(
-                                icon: "ellipsis.message",
-                                tint: OnboardingPaywallUI.primarySoft,
-                                iconColor: OnboardingPaywallUI.primary,
-                                title: "Continue Ask Rena without interruptions"
-                            )
-                            unlockCard(
-                                icon: "chart.line.text.clipboard",
-                                tint: OnboardingPaywallUI.roseSoft,
-                                iconColor: OnboardingPaywallUI.roseDeep,
-                                title: "Turn your history into better guidance"
-                            )
-                            unlockCard(
-                                icon: "bookmark",
-                                tint: OnboardingPaywallUI.roseSoft.opacity(0.9),
-                                iconColor: OnboardingPaywallUI.roseDeep,
-                                title: "Get more value from every saved procedure"
-                            )
-                        }
-                    }
-                    .padding(16)
-                    .background(OnboardingPaywallUI.card)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 26)
-                            .stroke(OnboardingPaywallUI.roseSoft.opacity(0.8), lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-                    .padding(.bottom, 12)
-
-                    if let errorMessage = paymentVM.errorMessage, !errorMessage.isEmpty {
-                        Text(errorMessage)
-                            .font(.custom("PlusJakartaSans-Regular", size: 13))
-                            .foregroundColor(OnboardingPaywallUI.roseDeep)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(OnboardingPaywallUI.roseSoft.opacity(0.95))
-                            .cornerRadius(16)
-                            .padding(.bottom, 14)
-                    }
-
-                    Button {
-                        Task {
-                            await purchaseSelectedPlan()
-                        }
-                    } label: {
-                        Group {
-                            if paymentVM.isLoading {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            } else {
-                                Text("Subscribe")
-                                    .font(.custom("PlusJakartaSans-SemiBold", size: 15))
-                                    .foregroundColor(.white)
-                                    .tracking(0.3)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(OnboardingPaywallUI.primary.opacity(paymentVM.isLoading ? 0.6 : 1))
-                        .cornerRadius(24)
-                        .shadow(
-                            color: OnboardingPaywallUI.shadow,
-                            radius: 8, x: 0, y: 5
-                        )
-                    }
-                    .disabled(paymentVM.isLoading || isSkippingSubscription)
-                    .padding(.bottom, 10)
-
-                    Button {
-                        Task {
-                            await completeOnboardingWithoutSubscription()
-                        }
-                    } label: {
-                        Group {
-                            if isSkippingSubscription {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: OnboardingPaywallUI.primary))
-                            } else {
-                                Text("Maybe later")
-                                    .font(.custom("PlusJakartaSans-Regular", size: 13))
-                                    .foregroundColor(OnboardingPaywallUI.muted)
-                                    .underline()
-                            }
-                        }
-                        .font(.custom("PlusJakartaSans-Regular", size: 13))
-                        .foregroundColor(OnboardingPaywallUI.muted)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                    }
-                    .disabled(paymentVM.isLoading || isSkippingSubscription)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 2)
-
-                    VStack(spacing: 5) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "checkmark.seal.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(OnboardingPaywallUI.roseDeep)
-                            Text("100% money back")
-                                .font(.custom("PlusJakartaSans-SemiBold", size: 12))
-                                .foregroundColor(OnboardingPaywallUI.roseDeep)
-                        }
-                        Text("Cancel anytime. No questions asked.")
-                            .font(.custom("PlusJakartaSans-Regular", size: 11))
-                            .foregroundColor(OnboardingPaywallUI.muted)
-                    }
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .background(Color.white)
-                    .cornerRadius(24)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24)
-                            .stroke(Color.black.opacity(0.05), lineWidth: 1)
-                    )
-                    .padding(.top, 12)
+        SubscriptionPaywallView(
+            onDismiss: {
+                Task {
+                    await completeOnboardingWithoutSubscription()
                 }
-                .padding(.top, 18)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+            },
+            onSubscribed: {
+                Task {
+                    guard !isSkippingSubscription else { return }
+                    await OnboardingStore.syncUserContextIfNeeded(using: userProfileService)
+                    await OnboardingStore.syncAttributionIfNeeded(using: userProfileService)
+                    OnboardingStore.completePostOnboardingFeedback()
+                    finishOnboarding()
+                }
             }
-        }
+        )
         .background(OnboardingPaywallUI.bg.ignoresSafeArea())
-    }
-
-    @MainActor
-    private func purchaseSelectedPlan() async {
-        let outcome = await paymentVM.purchaseSubscription(tier: selectedPlanTier)
-
-        switch outcome {
-        case .success:
-            await OnboardingStore.syncUserContextIfNeeded(using: userProfileService)
-            await OnboardingStore.syncAttributionIfNeeded(using: userProfileService)
-            OnboardingStore.completePostOnboardingFeedback()
-            finishOnboarding()
-        case .pending, .cancelled, .failed:
-            break
-        }
     }
 
     @MainActor
@@ -1259,187 +1064,6 @@ struct OnboardingFlowView: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(isSelected ? OnboardingPaywallUI.primary.opacity(0.18) : Color.black.opacity(0.04), lineWidth: 1)
             )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var onboardingAnnualSupportText: String {
-        let annualPrice = paymentVM.yearlyPriceInfo?.displayPrice ?? "—"
-        return annualPrice == "—" ? "Billed yearly" : "About $17.99/mo billed yearly"
-    }
-
-    private func onboardingPlanDescription(for tierIndex: Int) -> String {
-        switch tierIndex {
-        case 0: return "Everything in Monthly at the strongest long-term value."
-        case 1: return "For consistent support across chat, research, and journal."
-        default: return "A lighter starting point for occasional AI help."
-        }
-    }
-
-    private func onboardingPlanPerks(for tierIndex: Int) -> [String] {
-        switch tierIndex {
-        case 0, 1: return ["210 AI credits"]
-        default: return ["80 AI credits"]
-        }
-    }
-
-    private func onboardingPlanUnit(for tierIndex: Int) -> String {
-        switch tierIndex {
-        case 0: return "/yr"
-        case 2: return "/wk"
-        default: return "/mo"
-        }
-    }
-
-    private func normalizedPriceText(_ rawPrice: String) -> String {
-        rawPrice
-            .replacingOccurrences(of: "/yr", with: "")
-            .replacingOccurrences(of: "/mo", with: "")
-            .replacingOccurrences(of: "/wk", with: "")
-            .replacingOccurrences(of: "/week", with: "")
-            .replacingOccurrences(of: "/month", with: "")
-            .replacingOccurrences(of: "/year", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func onboardingPriceDisplay(_ rawPrice: String, tierIndex: Int) -> some View {
-        HStack(alignment: .lastTextBaseline, spacing: 0) {
-            Text(rawPrice == "—" ? "—" : normalizedPriceText(rawPrice))
-                .font(.custom("Manrope", size: 18))
-                .fontWeight(.bold)
-                .foregroundColor(OnboardingPaywallUI.primaryInk)
-            Text(onboardingPlanUnit(for: tierIndex))
-                .font(.custom("PlusJakartaSans-SemiBold", size: 12))
-                .foregroundColor(OnboardingPaywallUI.muted)
-                .padding(.leading, 4)
-        }
-    }
-
-    private func onboardingSelectionDot(isSelected: Bool) -> some View {
-        ZStack {
-            Circle()
-                .stroke(isSelected ? OnboardingPaywallUI.primary : Color.black.opacity(0.10), lineWidth: 2)
-                .frame(width: 18, height: 18)
-            if isSelected {
-                Circle()
-                    .fill(OnboardingPaywallUI.primary)
-                    .frame(width: 18, height: 18)
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 6, height: 6)
-            }
-        }
-    }
-
-    private var onboardingFeaturedAnnualCard: some View {
-        let annualPrice = paymentVM.yearlyPriceInfo?.displayPrice ?? "—"
-        let isSelected = selectedPlan == 0
-        return Button { selectedPlan = 0 } label: {
-            VStack(alignment: .leading, spacing: 13) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 8) {
-                            Text("Annual")
-                                .font(.custom("Manrope", size: 17))
-                                .fontWeight(.bold)
-                                .foregroundColor(OnboardingPaywallUI.primaryInk)
-                            Text("Best Value")
-                                .font(.custom("PlusJakartaSans-Bold", size: 9))
-                                .foregroundColor(.white)
-                                .tracking(1.3)
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 4)
-                                .background(OnboardingPaywallUI.rose)
-                                .clipShape(Capsule())
-                        }
-                        Text(onboardingPlanDescription(for: 0))
-                            .font(.custom("PlusJakartaSans-Regular", size: 12))
-                            .foregroundColor(OnboardingPaywallUI.muted)
-                            .lineSpacing(3)
-                    }
-
-                    Spacer()
-                    onboardingSelectionDot(isSelected: isSelected)
-                        .padding(.top, 2)
-                }
-
-                HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        onboardingPriceDisplay(annualPrice, tierIndex: 0)
-                        Text(onboardingAnnualSupportText)
-                            .font(.custom("PlusJakartaSans-Regular", size: 11))
-                            .foregroundColor(OnboardingPaywallUI.roseDeep)
-                    }
-
-                    Spacer(minLength: 10)
-
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text("Includes")
-                            .font(.custom("PlusJakartaSans-SemiBold", size: 8))
-                            .tracking(1.6)
-                            .foregroundColor(OnboardingPaywallUI.muted)
-                            .textCase(.uppercase)
-                        Text(onboardingPlanPerks(for: 0).joined(separator: " • "))
-                            .font(.custom("PlusJakartaSans-SemiBold", size: 10))
-                            .foregroundColor(OnboardingPaywallUI.primaryInk)
-                            .multilineTextAlignment(.trailing)
-                    }
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 9)
-                    .background(OnboardingPaywallUI.roseSoft)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-            }
-            .padding(15)
-            .background(isSelected ? OnboardingPaywallUI.surface : Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .stroke(isSelected ? OnboardingPaywallUI.rose.opacity(0.42) : Color.black.opacity(0.05), lineWidth: 1)
-            )
-            .shadow(color: isSelected ? OnboardingPaywallUI.shadow.opacity(0.55) : Color.clear, radius: 7, x: 0, y: 3)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func onboardingCompactPlanCard(name: String, price: String, tierIndex: Int) -> some View {
-        let isSelected = selectedPlan == tierIndex
-        return Button { selectedPlan = tierIndex } label: {
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(name)
-                            .font(.custom("Manrope", size: 17))
-                            .fontWeight(.bold)
-                            .foregroundColor(OnboardingPaywallUI.primaryInk)
-                        Text(onboardingPlanDescription(for: tierIndex))
-                            .font(.custom("PlusJakartaSans-Regular", size: 11))
-                            .foregroundColor(OnboardingPaywallUI.muted)
-                            .lineSpacing(3)
-                    }
-                    Spacer()
-                    onboardingSelectionDot(isSelected: isSelected)
-                        .padding(.top, 2)
-                }
-
-                HStack(alignment: .lastTextBaseline) {
-                    onboardingPriceDisplay(price, tierIndex: tierIndex)
-                    Spacer()
-                    Text(onboardingPlanPerks(for: tierIndex).joined(separator: " • "))
-                        .font(.custom("PlusJakartaSans-SemiBold", size: 9))
-                        .foregroundColor(OnboardingPaywallUI.muted)
-                        .multilineTextAlignment(.trailing)
-                }
-            }
-            .padding(.horizontal, 15)
-            .padding(.vertical, 13)
-            .background(isSelected ? OnboardingPaywallUI.surface : Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .stroke(isSelected ? OnboardingPaywallUI.primary.opacity(0.34) : OnboardingPaywallUI.roseSoft.opacity(0.7), lineWidth: 1)
-            )
-            .shadow(color: isSelected ? OnboardingPaywallUI.shadow.opacity(0.45) : Color.clear, radius: 6, x: 0, y: 2)
         }
         .buttonStyle(.plain)
     }

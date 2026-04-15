@@ -29,6 +29,18 @@ class OnboardingPaymentViewModel {
     var weeklyPriceInfo: OnboardingPriceInfo? { priceInfo(for: .weekly) }
     var yearlyPlanPriceInfo: OnboardingPriceInfo? { yearlyPriceInfo }
 
+    func isPlanAvailable(_ tier: SubscriptionTier) -> Bool {
+        subscriptionStore.hasLoadedProduct(for: tier)
+    }
+
+    var isLoadingPlans: Bool {
+        isFetchingPrices || subscriptionStore.isLoadingProducts
+    }
+
+    var hasAnyAvailablePlan: Bool {
+        isPlanAvailable(.yearly) || isPlanAvailable(.monthly) || isPlanAvailable(.weekly)
+    }
+
     func fetchPrices() async {
         isFetchingPrices = true
         defer { isFetchingPrices = false }

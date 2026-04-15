@@ -243,8 +243,6 @@ struct OnboardingStore {
 
     private static func clearPendingEmail() {
         ProtectedLocalStore.remove(forKey: emailKey)
-        UserDefaults.standard.removeObject(forKey: "rena_onboarding_stripe_customer_id")
-        UserDefaults.standard.removeObject(forKey: "rena_onboarding_stripe_subscription_id")
     }
 
     private static func clearPendingSubscriptionTier() {
