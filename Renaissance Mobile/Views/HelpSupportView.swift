@@ -8,7 +8,9 @@
 import SwiftUI
 
 struct HelpSupportView: View {
-    @State private var expandedSection: FAQSection? = nil
+    @State private var showPricingPaywall = false
+
+    private let supportURL = URL(string: "https://renaesthetic.com/support")!
 
     var body: some View {
         NavigationStack {
@@ -35,6 +37,13 @@ struct HelpSupportView: View {
             .navigationBarBackButtonHidden(true)
             .toolbar(.hidden, for: .navigationBar)
             .forceUIKitNavigationBarHidden()
+            .fullScreenCover(isPresented: $showPricingPaywall) {
+                SubscriptionPaywallView(
+                    onDismiss: { showPricingPaywall = false },
+                    showsPurchaseCTA: false,
+                    showsRestoreButton: false
+                )
+            }
         }
     }
 
@@ -49,22 +58,15 @@ struct HelpSupportView: View {
             VStack(spacing: Theme.Spacing.lg) {
                 FAQItemView(
                     section: .payments,
-                    isExpanded: expandedSection == .payments,
                     onTap: {
-                        withAnimation {
-                            expandedSection = expandedSection == .payments ? nil : .payments
-                        }
+                        showPricingPaywall = true
                     }
                 )
 
                 FAQItemView(
                     section: .account,
-                    isExpanded: expandedSection == .account,
                     onTap: {
-                        // Navigate to privacy policy URL
-                        if let url = URL(string: "https://www.renaesthetic.com/privacy-policy") {
-                            UIApplication.shared.open(url)
-                        }
+                        UIApplication.shared.open(AppConfig.privacyPolicyURL)
                     }
                 )
             }
@@ -80,38 +82,38 @@ struct HelpSupportView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Theme.Spacing.xs)
 
-            // Email Us Button
+            // Contact Support Button
             Button(action: {
-                // Handle email
+                UIApplication.shared.open(supportURL)
             }) {
                 HStack(spacing: Theme.Spacing.md) {
                     Image(systemName: "envelope.fill")
                         .font(.system(size: 20))
-                        .foregroundColor(Theme.Colors.primaryProfile)
+                        .foregroundColor(.white)
 
-                    Text("Email us")
+                    Text("Contact Support")
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(Theme.Colors.primaryProfile)
+                        .foregroundColor(.white)
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
-                .background(Theme.Colors.primaryProfile.opacity(0.15))
+                .background(Theme.Colors.primaryProfile)
                 .cornerRadius(Theme.CornerRadius.large)
             }
+            .buttonStyle(.plain)
         }
     }
 }
 
 // MARK: - FAQ Section Enum
 enum FAQSection: String, CaseIterable {
-    case payments = "Payments & Pricing"
+    case payments = "Pricing"
     case account = "Account & Privacy"
 }
 
 // MARK: - FAQ Item View
 struct FAQItemView: View {
     let section: FAQSection
-    let isExpanded: Bool
     let onTap: () -> Void
 
     var body: some View {
@@ -123,7 +125,7 @@ struct FAQItemView: View {
 
                 Spacer()
 
-                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(Theme.Colors.textSecondary)
             }
@@ -136,6 +138,7 @@ struct FAQItemView: View {
                     .stroke(Theme.Colors.borderLight, lineWidth: 1)
             )
         }
+        .buttonStyle(.plain)
     }
 }
 

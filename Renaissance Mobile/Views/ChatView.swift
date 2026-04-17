@@ -35,9 +35,6 @@ struct ChatView: View {
     @State private var selectedImage: PhotosPickerItem?
     @State private var selectedImageData: Data?
     @State private var showQuotaExceeded = false
-    @State private var onboardingPaymentViewModel = OnboardingPaymentViewModel()
-    @State private var showPaymentError = false
-    @State private var paymentErrorMessage = ""
     @FocusState private var isTextFieldFocused: Bool
     @State private var isOnline = true
     @State private var hasInitialized = false
@@ -80,30 +77,19 @@ struct ChatView: View {
         .navigationBarHidden(true)
         .sheet(isPresented: $showQuotaExceeded) {
             QuotaExceededView(
-                reason: viewModel.quotaExceededReason ?? "You've exceeded your quota",
-                weeklyPrice: onboardingPaymentViewModel.weeklyPriceInfo?.displayPrice ?? "...",
-                monthlyPrice: onboardingPaymentViewModel.monthlyPriceInfo?.displayPrice ?? "...",
-                yearlyPrice: onboardingPaymentViewModel.yearlyPlanPriceInfo?.displayPrice ?? "...",
-                onUpgrade: { tier in
-                    await handleUpgrade(tier: tier)
-                },
                 onDismiss: {
+                    showQuotaExceeded = false
+                    viewModel.quotaExceeded = false
+                    viewModel.quotaExceededReason = nil
+                    viewModel.errorMessage = nil
+                },
+                onSubscribed: {
                     showQuotaExceeded = false
                     viewModel.quotaExceeded = false
                     viewModel.quotaExceededReason = nil
                     viewModel.errorMessage = nil
                 }
             )
-            .task {
-                if onboardingPaymentViewModel.weeklyPriceInfo == nil {
-                    await onboardingPaymentViewModel.fetchPrices()
-                }
-            }
-        }
-        .alert("Payment Error", isPresented: $showPaymentError) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(paymentErrorMessage)
         }
         .onChange(of: viewModel.quotaExceeded) { _, exceeded in
             if exceeded {
@@ -163,25 +149,6 @@ struct ChatView: View {
         // Send message through ViewModel
         Task {
             await viewModel.sendMessage(text.isEmpty ? "What do you think about this photo?" : text, imageData: imageData)
-        }
-    }
-
-    private func handleUpgrade(tier: SubscriptionTier) async {
-        let result = await onboardingPaymentViewModel.purchaseSubscription(tier: tier)
-        switch result {
-        case .success:
-            showQuotaExceeded = false
-            viewModel.quotaExceeded = false
-            viewModel.quotaExceededReason = nil
-            viewModel.errorMessage = nil
-        case .cancelled:
-            break
-        case .pending:
-            paymentErrorMessage = onboardingPaymentViewModel.errorMessage ?? "Your App Store purchase is pending approval."
-            showPaymentError = true
-        case .failed(let message):
-            paymentErrorMessage = message
-            showPaymentError = true
         }
     }
 

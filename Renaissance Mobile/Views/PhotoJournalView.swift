@@ -66,11 +66,8 @@ struct PhotoJournalView: View {
     @State private var showReminderSet = false
     @State private var upcomingReminders: [TreatmentReminder] = []
     @State private var reminderPromptItem: ReminderPromptItem? = nil
-    @State private var onboardingPaymentViewModel = OnboardingPaymentViewModel()
     @State private var showPaywall = false
     @State private var isSubscribed = false
-    @State private var paymentErrorMessage = ""
-    @State private var showPaymentError = false
 
     private let userProfileService = UserProfileService(supabase: supabase)
 
@@ -195,23 +192,23 @@ struct PhotoJournalView: View {
         }
         .sheet(isPresented: $showPaywall) {
             QuotaExceededView(
-                reason: "Subscribe to unlock AI-powered recovery insights personalized to your healing journey.",
-                weeklyPrice: onboardingPaymentViewModel.weeklyPriceInfo?.displayPrice ?? "...",
-                monthlyPrice: onboardingPaymentViewModel.monthlyPriceInfo?.displayPrice ?? "...",
-                yearlyPrice: onboardingPaymentViewModel.yearlyPlanPriceInfo?.displayPrice ?? "...",
-                onUpgrade: { tier in await handleUpgrade(tier: tier) },
-                onDismiss: { showPaywall = false }
-            )
-            .task {
-                if onboardingPaymentViewModel.weeklyPriceInfo == nil {
-                    await onboardingPaymentViewModel.fetchPrices()
+                onDismiss: { showPaywall = false },
+                onSubscribed: {
+                    showPaywall = false
+                    isSubscribed = true
+                    vm.insightsEnabled = true
+                    vm.loadCachedInsights()
+                    vm.loadCachedWeeklySummaries()
+                    Task {
+                        await vm.loadRemoteWeeklySummaries()
+                        for group in vm.groupedByProcedure where group.entries.count >= 2 {
+                            guard let procedureId = group.entries.first?.procedureId,
+                                  vm.insights[procedureId] == nil else { continue }
+                            await vm.refreshInsights(for: procedureId, procedureName: group.key)
+                        }
+                    }
                 }
-            }
-        }
-        .alert("Payment Error", isPresented: $showPaymentError) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(paymentErrorMessage)
+            )
         }
         .alert("Reminder Set", isPresented: $showReminderSet) {
             Button("OK", role: .cancel) {}
@@ -530,34 +527,6 @@ struct PhotoJournalView: View {
             isSubscribed = false
             vm.insightsEnabled = false
             vm.clearAIOutputs()
-        }
-    }
-
-    private func handleUpgrade(tier: SubscriptionTier) async {
-        let result = await onboardingPaymentViewModel.purchaseSubscription(tier: tier)
-
-        switch result {
-        case .success:
-            showPaywall = false
-            isSubscribed = true
-            vm.insightsEnabled = true
-            vm.loadCachedInsights()
-            vm.loadCachedWeeklySummaries()
-            await vm.loadRemoteWeeklySummaries()
-            // Generate insights for every eligible procedure now that user is subscribed
-            for group in vm.groupedByProcedure where group.entries.count >= 2 {
-                guard let procedureId = group.entries.first?.procedureId,
-                      vm.insights[procedureId] == nil else { continue }
-                await vm.refreshInsights(for: procedureId, procedureName: group.key)
-            }
-        case .pending:
-            paymentErrorMessage = onboardingPaymentViewModel.errorMessage ?? "Your App Store purchase is pending approval."
-            showPaymentError = true
-        case .failed(let message):
-            paymentErrorMessage = message
-            showPaymentError = true
-        case .cancelled:
-            break
         }
     }
 

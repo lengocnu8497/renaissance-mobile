@@ -23,6 +23,12 @@ class UsageViewModel {
 
     // MARK: - Fetch Usage
 
+    func clearUsage() {
+        currentUsage = nil
+        errorMessage = nil
+        isLoading = false
+    }
+
     func fetchUsage() async {
         isLoading = true
         errorMessage = nil
@@ -30,7 +36,11 @@ class UsageViewModel {
 
         do {
             currentUsage = try await usageService.getCurrentUsage()
+        } catch UsageTrackingError.noActiveSubscription {
+            currentUsage = nil
+            errorMessage = nil
         } catch {
+            currentUsage = nil
             errorMessage = error.localizedDescription
             print("Failed to fetch usage: \(error)")
         }

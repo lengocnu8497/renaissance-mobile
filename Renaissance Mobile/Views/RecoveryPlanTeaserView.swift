@@ -24,17 +24,22 @@ private enum RecoveryPlanTeaserUI {
 
 struct RecoveryPlanTeaserView: View {
     @State private var viewModel: RecoveryPlanViewModel
+    @State private var hasNotifiedPlanReady = false
+    private let stickyBottomPadding: CGFloat = 112
 
     private let journalViewModel: JournalViewModel?
     private let onUnlock: () -> Void
+    private let onPlanReady: (() -> Void)?
 
     init(
         viewModel: RecoveryPlanViewModel? = nil,
         journalViewModel: JournalViewModel? = nil,
+        onPlanReady: (() -> Void)? = nil,
         onUnlock: @escaping () -> Void
     ) {
         _viewModel = State(initialValue: viewModel ?? RecoveryPlanViewModel())
         self.journalViewModel = journalViewModel
+        self.onPlanReady = onPlanReady
         self.onUnlock = onUnlock
     }
 
@@ -53,13 +58,34 @@ struct RecoveryPlanTeaserView: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 16)
-            .padding(.bottom, 28)
+            .padding(.bottom, stickyBottomPadding)
         }
         .background(background.ignoresSafeArea())
+        .safeAreaInset(edge: .bottom) {
+            if viewModel.hasPlan {
+                blendedUnlockCTA
+            }
+        }
         .task {
             guard !viewModel.hasPlan, !viewModel.isLoading else { return }
             await viewModel.load(journalViewModel: journalViewModel)
+            notifyPlanReadyIfNeeded()
         }
+        .onAppear {
+            notifyPlanReadyIfNeeded()
+        }
+        .onChange(of: viewModel.hasPlan) { _, hasPlan in
+            guard hasPlan else { return }
+            notifyPlanReadyIfNeeded()
+        }
+    }
+
+    private func notifyPlanReadyIfNeeded() {
+        guard viewModel.hasPlan else { return }
+        guard !hasNotifiedPlanReady else { return }
+
+        hasNotifiedPlanReady = true
+        onPlanReady?()
     }
 
     private var background: some View {
@@ -103,19 +129,6 @@ struct RecoveryPlanTeaserView: View {
 
                 VStack(alignment: .leading, spacing: 14) {
                     roadmapTimeline(for: plan)
-
-                    Button(action: onUnlock) {
-                        Text("Unlock My Full Recovery Plan")
-                            .font(.custom("Manrope", size: 16).weight(.semibold))
-                            .foregroundStyle(Color.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 17)
-                            .background(
-                                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                    .fill(RecoveryPlanTeaserUI.primary)
-                            )
-                    }
-                    .buttonStyle(.plain)
                 }
                 .padding(16)
             }
@@ -276,6 +289,34 @@ struct RecoveryPlanTeaserView: View {
                     .stroke(RecoveryPlanTeaserUI.line, lineWidth: 1)
             )
             .shadow(color: RecoveryPlanTeaserUI.shadow, radius: 22, x: 0, y: 10)
+    }
+
+    private var blendedUnlockCTA: some View {
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [Color.clear, RecoveryPlanTeaserUI.bg.opacity(0.96)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 24)
+
+            Button(action: onUnlock) {
+                Text("Unlock My Full Recovery Plan")
+                    .font(.custom("Manrope", size: 16).weight(.semibold))
+                    .foregroundStyle(Color.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 17)
+                    .background(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .fill(RecoveryPlanTeaserUI.primary)
+                    )
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
+            .background(RecoveryPlanTeaserUI.bg.opacity(0.96))
+        }
     }
 
     private func phaseAccess(for phase: RecoveryPlanPhase, index: Int) -> PhaseAccess {

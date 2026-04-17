@@ -129,6 +129,23 @@ class AuthViewModel {
         }
     }
 
+    func handleLocalAccountRemoval() async {
+        isLoading = true
+        errorMessage = nil
+
+        defer { isLoading = false }
+
+        do {
+            try await supabase.auth.signOut()
+        } catch {
+            print("Local sign out after account deletion failed: \(error)")
+        }
+
+        currentUser = nil
+        isAuthenticated = false
+        showUpdatePassword = false
+    }
+
     // MARK: - Password Reset
 
     func resetPassword(email: String) async {

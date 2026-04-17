@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ProfileView: View {
     @Environment(AuthViewModel.self) private var authViewModel
+    @Environment(SubscriptionStore.self) private var subscriptionStore
     @State private var showEditProfile = false
     @State private var showSettings = false
     @State private var showPasswordSecurity = false
@@ -114,8 +115,14 @@ struct ProfileView: View {
     // MARK: - Profile Loading
 
     private func loadData() async {
+        await subscriptionStore.prepare()
         await loadProfile()
-        await usageViewModel.fetchUsage()
+
+        if isPaidPlan {
+            await usageViewModel.fetchUsage()
+        } else {
+            usageViewModel.clearUsage()
+        }
     }
 
     /// Load user profile from database
@@ -331,7 +338,7 @@ struct ProfileView: View {
                 }
 
                 profileActionRow(
-                    title: "Settings",
+                    title: "Subscription",
                     icon: "gearshape",
                     iconBackground: Color.white,
                     iconColor: ProfilePalette.roseDeep
@@ -372,9 +379,7 @@ struct ProfileView: View {
                     iconBackground: Color.white,
                     iconColor: ProfilePalette.primary
                 ) {
-                    if let url = URL(string: "https://www.renaesthetic.com/terms-of-service") {
-                        UIApplication.shared.open(url)
-                    }
+                    UIApplication.shared.open(AppConfig.termsOfUseURL)
                 }
             }
         }
@@ -436,13 +441,6 @@ struct ProfileView: View {
         Button(action: action) {
             HStack(spacing: 14) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(iconBackground)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(Color.white.opacity(0.55), lineWidth: 1)
-                        )
-
                     Image(systemName: icon)
                         .font(.system(size: 19, weight: .medium))
                         .foregroundStyle(iconColor)
@@ -494,21 +492,36 @@ struct ProfileView: View {
     }
 
     private var planBadgeText: String? {
-        guard let plan = userProfile?.billingPlan else { return nil }
-        if plan == .free {
+        if !isPaidPlan {
             return "Free plan"
         }
 
-        if let status = userProfile?.subscriptionStatus {
-            return "\(plan.displayName) plan \(statusDisplayName(for: status))"
+        if let status = resolvedSubscriptionStatus {
+            return "\(resolvedPlanDisplayName) plan \(statusDisplayName(for: status))"
         }
 
-        return "\(plan.displayName) plan"
+        return "\(resolvedPlanDisplayName) plan"
+    }
+
+    private var resolvedPlanDisplayName: String {
+        resolvedSubscriptionState.planDisplayName
     }
 
     private var isPaidPlan: Bool {
-        guard let plan = userProfile?.billingPlan else { return false }
-        return plan == .weekly || plan == .monthly || plan == .yearly
+        resolvedSubscriptionState.hasPremiumAccess
+    }
+
+    private var resolvedSubscriptionStatus: SubscriptionStatus? {
+        resolvedSubscriptionState.status
+    }
+
+    private var resolvedSubscriptionState: SubscriptionAccessEvaluator.ResolvedSubscriptionState {
+        SubscriptionAccessEvaluator.resolvedState(
+            userProfile,
+            localTier: subscriptionStore.activeTier,
+            localStatus: subscriptionStore.subscriptionStatus,
+            localHasActiveSubscription: subscriptionStore.hasActiveSubscription
+        )
     }
 
     private var usagePercentage: Int {

@@ -13,6 +13,44 @@ class UserProfileService {
     private let supabase: SupabaseClient
     private let transientProfileRetryDelayNs: UInt64 = 400_000_000
 
+    private struct UserProfileUpdatePayload: Encodable {
+        let id: UUID
+        let fullName: String?
+        let email: String?
+        let phoneNumber: String?
+        let zipCode: String?
+        let profileImageUrl: String?
+        let updatedAt: Date
+        let metadata: [String: AnyCodable]?
+        let gender: String?
+        let ageRange: String?
+        let raceEthnicity: String?
+        let aestheticGoals: [String]?
+        let proceduresOfInterest: [String]?
+        let previousProcedures: [String]?
+        let healthFlags: [String]?
+        let bodyAreasOfInterest: [String]?
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case fullName = "full_name"
+            case email
+            case phoneNumber = "phone_number"
+            case zipCode = "zip_code"
+            case profileImageUrl = "profile_image_url"
+            case updatedAt = "updated_at"
+            case metadata
+            case gender
+            case ageRange = "age_range"
+            case raceEthnicity = "race_ethnicity"
+            case aestheticGoals = "aesthetic_goals"
+            case proceduresOfInterest = "procedures_of_interest"
+            case previousProcedures = "previous_procedures"
+            case healthFlags = "health_flags"
+            case bodyAreasOfInterest = "body_areas_of_interest"
+        }
+    }
+
     init(supabase: SupabaseClient) {
         self.supabase = supabase
     }
@@ -31,7 +69,7 @@ class UserProfileService {
         }
 
         let profiles: [UserProfile] = try await retryProfileFetchIfNeeded {
-            try await supabase.database
+            try await self.supabase.database
                 .from("user_profiles")
                 .select()
                 .eq("id", value: userId.uuidString)
@@ -77,7 +115,6 @@ class UserProfileService {
         email: String? = nil,
         phoneNumber: String? = nil,
         zipCode: String? = nil,
-        billingPlan: BillingPlan? = nil,
         profileImageData: Data? = nil,
         gender: String? = nil,
         ageRange: String? = nil,
@@ -108,8 +145,9 @@ class UserProfileService {
             email: email ?? currentProfile.email,
             phoneNumber: phoneNumber ?? currentProfile.phoneNumber,
             zipCode: zipCode ?? currentProfile.zipCode,
-            billingPlan: billingPlan ?? currentProfile.billingPlan,
+            billingPlan: currentProfile.billingPlan,
             profileImageUrl: profileImageUrl ?? storedProfileImageReference(from: currentProfile.profileImageUrl),
+            subscriptionTier: currentProfile.subscriptionTier,
             subscriptionStatus: currentProfile.subscriptionStatus,
             subscriptionCurrentPeriodEnd: currentProfile.subscriptionCurrentPeriodEnd,
             subscriptionProvider: currentProfile.subscriptionProvider,
@@ -135,7 +173,7 @@ class UserProfileService {
             print("💾 Updating user profile in database for user: \(userId.uuidString)")
             let response: UserProfile = try await supabase.database
                 .from("user_profiles")
-                .update(updatedProfile)
+                .update(makeUpdatePayload(from: updatedProfile))
                 .eq("id", value: userId.uuidString)
                 .select()
                 .single()
@@ -159,8 +197,9 @@ class UserProfileService {
                 email: userEmail,
                 phoneNumber: phoneNumber,
                 zipCode: zipCode,
-                billingPlan: billingPlan ?? .free,
+                billingPlan: currentProfile.billingPlan,
                 profileImageUrl: profileImageUrl ?? storedProfileImageReference(from: currentProfile.profileImageUrl),
+                subscriptionTier: currentProfile.subscriptionTier,
                 subscriptionStatus: currentProfile.subscriptionStatus,
                 subscriptionCurrentPeriodEnd: currentProfile.subscriptionCurrentPeriodEnd,
                 subscriptionProvider: currentProfile.subscriptionProvider,
@@ -209,6 +248,7 @@ class UserProfileService {
             zipCode: profile.zipCode,
             billingPlan: profile.billingPlan,
             profileImageUrl: storedProfileImageReference(from: profile.profileImageUrl),
+            subscriptionTier: profile.subscriptionTier,
             subscriptionStatus: profile.subscriptionStatus,
             subscriptionCurrentPeriodEnd: profile.subscriptionCurrentPeriodEnd,
             subscriptionProvider: profile.subscriptionProvider,
@@ -231,7 +271,7 @@ class UserProfileService {
 
         let response: UserProfile = try await supabase.database
             .from("user_profiles")
-            .update(storedProfile)
+            .update(makeUpdatePayload(from: storedProfile))
             .eq("id", value: userId.uuidString)
             .select()
             .single()
@@ -329,6 +369,7 @@ class UserProfileService {
             zipCode: currentProfile.zipCode,
             billingPlan: currentProfile.billingPlan,
             profileImageUrl: nil,
+            subscriptionTier: currentProfile.subscriptionTier,
             subscriptionStatus: currentProfile.subscriptionStatus,
             subscriptionCurrentPeriodEnd: currentProfile.subscriptionCurrentPeriodEnd,
             subscriptionProvider: currentProfile.subscriptionProvider,
@@ -351,7 +392,7 @@ class UserProfileService {
 
         _ = try await supabase.database
             .from("user_profiles")
-            .update(updatedProfile)
+            .update(makeUpdatePayload(from: updatedProfile))
             .eq("id", value: userId.uuidString)
             .execute()
     }
@@ -385,6 +426,27 @@ class UserProfileService {
         }
 
         return nil
+    }
+
+    private func makeUpdatePayload(from profile: UserProfile) -> UserProfileUpdatePayload {
+        UserProfileUpdatePayload(
+            id: profile.id,
+            fullName: profile.fullName,
+            email: profile.email,
+            phoneNumber: profile.phoneNumber,
+            zipCode: profile.zipCode,
+            profileImageUrl: storedProfileImageReference(from: profile.profileImageUrl),
+            updatedAt: profile.updatedAt,
+            metadata: profile.metadata,
+            gender: profile.gender,
+            ageRange: profile.ageRange,
+            raceEthnicity: profile.raceEthnicity,
+            aestheticGoals: profile.aestheticGoals,
+            proceduresOfInterest: profile.proceduresOfInterest,
+            previousProcedures: profile.previousProcedures,
+            healthFlags: profile.healthFlags,
+            bodyAreasOfInterest: profile.bodyAreasOfInterest
+        )
     }
 
     private func retryProfileFetchIfNeeded<T>(

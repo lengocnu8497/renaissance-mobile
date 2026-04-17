@@ -8,7 +8,16 @@
 import SwiftUI
 
 struct PasswordSecurityView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(AuthViewModel.self) private var authViewModel
     @State private var showChangePassword = false
+    @State private var showDeleteConfirmation = false
+    @State private var isDeletingAccount = false
+    @State private var deleteAccountErrorMessage = ""
+    @State private var showDeleteAccountError = false
+    @State private var showDeleteAccountSuccess = false
+
+    private let accountDeletionService = AccountDeletionService(supabase: supabase)
 
     var body: some View {
         NavigationStack {
@@ -37,6 +46,30 @@ struct PasswordSecurityView: View {
             .forceUIKitNavigationBarHidden()
             .sheet(isPresented: $showChangePassword) {
                 ChangePasswordView()
+            }
+            .confirmationDialog(
+                "Delete Account",
+                isPresented: $showDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete Account", role: .destructive) {
+                    Task { await deleteAccount() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This permanently deletes your account and associated data. This action cannot be undone.")
+            }
+            .alert("Account Deleted", isPresented: $showDeleteAccountSuccess) {
+                Button("OK") {
+                    dismiss()
+                }
+            } message: {
+                Text("Your account has been permanently deleted.")
+            }
+            .alert("Delete Account Failed", isPresented: $showDeleteAccountError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(deleteAccountErrorMessage)
             }
         }
     }
@@ -97,7 +130,7 @@ struct PasswordSecurityView: View {
                 .padding(.horizontal, Theme.Spacing.sm)
 
             Button(action: {
-                // Handle delete account
+                showDeleteConfirmation = true
             }) {
                 HStack(spacing: Theme.Spacing.lg) {
                     // Icon
@@ -112,7 +145,7 @@ struct PasswordSecurityView: View {
                     }
 
                     // Title
-                    Text("Delete Account")
+                    Text(isDeletingAccount ? "Deleting Account..." : "Delete Account")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundColor(.red)
 
@@ -132,6 +165,23 @@ struct PasswordSecurityView: View {
                         .stroke(Theme.Colors.borderLight, lineWidth: 1)
                 )
             }
+            .disabled(isDeletingAccount || authViewModel.isLoading)
+        }
+    }
+
+    private func deleteAccount() async {
+        guard !isDeletingAccount else { return }
+
+        isDeletingAccount = true
+        defer { isDeletingAccount = false }
+
+        do {
+            try await accountDeletionService.deleteCurrentAccount()
+            await authViewModel.handleLocalAccountRemoval()
+            showDeleteAccountSuccess = true
+        } catch {
+            deleteAccountErrorMessage = error.localizedDescription
+            showDeleteAccountError = true
         }
     }
 }

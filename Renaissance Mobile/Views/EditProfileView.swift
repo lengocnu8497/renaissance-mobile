@@ -370,7 +370,6 @@ struct EditProfileView: View {
                 email: email.isEmpty ? nil : email,
                 phoneNumber: phoneNumber.isEmpty ? nil : phoneNumber,
                 zipCode: zipCode.isEmpty ? nil : zipCode,
-                billingPlan: nil,
                 profileImageData: imageData,
                 gender: gender,
                 ageRange: ageRange,

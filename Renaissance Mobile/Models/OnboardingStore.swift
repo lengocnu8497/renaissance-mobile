@@ -13,6 +13,28 @@ import Supabase
 extension Notification.Name {
     static let subscriptionLinked = Notification.Name("rena_subscription_linked")
     static let subscriptionStatusChanged = Notification.Name("rena_subscription_status_changed")
+    static let onboardingStateChanged = Notification.Name("rena_onboarding_state_changed")
+}
+
+enum OnboardingPresentationStatus: String, Equatable {
+    case pending
+    case completed
+}
+
+enum OnboardingCompletionReason: String, Equatable {
+    case purchased
+    case maybeLater
+    case restoredAccess
+}
+
+struct OnboardingPresentationDecision: Equatable {
+    let userID: String?
+    let status: OnboardingPresentationStatus
+    let completionReason: OnboardingCompletionReason?
+    let hasActiveSubscription: Bool
+    let hasBackendPremiumAccess: Bool?
+    let shouldPresent: Bool
+    let trigger: String
 }
 
 enum AcquisitionSource: String, CaseIterable, Identifiable {
@@ -26,6 +48,16 @@ enum AcquisitionSource: String, CaseIterable, Identifiable {
     case other = "other"
 
     var id: String { rawValue }
+
+    static let onboardingChoices: [AcquisitionSource] = [
+        .instagram,
+        .tiktok,
+        .googleSearch,
+        .appStoreSearch,
+        .friendOrFamily,
+        .doctorOrClinic,
+        .other,
+    ]
 
     var displayName: String {
         switch self {
@@ -75,6 +107,9 @@ struct OnboardingStore {
     // MARK: - UserDefaults Keys
 
     private static let completedKey        = "rena_onboarding_completed"
+    private static let statusKey           = "rena_onboarding_status"
+    private static let completionReasonKey = "rena_onboarding_completion_reason"
+    private static let completedAtKey      = "rena_onboarding_completed_at"
     private static let procedureNameKey  = "rena_onboarding_procedure_name"
     private static let procedureDateKey  = "rena_onboarding_procedure_date"
     private static let emailKey          = "rena_onboarding_email"
@@ -126,15 +161,268 @@ struct OnboardingStore {
         try? ProtectedLocalStore.save(value, forKey: key)
     }
 
+    private static func log(_ event: String, details: [String: String?] = [:]) {
+        let payload = details
+            .compactMap { key, value -> String? in
+                guard let value else { return nil }
+                return "\(key)=\(value)"
+            }
+            .sorted()
+            .joined(separator: " ")
+
+        if payload.isEmpty {
+            print("[OnboardingStore] \(event)")
+        } else {
+            print("[OnboardingStore] \(event) \(payload)")
+        }
+    }
+
+    private static func currentUserIDString() -> String? {
+        supabase.auth.currentUser?.id.uuidString
+    }
+
+    private static func persistedStatus(for defaults: UserDefaults = .standard) -> OnboardingPresentationStatus {
+        let scopedStatusKey = userScopedKey(statusKey)
+
+        if let rawValue = defaults.string(forKey: scopedStatusKey),
+           let status = OnboardingPresentationStatus(rawValue: rawValue) {
+            return status
+        }
+
+        if defaults.bool(forKey: scopedStatusKey) || defaults.bool(forKey: userScopedKey(completedKey)) {
+            return .completed
+        }
+
+        return .pending
+    }
+
+    private static func setPresentationStatus(
+        _ status: OnboardingPresentationStatus,
+        reason: OnboardingCompletionReason?,
+        source: String,
+        notifyObservers: Bool = true
+    ) {
+        let defaults = UserDefaults.standard
+        let scopedStatusKey = userScopedKey(statusKey)
+        let scopedCompletedKey = userScopedKey(completedKey)
+        let scopedCompletionReasonKey = userScopedKey(completionReasonKey)
+        let scopedCompletedAtKey = userScopedKey(completedAtKey)
+
+        defaults.set(status.rawValue, forKey: scopedStatusKey)
+        defaults.removeObject(forKey: statusKey)
+
+        switch status {
+        case .completed:
+            defaults.set(true, forKey: scopedCompletedKey)
+            defaults.removeObject(forKey: completedKey)
+            if let reason {
+                defaults.set(reason.rawValue, forKey: scopedCompletionReasonKey)
+                defaults.removeObject(forKey: completionReasonKey)
+            }
+            defaults.set(Date(), forKey: scopedCompletedAtKey)
+            defaults.removeObject(forKey: completedAtKey)
+        case .pending:
+            defaults.removeObject(forKey: scopedCompletedKey)
+            defaults.removeObject(forKey: completedKey)
+            defaults.removeObject(forKey: scopedCompletionReasonKey)
+            defaults.removeObject(forKey: completionReasonKey)
+            defaults.removeObject(forKey: scopedCompletedAtKey)
+            defaults.removeObject(forKey: completedAtKey)
+        }
+
+        log(
+            "store.transition",
+            details: [
+                "source": source,
+                "userID": currentUserIDString(),
+                "status": status.rawValue,
+                "completionReason": reason?.rawValue
+            ]
+        )
+
+        if notifyObservers {
+            NotificationCenter.default.post(name: .onboardingStateChanged, object: nil)
+        }
+    }
+
     // MARK: - Completion Flag
 
     static var hasCompleted: Bool {
-        get { UserDefaults.standard.bool(forKey: userScopedKey(completedKey)) }
+        get { presentationStatus == .completed }
         set {
-            let defaults = UserDefaults.standard
-            defaults.set(newValue, forKey: userScopedKey(completedKey))
-            defaults.removeObject(forKey: completedKey)
+            if newValue {
+                completeOnboarding(reason: .restoredAccess, source: "legacySetter")
+            } else {
+                markOnboardingPending(source: "legacySetter")
+            }
         }
+    }
+
+    static var presentationStatus: OnboardingPresentationStatus {
+        persistedStatus()
+    }
+
+    static var completionReason: OnboardingCompletionReason? {
+        let defaults = UserDefaults.standard
+        let scopedReasonKey = userScopedKey(completionReasonKey)
+
+        guard let rawValue = defaults.string(forKey: scopedReasonKey) else {
+            return nil
+        }
+
+        return OnboardingCompletionReason(rawValue: rawValue)
+    }
+
+    static var shouldPresentOnboarding: Bool {
+        presentationStatus != .completed
+    }
+
+    static func completeOnboarding(reason: OnboardingCompletionReason, source: String) {
+        log(
+            "store.completeOnboarding",
+            details: [
+                "source": source,
+                "userID": currentUserIDString(),
+                "reason": reason.rawValue
+            ]
+        )
+        setPresentationStatus(.completed, reason: reason, source: source)
+    }
+
+    static func markOnboardingPending(source: String) {
+        setPresentationStatus(.pending, reason: nil, source: source)
+    }
+
+    @MainActor
+    static func resolvePresentationDecision(
+        trigger: String,
+        profileService: UserProfileService
+    ) async -> OnboardingPresentationDecision {
+        await resolvePresentationDecision(
+            trigger: trigger,
+            using: .shared,
+            profileService: profileService
+        )
+    }
+
+    @MainActor
+    static func resolvePresentationDecision(
+        trigger: String,
+        using subscriptionStore: SubscriptionStore,
+        profileService: UserProfileService
+    ) async -> OnboardingPresentationDecision {
+        log(
+            "store.load",
+            details: [
+                "trigger": trigger,
+                "userID": currentUserIDString(),
+                "status": presentationStatus.rawValue,
+                "completionReason": completionReason?.rawValue
+            ]
+        )
+
+        if !shouldPresentOnboarding {
+            let decision = OnboardingPresentationDecision(
+                userID: currentUserIDString(),
+                status: presentationStatus,
+                completionReason: completionReason,
+                hasActiveSubscription: subscriptionStore.hasActiveSubscription,
+                hasBackendPremiumAccess: nil,
+                shouldPresent: false,
+                trigger: trigger
+            )
+            logDecision(decision)
+            return decision
+        }
+
+        if subscriptionStore.hasActiveSubscription {
+            completeOnboarding(reason: .restoredAccess, source: "\(trigger):cachedSubscription")
+            let decision = OnboardingPresentationDecision(
+                userID: currentUserIDString(),
+                status: presentationStatus,
+                completionReason: completionReason,
+                hasActiveSubscription: true,
+                hasBackendPremiumAccess: nil,
+                shouldPresent: false,
+                trigger: trigger
+            )
+            logDecision(decision)
+            return decision
+        }
+
+        await subscriptionStore.prepare()
+
+        if subscriptionStore.hasActiveSubscription {
+            completeOnboarding(reason: .restoredAccess, source: "\(trigger):preparedSubscription")
+            let decision = OnboardingPresentationDecision(
+                userID: currentUserIDString(),
+                status: presentationStatus,
+                completionReason: completionReason,
+                hasActiveSubscription: true,
+                hasBackendPremiumAccess: nil,
+                shouldPresent: false,
+                trigger: trigger
+            )
+            logDecision(decision)
+            return decision
+        }
+
+        do {
+            let profile = try await profileService.getUserProfile()
+            let hasBackendPremiumAccess = SubscriptionAccessEvaluator.hasBackendPremiumAccess(profile)
+
+            if hasBackendPremiumAccess {
+                completeOnboarding(reason: .restoredAccess, source: "\(trigger):backendPremium")
+            }
+
+            let decision = OnboardingPresentationDecision(
+                userID: currentUserIDString(),
+                status: presentationStatus,
+                completionReason: completionReason,
+                hasActiveSubscription: subscriptionStore.hasActiveSubscription,
+                hasBackendPremiumAccess: hasBackendPremiumAccess,
+                shouldPresent: !hasBackendPremiumAccess && shouldPresentOnboarding,
+                trigger: trigger
+            )
+            logDecision(decision)
+            return decision
+        } catch {
+            log(
+                "store.profileFetchFailed",
+                details: [
+                    "trigger": trigger,
+                    "userID": currentUserIDString(),
+                    "error": error.localizedDescription
+                ]
+            )
+
+            let decision = OnboardingPresentationDecision(
+                userID: currentUserIDString(),
+                status: presentationStatus,
+                completionReason: completionReason,
+                hasActiveSubscription: subscriptionStore.hasActiveSubscription,
+                hasBackendPremiumAccess: nil,
+                shouldPresent: shouldPresentOnboarding,
+                trigger: trigger
+            )
+            logDecision(decision)
+            return decision
+        }
+    }
+
+    private static func logDecision(_ decision: OnboardingPresentationDecision) {
+        log(
+            "store.computeShouldPresent",
+            details: [
+                "trigger": decision.trigger,
+                "userID": decision.userID,
+                "status": decision.status.rawValue,
+                "completionReason": decision.completionReason?.rawValue,
+                "hasActiveSubscription": String(decision.hasActiveSubscription),
+                "hasBackendPremiumAccess": decision.hasBackendPremiumAccess.map { String(describing: $0) },
+                "shouldPresent": String(decision.shouldPresent)
+            ]
+        )
     }
 
     // MARK: - Pending Procedure Data
@@ -243,8 +531,6 @@ struct OnboardingStore {
 
     private static func clearPendingEmail() {
         ProtectedLocalStore.remove(forKey: emailKey)
-        UserDefaults.standard.removeObject(forKey: "rena_onboarding_stripe_customer_id")
-        UserDefaults.standard.removeObject(forKey: "rena_onboarding_stripe_subscription_id")
     }
 
     private static func clearPendingSubscriptionTier() {
@@ -410,6 +696,9 @@ struct OnboardingStore {
     /// Full reset — for testing or sign-out scenarios.
     static func reset() {
         removeUserScopedValue(forKey: completedKey)
+        removeUserScopedValue(forKey: statusKey)
+        removeUserScopedValue(forKey: completionReasonKey)
+        removeUserScopedValue(forKey: completedAtKey)
         clearPending()
         clearPendingEmail()
         clearPendingSubscriptionTier()
@@ -418,5 +707,6 @@ struct OnboardingStore {
         removeUserScopedValue(forKey: feedbackCompletedKey)
         clearBootstrappedProcedure()
         clearUserContext()
+        NotificationCenter.default.post(name: .onboardingStateChanged, object: nil)
     }
 }

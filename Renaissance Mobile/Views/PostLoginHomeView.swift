@@ -66,7 +66,6 @@ private enum HomeProcedureImageResolver {
 
 struct PostLoginHomeView: View {
     @Environment(SubscriptionStore.self) private var subscriptionStore
-    @Environment(\.requestReview) private var requestReview
     @State private var firstName = ""
     @State private var journalViewModel = JournalViewModel()
     @State private var proceduresViewModel = ProceduresViewModel()
@@ -78,10 +77,8 @@ struct PostLoginHomeView: View {
     @State private var recentSessions: [ChatConversation] = []
     @State private var loadingRecentSessions = false
     @State private var showExploreSheet = false
-    @State private var onboardingPaymentViewModel = OnboardingPaymentViewModel()
+    @State private var didAttemptValueMomentReview = false
     @State private var showPaywall = false
-    @State private var paymentErrorMessage = ""
-    @State private var showPaymentError = false
     @State private var showRecoveryPlan = false
 
     var onNavigateToChat: ((String) -> Void)?
@@ -155,23 +152,15 @@ struct PostLoginHomeView: View {
             }
             .sheet(isPresented: $showPaywall) {
                 QuotaExceededView(
-                    reason: "Subscribe to unlock weekly automated reports, AI insights, and personalized guidance from Rena.",
-                    weeklyPrice: onboardingPaymentViewModel.weeklyPriceInfo?.displayPrice ?? "...",
-                    monthlyPrice: onboardingPaymentViewModel.monthlyPriceInfo?.displayPrice ?? "...",
-                    yearlyPrice: onboardingPaymentViewModel.yearlyPlanPriceInfo?.displayPrice ?? "...",
-                    onUpgrade: { tier in await handleUpgrade(tier: tier) },
-                    onDismiss: { showPaywall = false }
-                )
-                .task {
-                    if onboardingPaymentViewModel.weeklyPriceInfo == nil {
-                        await onboardingPaymentViewModel.fetchPrices()
+                    onDismiss: { showPaywall = false },
+                    onSubscribed: {
+                        showPaywall = false
+                        Task {
+                            await loadHomeData()
+                            requestValueMomentReviewIfNeeded()
+                        }
                     }
-                }
-            }
-            .alert("Payment Error", isPresented: $showPaymentError) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(paymentErrorMessage)
+                )
             }
             .onChange(of: showExploreSheet) { _, isPresented in
                 guard !isPresented else { return }
@@ -231,31 +220,20 @@ struct PostLoginHomeView: View {
     }
 
     private func requestValueMomentReviewIfNeeded() {
+        guard !didAttemptValueMomentReview else { return }
         guard ReviewPromptStore.shouldRequestAutomaticReview else { return }
         guard isSubscribed else { return }
         guard journalViewModel.entries.count >= 3 else { return }
         guard latestPrimaryWeeklySummary != nil else { return }
 
-        ReviewPromptStore.markAutomaticReviewRequested()
-        requestReview()
-    }
-
-    private func handleUpgrade(tier: SubscriptionTier) async {
-        let result = await onboardingPaymentViewModel.purchaseSubscription(tier: tier)
-
-        switch result {
-        case .success:
-            showPaywall = false
-            await loadHomeData()
-            requestValueMomentReviewIfNeeded()
-        case .pending:
-            paymentErrorMessage = onboardingPaymentViewModel.errorMessage ?? "Your App Store purchase is pending approval."
-            showPaymentError = true
-        case .failed(let message):
-            paymentErrorMessage = message
-            showPaymentError = true
-        case .cancelled:
-            break
+        didAttemptValueMomentReview = true
+        Task { @MainActor in
+            let outcome = await ReviewRequestHelper.requestWhenReady()
+            guard outcome == .requested else {
+                didAttemptValueMomentReview = false
+                return
+            }
+            ReviewPromptStore.markAutomaticReviewRequested()
         }
     }
 
