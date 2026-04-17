@@ -6,6 +6,8 @@ struct SubscriptionPaywallView: View {
 
     var onDismiss: (() -> Void)? = nil
     var onSubscribed: (() -> Void)? = nil
+    var showsPurchaseCTA: Bool = true
+    var showsRestoreButton: Bool = true
 
     @State private var selectedTier: SubscriptionTier = .yearly
     @State private var statusMessage: String?
@@ -56,12 +58,14 @@ struct SubscriptionPaywallView: View {
         HStack {
             Spacer()
 
-            Button("Restore") {
-                Task { await restorePurchases() }
+            if showsRestoreButton {
+                Button("Restore") {
+                    Task { await restorePurchases() }
+                }
+                .font(.custom("PlusJakartaSans-SemiBold", size: 15))
+                .foregroundStyle(Color(hex: "#8A8C83"))
+                .disabled(subscriptionStore.isPurchasing)
             }
-            .font(.custom("PlusJakartaSans-SemiBold", size: 15))
-            .foregroundStyle(Color(hex: "#8A8C83"))
-            .disabled(subscriptionStore.isPurchasing)
         }
         .padding(.top, onDismiss == nil ? 2 : 8)
         .padding(.bottom, 22)
@@ -176,25 +180,27 @@ struct SubscriptionPaywallView: View {
             }
             .padding(.bottom, 14)
 
-            Button {
-                Task { await purchaseSelectedTier() }
-            } label: {
-                if subscriptionStore.isPurchasing {
-                    ProgressView()
-                        .tint(Color(hex: "#FAF8F3"))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 18)
-                } else {
-                    Text("Continue with \(selectedTier.ctaTitle)")
-                        .font(.custom("PlusJakartaSans-SemiBold", size: 20).weight(.bold))
-                        .foregroundStyle(Color(hex: "#FAF8F3"))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 18)
+            if showsPurchaseCTA {
+                Button {
+                    Task { await purchaseSelectedTier() }
+                } label: {
+                    if subscriptionStore.isPurchasing {
+                        ProgressView()
+                            .tint(Color(hex: "#FAF8F3"))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 18)
+                    } else {
+                        Text("Continue with \(selectedTier.ctaTitle)")
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 20).weight(.bold))
+                            .foregroundStyle(Color(hex: "#FAF8F3"))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 18)
+                    }
                 }
+                .background(Color(hex: "#465241"))
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .disabled(subscriptionStore.isPurchasing || selectedProduct == nil)
             }
-            .background(Color(hex: "#465241"))
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .disabled(subscriptionStore.isPurchasing || selectedProduct == nil)
 
             VStack(spacing: 4) {
                 Text(selectedPlanSummaryLine)
@@ -396,7 +402,10 @@ struct SubscriptionPaywallView: View {
         let result = await subscriptionStore.purchase(selectedTier)
         switch result {
         case .success:
-            await subscriptionStore.refreshEntitlementsAndSync()
+            statusMessage = nil
+            guard !didNotifySubscription else { return }
+            didNotifySubscription = true
+            onSubscribed?()
         case .pending:
             statusMessage = "Your App Store purchase is pending approval."
         case .cancelled:
@@ -415,8 +424,22 @@ struct SubscriptionPaywallView: View {
                 ? "Your purchases were restored successfully."
                 : "No active App Store subscription was found to restore."
         } else {
-            statusMessage = subscriptionStore.errorMessage ?? "Unable to restore purchases right now."
+            let restoreError = subscriptionStore.errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if isDismissibleRestoreMessage(restoreError) {
+                statusMessage = nil
+            } else {
+                statusMessage = restoreError ?? "Unable to restore purchases right now."
+            }
         }
+    }
+
+    private func isDismissibleRestoreMessage(_ message: String?) -> Bool {
+        guard let message, !message.isEmpty else { return true }
+
+        let normalized = message.lowercased()
+        return normalized.contains("cancel")
+            || normalized.contains("canceled")
+            || normalized.contains("cancelled")
     }
 
     @MainActor

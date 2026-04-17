@@ -10,7 +10,6 @@ import StoreKit
 
 struct SettingsView: View {
     @Environment(SubscriptionStore.self) private var subscriptionStore
-    @Environment(\.requestReview) private var requestReview
     @State private var userProfile: UserProfile?
     @State private var isLoadingProfile = true
     @State private var usageViewModel = UsageViewModel()
@@ -61,19 +60,36 @@ struct SettingsView: View {
                         : "Are you sure you want to cancel your subscription? You will lose access to premium features at the end of your billing period."
                 )
             }
-            .task { await loadData() }
+            .task { await loadData(refreshSubscriptionStore: true, showLoadingState: true) }
+            .onReceive(NotificationCenter.default.publisher(for: .subscriptionStatusChanged)) { _ in
+                Task {
+                    await loadData(refreshSubscriptionStore: false, showLoadingState: false)
+                }
+            }
         }
     }
 
     // MARK: - Profile Loading
-    private func loadData() async {
-        await subscriptionStore.prepare()
-        await loadProfile()
-        await usageViewModel.fetchUsage()
+    private func loadData(
+        refreshSubscriptionStore: Bool,
+        showLoadingState: Bool
+    ) async {
+        if refreshSubscriptionStore {
+            await subscriptionStore.prepare()
+        }
+        await loadProfile(showLoadingState: showLoadingState)
+
+        if isPaidPlan {
+            await usageViewModel.fetchUsage()
+        } else {
+            usageViewModel.clearUsage()
+        }
     }
 
-    private func loadProfile() async {
-        isLoadingProfile = true
+    private func loadProfile(showLoadingState: Bool) async {
+        if showLoadingState || userProfile == nil {
+            isLoadingProfile = true
+        }
         defer { isLoadingProfile = false }
 
         do {
@@ -89,7 +105,7 @@ struct SettingsView: View {
     // MARK: - Subscription Section
     private var subscriptionSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            sectionHeader(title: "SETTINGS")
+            sectionHeader(title: "SUBSCRIPTION")
 
             VStack(spacing: Theme.Spacing.md) {
                 if isLoadingProfile {
@@ -97,65 +113,12 @@ struct SettingsView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, Theme.Spacing.xl)
                 } else {
-                    HStack {
-                        Text(planDisplayName)
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(Theme.Colors.textProfilePrimary)
+                    subscriptionSummaryHeader
 
-                        Spacer()
-
-                        if let status = resolvedSubscriptionStatus, isPaidPlan {
-                            Text(statusDisplayName(for: status))
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(statusColor(for: status))
-                                .padding(.horizontal, Theme.Spacing.md)
-                                .padding(.vertical, Theme.Spacing.xs)
-                                .background(statusColor(for: status).opacity(0.12))
-                                .cornerRadius(Theme.CornerRadius.medium)
-                        }
-                    }
-                    .padding(.horizontal, Theme.Spacing.lg)
-                    .padding(.vertical, Theme.Spacing.md)
-
-                    if !planHighlights.isEmpty {
-                        Divider()
-                            .padding(.horizontal, Theme.Spacing.lg)
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: Theme.Spacing.sm) {
-                                ForEach(planHighlights, id: \.self) { highlight in
-                                    Text(highlight)
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundColor(Theme.Colors.textProfilePrimary)
-                                        .padding(.horizontal, Theme.Spacing.md)
-                                        .padding(.vertical, Theme.Spacing.sm)
-                                        .background(Theme.Colors.backgroundProfile)
-                                        .cornerRadius(Theme.CornerRadius.medium)
-                                }
-                            }
-                            .padding(.horizontal, Theme.Spacing.lg)
-                        }
-                        .padding(.bottom, Theme.Spacing.md)
-                    }
-
-                    if isPaidPlan, usageViewModel.currentUsage != nil {
-                        Divider()
-                            .padding(.horizontal, Theme.Spacing.lg)
-
-                        usageSummaryRow
-                            .padding(.horizontal, Theme.Spacing.lg)
-                            .padding(.bottom, Theme.Spacing.md)
-                    } else if usageViewModel.isLoading, isPaidPlan {
-                        Divider()
-                            .padding(.horizontal, Theme.Spacing.lg)
-
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
-                        }
-                        .padding(.horizontal, Theme.Spacing.lg)
-                        .padding(.bottom, Theme.Spacing.md)
+                    if isPaidPlan {
+                        premiumPlanDetails
+                    } else {
+                        freePlanDetails
                     }
                 }
             }
@@ -173,7 +136,9 @@ struct SettingsView: View {
             sectionHeader(title: "FEEDBACK")
 
             Button(action: {
-                requestReview()
+                Task { @MainActor in
+                    _ = await ReviewRequestHelper.requestWhenReady()
+                }
             }) {
                 HStack(spacing: Theme.Spacing.md) {
                     Image(systemName: "star.bubble")
@@ -296,6 +261,85 @@ struct SettingsView: View {
         }
     }
 
+    private var subscriptionSummaryHeader: some View {
+        HStack {
+            Text(planDisplayName)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(Theme.Colors.textProfilePrimary)
+
+            Spacer()
+
+            if let status = resolvedSubscriptionStatus, isPaidPlan {
+                Text(statusDisplayName(for: status))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(statusColor(for: status))
+                    .padding(.horizontal, Theme.Spacing.md)
+                    .padding(.vertical, Theme.Spacing.xs)
+                    .background(statusColor(for: status).opacity(0.12))
+                    .cornerRadius(Theme.CornerRadius.medium)
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.vertical, Theme.Spacing.md)
+    }
+
+    @ViewBuilder
+    private var premiumPlanDetails: some View {
+        if !planHighlights.isEmpty {
+            Divider()
+                .padding(.horizontal, Theme.Spacing.lg)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    ForEach(planHighlights, id: \.self) { highlight in
+                        Text(highlight)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Theme.Colors.textProfilePrimary)
+                            .padding(.horizontal, Theme.Spacing.md)
+                            .padding(.vertical, Theme.Spacing.sm)
+                            .background(Theme.Colors.backgroundProfile)
+                            .cornerRadius(Theme.CornerRadius.medium)
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.lg)
+            }
+            .padding(.bottom, Theme.Spacing.md)
+        }
+
+        if usageViewModel.currentUsage != nil {
+            Divider()
+                .padding(.horizontal, Theme.Spacing.lg)
+
+            usageSummaryRow
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.bottom, Theme.Spacing.md)
+        } else if usageViewModel.isLoading {
+            Divider()
+                .padding(.horizontal, Theme.Spacing.lg)
+
+            HStack {
+                Spacer()
+                ProgressView()
+                Spacer()
+            }
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.bottom, Theme.Spacing.md)
+        }
+    }
+
+    private var freePlanDetails: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            Divider()
+                .padding(.horizontal, Theme.Spacing.lg)
+
+            Text("Premium unlocks through Chat AI and other locked features when you need it.")
+                .font(.system(size: 14))
+                .foregroundColor(Theme.Colors.textSecondary)
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.bottom, Theme.Spacing.md)
+        }
+    }
+
     private func statusColor(for status: SubscriptionStatus) -> Color {
         switch status {
         case .active:
@@ -330,25 +374,28 @@ struct SettingsView: View {
 
     // MARK: - Computed Properties
     private var planDisplayName: String {
-        if let tier = subscriptionStore.activeTier {
-            return BillingPlan(rawValue: tier.rawValue)?.displayName ?? tier.displayName
-        }
-        return userProfile?.billingPlan.displayName ?? "Free"
+        resolvedSubscriptionState.planDisplayName
     }
 
     private var isPaidPlan: Bool {
-        if subscriptionStore.hasActiveSubscription {
-            return true
-        }
-        return SubscriptionAccessEvaluator.hasBackendPremiumAccess(userProfile)
+        resolvedSubscriptionState.hasPremiumAccess
     }
 
     private var resolvedSubscriptionStatus: SubscriptionStatus? {
-        subscriptionStore.subscriptionStatus ?? userProfile?.subscriptionStatus
+        resolvedSubscriptionState.status
+    }
+
+    private var resolvedSubscriptionState: SubscriptionAccessEvaluator.ResolvedSubscriptionState {
+        SubscriptionAccessEvaluator.resolvedState(
+            userProfile,
+            localTier: subscriptionStore.activeTier,
+            localStatus: subscriptionStore.subscriptionStatus,
+            localHasActiveSubscription: subscriptionStore.hasActiveSubscription
+        )
     }
 
     private var isAppStoreManagedSubscription: Bool {
-        subscriptionStore.hasActiveSubscription || userProfile?.subscriptionProvider == .appStore
+        resolvedSubscriptionState.isAppStoreManaged
     }
 
     private var currentLimits: TierQuotaLimits? {
@@ -360,22 +407,12 @@ struct SettingsView: View {
             )
         }
 
-        if let tier = subscriptionStore.activeTier {
-            return TierQuotaLimits.limits(for: tier)
+        guard let resolvedTier = resolvedSubscriptionState.tier,
+        isPaidPlan else {
+            return nil
         }
 
-        guard SubscriptionAccessEvaluator.hasBackendPremiumAccess(userProfile) else { return nil }
-        guard let plan = userProfile?.billingPlan else { return nil }
-        switch plan {
-        case .free:
-            return nil
-        case .weekly:
-            return TierQuotaLimits.limits(for: .weekly)
-        case .monthly:
-            return TierQuotaLimits.limits(for: .monthly)
-        case .yearly:
-            return TierQuotaLimits.limits(for: .yearly)
-        }
+        return TierQuotaLimits.limits(for: resolvedTier)
     }
 
     private var planHighlights: [String] {
@@ -395,12 +432,14 @@ struct SettingsView: View {
         isCanceling = true
         defer { isCanceling = false }
 
-        let result = await subscriptionViewModel.cancelSubscription()
+        let result = await subscriptionViewModel.cancelSubscription(
+            isAppStoreManaged: isAppStoreManagedSubscription
+        )
 
         if result.success {
             subscriptionEndDate = result.periodEndDate
             if !isAppStoreManagedSubscription {
-                await loadData()
+                await loadData(refreshSubscriptionStore: false, showLoadingState: false)
             }
             showCancelSuccess = true
         } else {

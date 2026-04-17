@@ -18,8 +18,6 @@ private enum FeedbackUI {
 }
 
 struct PostOnboardingFeedbackView: View {
-    @Environment(\.requestReview) private var requestReview
-
     @State private var selectedSource = OnboardingStore.pendingAcquisitionSource
     @State private var isSubmitting = false
     @State private var didTriggerReviewPrompt = false
@@ -38,11 +36,14 @@ struct PostOnboardingFeedbackView: View {
                     VStack(alignment: .leading, spacing: 20) {
                         headerCard
                         attributionCard
-                        continueButton
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 28)
+                    .padding(.bottom, 112)
                 }
+            }
+            .safeAreaInset(edge: .bottom) {
+                blendedContinueCTA
             }
             .interactiveDismissDisabled(isSubmitting)
             .task {
@@ -114,12 +115,7 @@ struct PostOnboardingFeedbackView: View {
             selectedSource = source
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: source.iconName)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(isSelected ? FeedbackUI.primary : FeedbackUI.rose)
-                    .frame(width: 34, height: 34)
-                    .background((isSelected ? FeedbackUI.primarySoft : FeedbackUI.roseSoft).opacity(0.9))
-                    .clipShape(Circle())
+                AcquisitionSourceIcon(source: source, isSelected: isSelected)
 
                 Text(source.displayName)
                     .font(.system(size: 15, weight: .medium))
@@ -169,16 +165,167 @@ struct PostOnboardingFeedbackView: View {
         .disabled(selectedSource == nil || isSubmitting)
     }
 
+    private var blendedContinueCTA: some View {
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [Color.clear, FeedbackUI.background.opacity(0.96)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 24)
+
+            continueButton
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+                .background(FeedbackUI.background.opacity(0.96))
+        }
+    }
+
     @MainActor
     private func triggerReviewPromptIfNeeded() async {
         guard !didTriggerReviewPrompt else { return }
         guard ReviewPromptStore.shouldRequestAutomaticReview else { return }
 
+        let outcome = await ReviewRequestHelper.requestWhenReady(
+            initialDelayMilliseconds: 700
+        )
+        guard outcome == .requested else { return }
+
         didTriggerReviewPrompt = true
         ReviewPromptStore.markAutomaticReviewRequested()
+    }
+}
 
-        try? await Task.sleep(for: .milliseconds(700))
-        requestReview()
+private struct AcquisitionSourceIcon: View {
+    let source: AcquisitionSource
+    let isSelected: Bool
+
+    var body: some View {
+        ZStack {
+            backgroundShape
+
+            switch source {
+            case .instagram:
+                instagramGlyph
+            case .tiktok:
+                tikTokGlyph
+            case .googleSearch:
+                Text("G")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(googleGradient)
+            case .friendOrFamily:
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(iconForeground)
+            case .doctorOrClinic:
+                Image(systemName: "cross.case.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(iconForeground)
+            case .appStoreSearch:
+                Image(systemName: "apple.logo")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+            case .pressOrBlog:
+                Image(systemName: "newspaper.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(iconForeground)
+            case .other:
+                Image(systemName: "ellipsis.circle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(iconForeground)
+            }
+        }
+        .frame(width: 36, height: 36)
+    }
+
+    @ViewBuilder
+    private var backgroundShape: some View {
+        switch source {
+        case .instagram:
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(hex: "#FEDA75"),
+                            Color(hex: "#FA7E1E"),
+                            Color(hex: "#D62976"),
+                            Color(hex: "#962FBF"),
+                            Color(hex: "#4F5BD5"),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        case .tiktok:
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(Color.black)
+        case .googleSearch:
+            Circle()
+                .fill(Color.white)
+                .overlay(
+                    Circle()
+                        .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                )
+        case .appStoreSearch:
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(hex: "#1677F2"))
+        default:
+            Circle()
+                .fill((isSelected ? FeedbackUI.primarySoft : FeedbackUI.roseSoft).opacity(0.95))
+        }
+    }
+
+    private var iconForeground: Color {
+        isSelected ? FeedbackUI.primary : FeedbackUI.rose
+    }
+
+    private var googleGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(hex: "#4285F4"),
+                Color(hex: "#34A853"),
+                Color(hex: "#FBBC05"),
+                Color(hex: "#EA4335"),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private var instagramGlyph: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.white, lineWidth: 1.9)
+                .frame(width: 17, height: 17)
+
+            Circle()
+                .strokeBorder(Color.white, lineWidth: 1.9)
+                .frame(width: 7, height: 7)
+
+            Circle()
+                .fill(Color.white)
+                .frame(width: 3, height: 3)
+                .offset(x: 5, y: -5)
+        }
+    }
+
+    private var tikTokGlyph: some View {
+        ZStack {
+            Image(systemName: "music.note")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Color(hex: "#25F4EE"))
+                .offset(x: -1.2, y: 0.8)
+
+            Image(systemName: "music.note")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Color(hex: "#FE2C55"))
+                .offset(x: 1.2, y: -0.8)
+
+            Image(systemName: "music.note")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(.white)
+        }
     }
 }
 

@@ -46,7 +46,15 @@ final class SubscriptionStore {
     var errorMessage: String?
 
     private var updatesTask: Task<Void, Never>?
+    private var authTask: Task<Void, Never>?
     private var hasPrepared = false
+    private var currentEntitlementUpdatedAt: Date?
+    private var observedUserId: UUID?
+    private let transientEntitlementGraceInterval: TimeInterval = 120
+    private let backendSyncRetryDelaysNs: [UInt64] = [0, 700_000_000, 1_400_000_000]
+    private let backendSyncVerificationPollDelayNs: UInt64 = 600_000_000
+    private let backendSyncVerificationAttempts = 4
+    private let profileService = UserProfileService(supabase: supabase)
 
     var activeTier: SubscriptionTier? {
         currentEntitlement?.tier
@@ -67,6 +75,8 @@ final class SubscriptionStore {
     func prepare() async {
         if !hasPrepared {
             hasPrepared = true
+            observedUserId = supabase.auth.currentUser?.id
+            startAuthStateListener()
             startTransactionListener()
         }
 
@@ -118,8 +128,15 @@ final class SubscriptionStore {
                     return .failed(message)
                 }
 
+                if let entitlement = await makeEntitlement(
+                    from: transaction,
+                    signedTransactionInfo: verification.jwsRepresentation
+                ) {
+                    setCurrentEntitlement(entitlement)
+                }
+
                 await transaction.finish()
-                await refreshEntitlementsAndSync()
+                _ = await ensurePremiumAccessIsSynced()
                 NotificationCenter.default.post(name: .subscriptionStatusChanged, object: nil)
                 return .success
 
@@ -155,8 +172,20 @@ final class SubscriptionStore {
     }
 
     func refreshEntitlementsAndSync() async {
-        currentEntitlement = await loadCurrentEntitlement()
-        await syncEntitlementIfNeeded()
+        let previousEntitlement = currentEntitlement
+        let refreshedEntitlement = await loadCurrentEntitlement()
+
+        if let refreshedEntitlement {
+            setCurrentEntitlement(refreshedEntitlement)
+        } else if !shouldPreserveCurrentEntitlement(previousEntitlement) {
+            setCurrentEntitlement(nil, shouldRefreshTimestamp: true)
+        }
+
+        if currentEntitlement != nil {
+            _ = await ensurePremiumAccessIsSyncedAfterRefresh()
+        } else {
+            _ = await syncEntitlementIfNeeded()
+        }
         NotificationCenter.default.post(name: .subscriptionStatusChanged, object: nil)
     }
 
@@ -190,6 +219,24 @@ final class SubscriptionStore {
 
                 await transaction.finish()
                 await self.refreshEntitlementsAndSync()
+            }
+        }
+    }
+
+    private func startAuthStateListener() {
+        guard authTask == nil else { return }
+
+        authTask = Task { [weak self] in
+            guard let self else { return }
+
+            for await state in supabase.auth.authStateChanges {
+                let nextUserId = state.session?.user.id
+                guard nextUserId != self.observedUserId else { continue }
+
+                self.observedUserId = nextUserId
+                self.errorMessage = nil
+                self.setCurrentEntitlement(nil, shouldRefreshTimestamp: true)
+                NotificationCenter.default.post(name: .subscriptionStatusChanged, object: nil)
             }
         }
     }
@@ -244,24 +291,13 @@ final class SubscriptionStore {
 
         for await result in Transaction.currentEntitlements {
             guard let transaction = verifiedTransaction(from: result) else { continue }
-            guard let tier = AppConfig.tier(for: transaction.productID) else { continue }
-            guard transaction.revocationDate == nil else { continue }
-
-            let status = await resolveStatus(for: transaction)
-            guard status == .active || status == .canceled || status == .pastDue else {
+            guard transactionBelongsToCurrentAppAccount(transaction) else { continue }
+            guard let entitlement = await makeEntitlement(
+                from: transaction,
+                signedTransactionInfo: result.jwsRepresentation
+            ) else {
                 continue
             }
-
-            let entitlement = SubscriptionEntitlement(
-                tier: tier,
-                productId: transaction.productID,
-                transactionId: String(transaction.id),
-                originalTransactionId: String(transaction.originalID),
-                expirationDate: transaction.expirationDate,
-                status: status,
-                environment: mapEnvironment(transaction.environment),
-                signedTransactionInfo: result.jwsRepresentation
-            )
 
             if shouldReplaceCurrentEntitlement(latestEntitlement, with: entitlement) {
                 latestEntitlement = entitlement
@@ -269,6 +305,86 @@ final class SubscriptionStore {
         }
 
         return latestEntitlement
+    }
+
+    private func makeEntitlement(
+        from transaction: Transaction,
+        signedTransactionInfo: String
+    ) async -> SubscriptionEntitlement? {
+        guard let tier = AppConfig.tier(for: transaction.productID) else { return nil }
+        guard transaction.revocationDate == nil else { return nil }
+
+        let status = await resolveStatus(for: transaction)
+        guard status == .active || status == .canceled || status == .pastDue else {
+            return nil
+        }
+
+        return SubscriptionEntitlement(
+            tier: tier,
+            productId: transaction.productID,
+            transactionId: String(transaction.id),
+            originalTransactionId: String(transaction.originalID),
+            expirationDate: transaction.expirationDate,
+            status: status,
+            environment: mapEnvironment(transaction.environment),
+            signedTransactionInfo: signedTransactionInfo
+        )
+    }
+
+    private func transactionBelongsToCurrentAppAccount(_ transaction: Transaction) -> Bool {
+        guard let currentUserId = supabase.auth.currentUser?.id else {
+            return true
+        }
+
+        guard let appAccountToken = transaction.appAccountToken else {
+            return false
+        }
+
+        return appAccountToken == currentUserId
+    }
+
+    private func setCurrentEntitlement(
+        _ entitlement: SubscriptionEntitlement?,
+        shouldRefreshTimestamp: Bool = true
+    ) {
+        currentEntitlement = entitlement
+
+        guard shouldRefreshTimestamp else { return }
+        currentEntitlementUpdatedAt = entitlement == nil ? nil : Date()
+    }
+
+    private func shouldPreserveCurrentEntitlement(
+        _ entitlement: SubscriptionEntitlement?
+    ) -> Bool {
+        Self.shouldPreserveCurrentEntitlement(
+            entitlement,
+            updatedAt: currentEntitlementUpdatedAt,
+            now: Date(),
+            graceInterval: transientEntitlementGraceInterval
+        )
+    }
+
+    static func shouldPreserveCurrentEntitlement(
+        _ entitlement: SubscriptionEntitlement?,
+        updatedAt: Date?,
+        now: Date,
+        graceInterval: TimeInterval
+    ) -> Bool {
+        guard let entitlement else { return false }
+        guard let updatedAt else { return false }
+        guard now.timeIntervalSince(updatedAt) <= graceInterval else { return false }
+
+        switch entitlement.status {
+        case .active, .pastDue:
+            return true
+        case .canceled:
+            if let expirationDate = entitlement.expirationDate {
+                return expirationDate > now
+            }
+            return false
+        case .trialing, .incomplete, .incompleteExpired, .unpaid:
+            return false
+        }
     }
 
     private func shouldReplaceCurrentEntitlement(
@@ -334,8 +450,82 @@ final class SubscriptionStore {
         }
     }
 
-    private func syncEntitlementIfNeeded() async {
-        guard supabase.auth.currentUser != nil else { return }
+    @discardableResult
+    private func ensurePremiumAccessIsSyncedAfterRefresh() async -> Bool {
+        let synced = await ensurePremiumAccessIsSynced()
+        if !synced, currentEntitlement != nil {
+            print("Subscription backend reconciliation is still pending after refresh.")
+        }
+        return synced
+    }
+
+    @discardableResult
+    func ensurePremiumAccessIsSynced() async -> Bool {
+        guard let entitlement = currentEntitlement else {
+            return await syncEntitlementIfNeeded()
+        }
+
+        _ = await syncEntitlementIfNeededWithRetry()
+        if await backendReflectsActiveEntitlement(expectedTier: entitlement.tier) {
+            errorMessage = nil
+            return true
+        }
+
+        for attempt in 0..<backendSyncVerificationAttempts {
+            guard attempt < backendSyncVerificationAttempts - 1 else { break }
+            try? await Task.sleep(nanoseconds: backendSyncVerificationPollDelayNs)
+            _ = await syncEntitlementIfNeeded()
+
+            if await backendReflectsActiveEntitlement(expectedTier: entitlement.tier) {
+                errorMessage = nil
+                return true
+            }
+        }
+
+        return await backendReflectsActiveEntitlement(expectedTier: entitlement.tier)
+    }
+
+    private func backendReflectsActiveEntitlement(expectedTier: SubscriptionTier) async -> Bool {
+        do {
+            let profile = try await profileService.getUserProfile()
+            guard SubscriptionAccessEvaluator.hasBackendPremiumAccess(profile) else { return false }
+            return SubscriptionAccessEvaluator.resolvedBackendTier(profile) == expectedTier
+        } catch {
+            return false
+        }
+    }
+
+    @discardableResult
+    private func syncEntitlementIfNeededWithRetry() async -> Bool {
+        if currentEntitlement == nil {
+            return await syncEntitlementIfNeeded()
+        }
+
+        var lastFailureMessage: String?
+
+        for delay in backendSyncRetryDelaysNs {
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: delay)
+            }
+
+            let didSync = await syncEntitlementIfNeeded()
+            if didSync {
+                return true
+            }
+
+            lastFailureMessage = errorMessage
+        }
+
+        if let lastFailureMessage {
+            errorMessage = lastFailureMessage
+        }
+
+        return false
+    }
+
+    @discardableResult
+    private func syncEntitlementIfNeeded() async -> Bool {
+        guard supabase.auth.currentUser != nil else { return false }
 
         struct SyncRequest: Encodable {
             let isActive: Bool
@@ -373,8 +563,11 @@ final class SubscriptionStore {
                     )
                 )
             )
+            errorMessage = nil
+            return true
         } catch {
             errorMessage = error.localizedDescription
+            return false
         }
     }
 }
@@ -444,9 +637,31 @@ class SubscriptionViewModel {
         }
     }
 
-    func cancelSubscription() async -> CancelSubscriptionResult {
+    func cancelSubscription(isAppStoreManaged: Bool = false) async -> CancelSubscriptionResult {
+        errorMessage = nil
+
+        if isAppStoreManaged {
+            await subscriptionStore.prepare()
+
+            let success = await subscriptionStore.presentManageSubscriptions()
+            if !success {
+                errorMessage = subscriptionStore.errorMessage
+                    ?? "Unable to open the App Store subscription screen right now."
+            }
+
+            return CancelSubscriptionResult(
+                success: success,
+                periodEndDate: subscriptionStore.currentEntitlement?.expirationDate
+            )
+        }
+
         if subscriptionStore.hasActiveSubscription {
             let success = await subscriptionStore.presentManageSubscriptions()
+            if !success {
+                errorMessage = subscriptionStore.errorMessage
+                    ?? "Unable to open the App Store subscription screen right now."
+            }
+
             return CancelSubscriptionResult(
                 success: success,
                 periodEndDate: subscriptionStore.currentEntitlement?.expirationDate

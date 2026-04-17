@@ -98,7 +98,7 @@ final class RecoveryPlanService {
             for: context.input
         )
 
-        return PersonalizedRecoveryPlan(
+        let plan = PersonalizedRecoveryPlan(
             id: UUID(),
             userId: userId,
             procedureName: context.procedureName,
@@ -112,6 +112,9 @@ final class RecoveryPlanService {
             personalizationSummary: buildPersonalizationSummary(from: context.input),
             disclaimers: buildDisclaimers(for: context.input.procedureFamily)
         )
+
+        await persistPlanCacheIfNeeded(plan)
+        return plan
     }
 
     func buildInput(
@@ -795,6 +798,35 @@ final class RecoveryPlanService {
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }
+
+    private func persistPlanCacheIfNeeded(_ plan: PersonalizedRecoveryPlan) async {
+        let payload = RecoveryPlanCacheUpsert(
+            user_id: plan.userId.uuidString.lowercased(),
+            procedure_id: plan.procedureId,
+            procedure_name: plan.procedureName,
+            procedure_date: plan.procedureDate,
+            plan_version: plan.planVersion,
+            input_hash: plan.inputHash,
+            generated_at: plan.generatedAt,
+            current_phase_id: plan.currentPhase.id,
+            current_phase_title: plan.currentPhase.title,
+            current_phase_status: plan.currentPhase.status.rawValue,
+            current_phase_summary: plan.currentPhase.summary,
+            current_phase_focus_areas: plan.currentPhase.focusAreas,
+            personalization_summary: plan.personalizationSummary,
+            plan_json: plan,
+            source: "app_generated"
+        )
+
+        do {
+            try await supabase.database
+                .from("user_recovery_plan_cache")
+                .upsert(payload, onConflict: "user_id,input_hash")
+                .execute()
+        } catch {
+            print("RecoveryPlanService cache persistence failed: \(error)")
+        }
+    }
 }
 
 private struct ResolvedRecoveryPlanContext {
@@ -838,4 +870,22 @@ private struct RecoveryPlanHashJournalSignals: Encodable {
     let latestRednessLevel: Int?
     let weeklySummaryHeadline: String?
     let activeAlerts: [String]
+}
+
+private struct RecoveryPlanCacheUpsert: Encodable {
+    let user_id: String
+    let procedure_id: String?
+    let procedure_name: String
+    let procedure_date: Date
+    let plan_version: Int
+    let input_hash: String
+    let generated_at: Date
+    let current_phase_id: String
+    let current_phase_title: String
+    let current_phase_status: String
+    let current_phase_summary: String
+    let current_phase_focus_areas: [String]
+    let personalization_summary: [String]
+    let plan_json: PersonalizedRecoveryPlan
+    let source: String
 }

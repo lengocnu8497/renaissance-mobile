@@ -354,11 +354,14 @@ class ChatViewModel {
             isTyping = false
 
             // Handle error
-            errorMessage = "Failed to get response. Please try again."
+            let failureMessage = error.localizedDescription
+            errorMessage = failureMessage
 
             // Add error message to chat
             let errorMsg = ChatMessage(
-                text: "Sorry, I'm having trouble connecting right now. Please try again.",
+                text: (error as NSError).code == 403
+                    ? failureMessage
+                    : "Sorry, I'm having trouble connecting right now. Please try again.",
                 isFromUser: false,
                 timestamp: getCurrentTimestamp(),
                 responseId: nil,
@@ -613,12 +616,10 @@ class ChatViewModel {
         }
         request.setValue(AppConfig.supabaseAnonKey, forHTTPHeaderField: "apikey")
 
-        // Call the edge function
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw NSError(domain: "ChatViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to connect to AI service"])
-        }
+        let (data, httpResponse) = try await performAIFunctionRequest(
+            request,
+            allowEntitlementRetry: true
+        )
 
         // Check for quota exceeded (HTTP 429)
         if httpResponse.statusCode == 429 {
@@ -660,6 +661,40 @@ class ChatViewModel {
         let resetContext = json["reset_context"] as? Bool ?? false
 
         return ChatAIResponse(reply: fullText, responseId: finalResponseId, model: model, tokensUsed: tokensUsed, generatedImageUrl: generatedImageUrl, streamingMessageId: nil, resetContext: resetContext)
+    }
+
+    private func performAIFunctionRequest(
+        _ request: URLRequest,
+        allowEntitlementRetry: Bool
+    ) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(
+                domain: "ChatViewModel",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to connect to AI service"]
+            )
+        }
+
+        if httpResponse.statusCode == 403,
+           allowEntitlementRetry,
+           await shouldRetryAfterEntitlementSync() {
+            _ = await SubscriptionStore.shared.ensurePremiumAccessIsSynced()
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            return try await performAIFunctionRequest(
+                request,
+                allowEntitlementRetry: false
+            )
+        }
+
+        return (data, httpResponse)
+    }
+
+    private func shouldRetryAfterEntitlementSync() async -> Bool {
+        await MainActor.run {
+            SubscriptionStore.shared.hasActiveSubscription
+        }
     }
 
     private func getCurrentTimestamp() -> String {

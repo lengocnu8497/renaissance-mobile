@@ -17,6 +17,9 @@ struct ContentView: View {
     @State private var isKeyboardVisible = false
     @State private var showOnboarding = false
     @State private var hasResolvedOnboardingState = false
+    @State private var isResolvingOnboardingState = false
+    @State private var onboardingSessionID = UUID()
+    @State private var lastOnboardingDismissedAt: Date?
 
     private let userProfileService = UserProfileService(supabase: supabase)
 
@@ -103,16 +106,23 @@ struct ContentView: View {
             }
         }
         .task {
-            await resolveOnboardingPresentation()
+            await resolveOnboardingPresentation(trigger: "initialTask")
         }
         .onReceive(NotificationCenter.default.publisher(for: .subscriptionStatusChanged)) { _ in
             Task {
-                await resolveOnboardingPresentation()
+                await resolveOnboardingPresentation(trigger: "subscriptionStatusChanged")
             }
         }
-        .fullScreenCover(isPresented: $showOnboarding) {
-            OnboardingFlowView {
-                showOnboarding = false
+        .onReceive(NotificationCenter.default.publisher(for: .onboardingStateChanged)) { _ in
+            Task {
+                await resolveOnboardingPresentation(trigger: "onboardingStateChanged")
+            }
+        }
+        .fullScreenCover(isPresented: onboardingPresentationBinding) {
+            OnboardingFlowView(onboardingSessionID: onboardingSessionID) {
+                Task { @MainActor in
+                    await resolveOnboardingPresentation(trigger: "onboardingFlowFinished")
+                }
             }
         }
     }
@@ -222,36 +232,125 @@ struct ProfileTabView: View {
 }
 
 private extension ContentView {
-    @MainActor
-    func resolveOnboardingPresentation() async {
-        if OnboardingStore.hasCompleted {
-            hasResolvedOnboardingState = true
-            showOnboarding = false
-            return
-        }
+    var onboardingPresentationBinding: Binding<Bool> {
+        Binding(
+            get: { showOnboarding },
+            set: { newValue in
+                if showOnboarding == newValue { return }
 
-        await subscriptionStore.prepare()
+                logOnboardingEvent(
+                    "content.onboarding.bindingChanged",
+                    details: [
+                        "sessionID": onboardingSessionID.uuidString,
+                        "oldPresented": String(showOnboarding),
+                        "newPresented": String(newValue),
+                        "storeShouldPresent": String(OnboardingStore.shouldPresentOnboarding)
+                    ]
+                )
 
-        if subscriptionStore.hasActiveSubscription {
-            OnboardingStore.hasCompleted = true
-            hasResolvedOnboardingState = true
-            showOnboarding = false
-            return
-        }
+                if !newValue {
+                    lastOnboardingDismissedAt = Date()
+                }
 
-        do {
-            let profile = try await userProfileService.getUserProfile()
-            if SubscriptionAccessEvaluator.hasBackendPremiumAccess(profile) {
-                OnboardingStore.hasCompleted = true
-                showOnboarding = false
-            } else {
-                showOnboarding = true
+                showOnboarding = newValue
             }
-        } catch {
-            showOnboarding = !OnboardingStore.hasCompleted
+        )
+    }
+
+    @MainActor
+    func resolveOnboardingPresentation(trigger: String) async {
+        guard !isResolvingOnboardingState else {
+            logOnboardingEvent(
+                "content.gate.skippedWhileResolving",
+                details: ["trigger": trigger]
+            )
+            return
         }
 
+        isResolvingOnboardingState = true
+        defer { isResolvingOnboardingState = false }
+
+        let decision = await OnboardingStore.resolvePresentationDecision(
+            trigger: trigger,
+            using: subscriptionStore,
+            profileService: userProfileService
+        )
+
+        logOnboardingEvent(
+            "content.gate.evaluate",
+            details: [
+                "trigger": trigger,
+                "userID": decision.userID,
+                "status": decision.status.rawValue,
+                "completionReason": decision.completionReason?.rawValue,
+                "hasActiveSubscription": String(decision.hasActiveSubscription),
+                "hasBackendPremiumAccess": decision.hasBackendPremiumAccess.map { String(describing: $0) },
+                "shouldPresent": String(decision.shouldPresent)
+            ]
+        )
+
+        applyOnboardingDecision(decision, trigger: trigger)
         hasResolvedOnboardingState = true
+    }
+
+    @MainActor
+    func applyOnboardingDecision(_ decision: OnboardingPresentationDecision, trigger: String) {
+        if decision.shouldPresent {
+            if !showOnboarding {
+                if let lastOnboardingDismissedAt,
+                   Date().timeIntervalSince(lastOnboardingDismissedAt) < 2 {
+                    logOnboardingEvent(
+                        "content.onboarding.representedAfterDismiss",
+                        details: [
+                            "trigger": trigger,
+                            "userID": decision.userID,
+                            "status": decision.status.rawValue,
+                            "completionReason": decision.completionReason?.rawValue
+                        ]
+                    )
+                }
+
+                onboardingSessionID = UUID()
+                logOnboardingEvent(
+                    "content.onboarding.present",
+                    details: [
+                        "trigger": trigger,
+                        "sessionID": onboardingSessionID.uuidString,
+                        "userID": decision.userID
+                    ]
+                )
+            }
+        } else if showOnboarding {
+            lastOnboardingDismissedAt = Date()
+            logOnboardingEvent(
+                "content.onboarding.dismissRequested",
+                details: [
+                    "trigger": trigger,
+                    "sessionID": onboardingSessionID.uuidString,
+                    "userID": decision.userID,
+                    "status": decision.status.rawValue,
+                    "completionReason": decision.completionReason?.rawValue
+                ]
+            )
+        }
+
+        showOnboarding = decision.shouldPresent
+    }
+
+    func logOnboardingEvent(_ event: String, details: [String: String?] = [:]) {
+        let payload = details
+            .compactMap { key, value -> String? in
+                guard let value else { return nil }
+                return "\(key)=\(value)"
+            }
+            .sorted()
+            .joined(separator: " ")
+
+        if payload.isEmpty {
+            print("[OnboardingContent] \(event)")
+        } else {
+            print("[OnboardingContent] \(event) \(payload)")
+        }
     }
 }
 

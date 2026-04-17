@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import StoreKit
 
 private enum OnboardingPaywallUI {
     static let shell = Color(hex: "#EEF1E8")
@@ -201,12 +202,27 @@ private enum WhenOption: String, CaseIterable, Identifiable {
 
 struct OnboardingFlowView: View {
     @Environment(\.dismiss) private var dismiss
+    var onboardingSessionID: UUID = UUID()
     var onFinish: () -> Void = {}
+
+    private enum ActiveAlert: Identifiable, Equatable {
+        case onboardingReviewPrompt
+        case reviewUnavailable(String)
+
+        var id: String {
+            switch self {
+            case .onboardingReviewPrompt:
+                return "onboarding-review-prompt"
+            case .reviewUnavailable(let message):
+                return "review-unavailable-\(message)"
+            }
+        }
+    }
 
     @State private var screen = 0
     @State private var selectedProcedure: ProcedureOption? = nil
     @State private var selectedWhen: WhenOption? = nil
-    @State private var isSkippingSubscription = false
+    @State private var isCompletingOnboarding = false
 
     // User context quiz state (screens 5–7)
     @State private var selectedGender: String? = nil
@@ -218,11 +234,14 @@ struct OnboardingFlowView: View {
     @State private var selectedPreviousProcedures: Set<String> = []
     @State private var selectedHealthFlags: Set<String> = []
     @State private var selectedAcquisitionSource = OnboardingStore.pendingAcquisitionSource
+    @State private var didQueueOnboardingRecoveryPlanReviewPrompt = false
+    @State private var activeAlert: ActiveAlert?
 
     private let userProfileService = UserProfileService(supabase: supabase)
     private let recoveryPlanService = RecoveryPlanService()
 
     private let totalScreens = 9
+    private let onboardingStickyBottomPadding: CGFloat = 112
 
     var body: some View {
         ZStack {
@@ -248,6 +267,28 @@ struct OnboardingFlowView: View {
             ))
             .animation(.easeInOut(duration: 0.3), value: screen)
         }
+        .alert(item: $activeAlert) { alert in
+            switch alert {
+            case .onboardingReviewPrompt:
+                return Alert(
+                    title: Text("How do you like Rena so far?"),
+                    message: Text("If the recovery plan feels helpful, Apple may show a quick rating prompt."),
+                    primaryButton: .default(Text("Leave a Rating")) {
+                        Task { @MainActor in
+                            await requestOnboardingRecoveryPlanReview()
+                        }
+                    },
+                    secondaryButton: .cancel(Text("Not Now"))
+                )
+            case .reviewUnavailable(let message):
+                return Alert(
+                    title: Text("Rating Unavailable"),
+                    message: Text(message),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+        }
+        .interactiveDismissDisabled()
     }
 
     private var onboardingShellBackground: some View {
@@ -317,10 +358,6 @@ struct OnboardingFlowView: View {
 
                             Spacer(minLength: 24)
 
-                            primaryButton(label: "Get Started", enabled: true, gradient: false, horizontalPadding: 0, topPadding: 0) {
-                                withAnimation { screen = 1 }
-                            }
-
                             HStack(spacing: 5) {
                                 ForEach(0..<totalScreens, id: \.self) { i in
                                     Capsule()
@@ -337,12 +374,20 @@ struct OnboardingFlowView: View {
                     .frame(minHeight: proxy.size.height)
                     .padding(.top, 6)
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, onboardingStickyBottomPadding)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(onboardingShellBackground.ignoresSafeArea())
+        .safeAreaInset(edge: .bottom) {
+            blendedBottomCTA(backgroundColor: OnboardingPaywallUI.bg) {
+                primaryButton(label: "Get Started", enabled: true, gradient: false, horizontalPadding: 20, topPadding: 0) {
+                    withAnimation { screen = 1 }
+                }
+                .padding(.bottom, 8)
+            }
+        }
     }
 
     private var contrastGrid: some View {
@@ -418,7 +463,7 @@ struct OnboardingFlowView: View {
                     introBlock(
                         eyebrow: "Your timing",
                         title: "When did it happen?",
-                        body: "This helps us find where you are in your recovery right now."
+                        body: nil
                     )
 
                     VStack(spacing: 12) {
@@ -427,21 +472,25 @@ struct OnboardingFlowView: View {
                         }
                     }
                     .padding(.top, 4)
-
-                    primaryButton(label: "Continue", enabled: selectedWhen != nil, gradient: false, horizontalPadding: 0, topPadding: 28) {
-                        if let when = selectedWhen {
-                            OnboardingStore.save(
-                                procedureName: resolvedOnboardingProcedureName,
-                                procedureDate: when.procedureDate
-                            )
-                        }
-                        withAnimation { screen = 5 }
-                    }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 18)
+                .padding(.bottom, onboardingStickyBottomPadding)
             }
             Spacer().frame(height: 14)
+        }
+        .safeAreaInset(edge: .bottom) {
+            blendedBottomCTA(backgroundColor: OnboardingPaywallUI.bg) {
+                primaryButton(label: "Continue", enabled: selectedWhen != nil, gradient: false, horizontalPadding: 20, topPadding: 0) {
+                    if let when = selectedWhen {
+                        OnboardingStore.save(
+                            procedureName: resolvedOnboardingProcedureName,
+                            procedureDate: when.procedureDate
+                        )
+                    }
+                    withAnimation { screen = 5 }
+                }
+                .padding(.bottom, 8)
+            }
         }
     }
 
@@ -456,7 +505,7 @@ struct OnboardingFlowView: View {
                     introBlock(
                         eyebrow: "The difference it makes",
                         title: "Trackers vs. non-trackers.",
-                        body: "Real outcomes from patients who documented their recovery from day one.",
+                        body: nil,
                         eyebrowColor: OnboardingPaywallUI.roseDeep
                     )
 
@@ -494,17 +543,21 @@ struct OnboardingFlowView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(OnboardingPaywallUI.roseSoft.opacity(0.94))
                     .cornerRadius(24)
-
-                    primaryButton(label: "I'm ready", enabled: true, gradient: false, horizontalPadding: 0, topPadding: 28) {
-                        withAnimation { screen = 7 }
-                    }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 18)
+                .padding(.bottom, onboardingStickyBottomPadding)
             }
             Spacer().frame(height: 14)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .safeAreaInset(edge: .bottom) {
+            blendedBottomCTA(backgroundColor: OnboardingPaywallUI.bg) {
+                primaryButton(label: "I'm ready", enabled: true, gradient: false, horizontalPadding: 20, topPadding: 0) {
+                    withAnimation { screen = 7 }
+                }
+                .padding(.bottom, 8)
+            }
+        }
     }
 
     private func statCard(number: String, title: String, desc: String) -> some View {
@@ -544,12 +597,29 @@ struct OnboardingFlowView: View {
                     service: recoveryPlanService,
                     isLocked: true
                 ),
+                onPlanReady: {
+                    scheduleOnboardingRecoveryPlanReviewPromptIfNeeded()
+                },
                 onUnlock: {
                     withAnimation { screen = 8 }
                 }
             )
         }
         .background(onboardingShellBackground.ignoresSafeArea())
+    }
+
+    private func scheduleOnboardingRecoveryPlanReviewPromptIfNeeded() {
+        guard OnboardingReviewPromptPolicy.shouldQueuePrompt(
+            hasQueuedPromptInSession: didQueueOnboardingRecoveryPlanReviewPrompt
+        ) else { return }
+
+        didQueueOnboardingRecoveryPlanReviewPrompt = true
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(700))
+            guard screen == 7 else { return }
+            activeAlert = .onboardingReviewPrompt
+        }
     }
 
     private var attributionScreen: some View {
@@ -561,27 +631,31 @@ struct OnboardingFlowView: View {
                     introBlock(
                         eyebrow: "One quick thing",
                         title: "How did you hear about us?",
-                        body: "This helps us understand which channels are actually working.",
+                        body: nil,
                         eyebrowColor: OnboardingPaywallUI.roseDeep,
                         titleSize: 32
                     )
 
                     VStack(spacing: 10) {
-                        ForEach(AcquisitionSource.allCases) { source in
+                        ForEach(AcquisitionSource.onboardingChoices) { source in
                             onboardingSourceRow(for: source)
                         }
                     }
-
-                    primaryButton(label: "Continue", enabled: selectedAcquisitionSource != nil, gradient: false, horizontalPadding: 0, topPadding: 28) {
-                        guard let selectedAcquisitionSource else { return }
-                        OnboardingStore.savePendingAcquisitionSource(selectedAcquisitionSource)
-                        withAnimation { screen = 6 }
-                    }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 18)
+                .padding(.bottom, onboardingStickyBottomPadding)
             }
             Spacer().frame(height: 14)
+        }
+        .safeAreaInset(edge: .bottom) {
+            blendedBottomCTA(backgroundColor: OnboardingPaywallUI.bg) {
+                primaryButton(label: "Continue", enabled: selectedAcquisitionSource != nil, gradient: false, horizontalPadding: 20, topPadding: 0) {
+                    guard let selectedAcquisitionSource else { return }
+                    OnboardingStore.savePendingAcquisitionSource(selectedAcquisitionSource)
+                    withAnimation { screen = 6 }
+                }
+                .padding(.bottom, 8)
+            }
         }
     }
 
@@ -595,12 +669,8 @@ struct OnboardingFlowView: View {
                 }
             },
             onSubscribed: {
-                Task {
-                    guard !isSkippingSubscription else { return }
-                    await OnboardingStore.syncUserContextIfNeeded(using: userProfileService)
-                    await OnboardingStore.syncAttributionIfNeeded(using: userProfileService)
-                    OnboardingStore.completePostOnboardingFeedback()
-                    finishOnboarding()
+                Task { @MainActor in
+                    completeOnboardingAfterSubscription()
                 }
             }
         )
@@ -609,21 +679,109 @@ struct OnboardingFlowView: View {
 
     @MainActor
     private func completeOnboardingWithoutSubscription() async {
-        guard !isSkippingSubscription else { return }
-
-        isSkippingSubscription = true
-        await OnboardingStore.syncUserContextIfNeeded(using: userProfileService)
-        await OnboardingStore.syncAttributionIfNeeded(using: userProfileService)
-        OnboardingStore.completePostOnboardingFeedback()
-        finishOnboarding()
+        await completeOnboarding(
+            reason: .maybeLater,
+            source: "paywallCloseButton"
+        )
     }
 
     @MainActor
-    private func finishOnboarding() {
-        OnboardingStore.hasCompleted = true
+    private func completeOnboardingAfterSubscription() {
+        Task {
+            await completeOnboarding(
+                reason: .purchased,
+                source: "paywallSubscriptionSuccess"
+            )
+        }
+    }
+
+    @MainActor
+    private func requestOnboardingRecoveryPlanReview() async {
+        let outcome = await ReviewRequestHelper.requestWhenReady(
+            initialDelayMilliseconds: 900,
+            maxAttempts: 8,
+            retryDelayMilliseconds: 500
+        )
+
+        if let message = outcome.userFacingMessage {
+            activeAlert = .reviewUnavailable(message)
+        }
+    }
+
+    private func syncOnboardingProfileDataInBackground() {
+        Task {
+            await OnboardingStore.syncUserContextIfNeeded(using: userProfileService)
+            await OnboardingStore.syncAttributionIfNeeded(using: userProfileService)
+        }
+    }
+
+    @MainActor
+    private func completeOnboarding(
+        reason: OnboardingCompletionReason,
+        source: String
+    ) async {
+        guard !isCompletingOnboarding else {
+            logOnboardingEvent(
+                "flow.completeOnboarding.ignoredWhileInFlight",
+                details: [
+                    "sessionID": onboardingSessionID.uuidString,
+                    "reason": reason.rawValue,
+                    "source": source
+                ]
+            )
+            return
+        }
+
+        isCompletingOnboarding = true
+
+        logOnboardingEvent(
+            "flow.completeOnboarding.requested",
+            details: [
+                "sessionID": onboardingSessionID.uuidString,
+                "reason": reason.rawValue,
+                "source": source
+            ]
+        )
+
+        OnboardingStore.completePostOnboardingFeedback()
+        OnboardingStore.completeOnboarding(reason: reason, source: source)
+        finishOnboarding(reason: reason, source: source)
+        syncOnboardingProfileDataInBackground()
+    }
+
+    @MainActor
+    private func finishOnboarding(
+        reason: OnboardingCompletionReason,
+        source: String
+    ) {
+        logOnboardingEvent(
+            "flow.finishOnboarding",
+            details: [
+                "sessionID": onboardingSessionID.uuidString,
+                "reason": reason.rawValue,
+                "source": source
+            ]
+        )
+
         dismiss()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             onFinish()
+        }
+    }
+
+    private func logOnboardingEvent(_ event: String, details: [String: String?] = [:]) {
+        let payload = details
+            .compactMap { key, value -> String? in
+                guard let value else { return nil }
+                return "\(key)=\(value)"
+            }
+            .sorted()
+            .joined(separator: " ")
+
+        if payload.isEmpty {
+            print("[OnboardingFlow] \(event)")
+        } else {
+            print("[OnboardingFlow] \(event) \(payload)")
         }
     }
 
@@ -638,7 +796,7 @@ struct OnboardingFlowView: View {
                     introBlock(
                         eyebrow: "About you",
                         title: "Help Rena know you better.",
-                        body: "This helps us tailor guidance to your healing, skin, and aesthetic journey. All optional."
+                        body: nil
                     )
 
                     VStack(alignment: .leading, spacing: 18) {
@@ -667,18 +825,24 @@ struct OnboardingFlowView: View {
                         }
                     }
 
-                    primaryButton(label: "Continue", enabled: true, gradient: false, horizontalPadding: 0, topPadding: 28) {
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, onboardingStickyBottomPadding)
+            }
+            Spacer().frame(height: 14)
+        }
+        .safeAreaInset(edge: .bottom) {
+            blendedBottomCTA(backgroundColor: OnboardingPaywallUI.bg) {
+                VStack(spacing: 0) {
+                    primaryButton(label: "Continue", enabled: true, gradient: false, horizontalPadding: 20, topPadding: 0) {
                         withAnimation { screen = 2 }
                     }
-
-                    secondarySkipButton {
+                    secondarySkipButton(topPadding: 10) {
                         withAnimation { screen = 2 }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 14)
+                .padding(.bottom, 8)
             }
-            Spacer().frame(height: 14)
         }
     }
 
@@ -693,7 +857,7 @@ struct OnboardingFlowView: View {
                     introBlock(
                         eyebrow: "Your goals",
                         title: "What are you hoping to achieve?",
-                        body: "Select all that apply. This shapes the advice and insights Rena gives you."
+                        body: nil
                     )
 
                     VStack(alignment: .leading, spacing: 18) {
@@ -729,18 +893,24 @@ struct OnboardingFlowView: View {
                         }
                     }
 
-                    primaryButton(label: "Continue", enabled: true, gradient: false, horizontalPadding: 0, topPadding: 28) {
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, onboardingStickyBottomPadding)
+            }
+            Spacer().frame(height: 14)
+        }
+        .safeAreaInset(edge: .bottom) {
+            blendedBottomCTA(backgroundColor: OnboardingPaywallUI.bg) {
+                VStack(spacing: 0) {
+                    primaryButton(label: "Continue", enabled: true, gradient: false, horizontalPadding: 20, topPadding: 0) {
                         withAnimation { screen = 3 }
                     }
-
-                    secondarySkipButton {
+                    secondarySkipButton(topPadding: 10) {
                         withAnimation { screen = 3 }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 14)
+                .padding(.bottom, 8)
             }
-            Spacer().frame(height: 14)
         }
     }
 
@@ -755,7 +925,7 @@ struct OnboardingFlowView: View {
                     introBlock(
                         eyebrow: "Health & history",
                         title: "A few quick context questions.",
-                        body: "Not a diagnosis — just helps Rena personalise your recovery guidance."
+                        body: nil
                     )
 
                     VStack(alignment: .leading, spacing: 18) {
@@ -781,7 +951,16 @@ struct OnboardingFlowView: View {
                         }
                     }
 
-                    primaryButton(label: "Continue", enabled: true, gradient: false, horizontalPadding: 0, topPadding: 28) {
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, onboardingStickyBottomPadding)
+            }
+            Spacer().frame(height: 14)
+        }
+        .safeAreaInset(edge: .bottom) {
+            blendedBottomCTA(backgroundColor: OnboardingPaywallUI.bg) {
+                VStack(spacing: 0) {
+                    primaryButton(label: "Continue", enabled: true, gradient: false, horizontalPadding: 20, topPadding: 0) {
                         OnboardingStore.saveUserContext(
                             gender: selectedGender,
                             zipCode: nil,
@@ -795,8 +974,7 @@ struct OnboardingFlowView: View {
                         )
                         withAnimation { screen = 4 }
                     }
-
-                    secondarySkipButton {
+                    secondarySkipButton(topPadding: 10) {
                         OnboardingStore.saveUserContext(
                             gender: selectedGender,
                             zipCode: nil,
@@ -811,10 +989,8 @@ struct OnboardingFlowView: View {
                         withAnimation { screen = 4 }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 18)
+                .padding(.bottom, 8)
             }
-            Spacer().frame(height: 14)
         }
     }
 
@@ -883,7 +1059,7 @@ struct OnboardingFlowView: View {
     private func introBlock(
         eyebrow: String,
         title: String,
-        body: String,
+        body: String?,
         eyebrowColor: Color = OnboardingPaywallUI.muted,
         titleSize: CGFloat = 36
     ) -> some View {
@@ -901,13 +1077,15 @@ struct OnboardingFlowView: View {
                 .lineSpacing(2)
                 .padding(.top, 16)
 
-            Text(body)
-                .font(.custom("PlusJakartaSans-Regular", size: 13))
-                .foregroundColor(OnboardingPaywallUI.muted)
-                .lineSpacing(6)
-                .padding(.top, 20)
-                .padding(.bottom, 28)
+            if let body, !body.isEmpty {
+                Text(body)
+                    .font(.custom("PlusJakartaSans-Regular", size: 13))
+                    .foregroundColor(OnboardingPaywallUI.muted)
+                    .lineSpacing(6)
+                    .padding(.top, 20)
+            }
         }
+        .padding(.bottom, 28)
     }
 
     private func questionTopBar(step: Int, total: Int) -> some View {
@@ -1037,14 +1215,7 @@ struct OnboardingFlowView: View {
             selectedAcquisitionSource = source
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: source.iconName)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(isSelected ? OnboardingPaywallUI.primary : OnboardingPaywallUI.roseDeep)
-                    .frame(width: 36, height: 36)
-                    .background(
-                        (isSelected ? OnboardingPaywallUI.primarySoft : OnboardingPaywallUI.roseSoft.opacity(0.92))
-                            .clipShape(Circle())
-                    )
+                OnboardingAcquisitionSourceIcon(source: source, isSelected: isSelected)
 
                 Text(source.displayName)
                     .font(.custom("PlusJakartaSans-Medium", size: 14))
@@ -1132,7 +1303,27 @@ struct OnboardingFlowView: View {
         .padding(.top, topPadding)
     }
 
-    private func secondarySkipButton(action: @escaping () -> Void) -> some View {
+    private func blendedBottomCTA<Content: View>(
+        backgroundColor: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [Color.clear, backgroundColor.opacity(0.96)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 24)
+
+            content()
+                .background(backgroundColor.opacity(0.96))
+        }
+    }
+
+    private func secondarySkipButton(
+        topPadding: CGFloat = 14,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Text("Skip for now")
                 .font(.custom("PlusJakartaSans-Medium", size: 14))
@@ -1140,7 +1331,7 @@ struct OnboardingFlowView: View {
                 .underline()
                 .frame(maxWidth: .infinity)
         }
-        .padding(.top, 14)
+        .padding(.top, topPadding)
     }
 
     private var resolvedOnboardingProcedureName: String {
@@ -1186,6 +1377,138 @@ struct OnboardingFlowView: View {
         }
 
         return "Surgery"
+    }
+}
+
+private struct OnboardingAcquisitionSourceIcon: View {
+    let source: AcquisitionSource
+    let isSelected: Bool
+
+    var body: some View {
+        ZStack {
+            backgroundShape
+
+            switch source {
+            case .instagram:
+                instagramGlyph
+            case .tiktok:
+                tikTokGlyph
+            case .googleSearch:
+                Text("G")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(googleGradient)
+            case .friendOrFamily:
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(iconForeground)
+            case .doctorOrClinic:
+                Image(systemName: "cross.case.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(iconForeground)
+            case .appStoreSearch:
+                Image(systemName: "apple.logo")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+            case .pressOrBlog:
+                Image(systemName: "newspaper.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(iconForeground)
+            case .other:
+                Image(systemName: "ellipsis.circle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(iconForeground)
+            }
+        }
+        .frame(width: 36, height: 36)
+    }
+
+    @ViewBuilder
+    private var backgroundShape: some View {
+        switch source {
+        case .instagram:
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(hex: "#FEDA75"),
+                            Color(hex: "#FA7E1E"),
+                            Color(hex: "#D62976"),
+                            Color(hex: "#962FBF"),
+                            Color(hex: "#4F5BD5"),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        case .tiktok:
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(Color.black)
+        case .googleSearch:
+            Circle()
+                .fill(Color.white)
+                .overlay(
+                    Circle()
+                        .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                )
+        case .appStoreSearch:
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(hex: "#1677F2"))
+        default:
+            Circle()
+                .fill((isSelected ? OnboardingPaywallUI.primarySoft : OnboardingPaywallUI.roseSoft.opacity(0.92)))
+        }
+    }
+
+    private var iconForeground: Color {
+        isSelected ? OnboardingPaywallUI.primary : OnboardingPaywallUI.roseDeep
+    }
+
+    private var googleGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(hex: "#4285F4"),
+                Color(hex: "#34A853"),
+                Color(hex: "#FBBC05"),
+                Color(hex: "#EA4335"),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private var instagramGlyph: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.white, lineWidth: 1.9)
+                .frame(width: 17, height: 17)
+
+            Circle()
+                .strokeBorder(Color.white, lineWidth: 1.9)
+                .frame(width: 7, height: 7)
+
+            Circle()
+                .fill(Color.white)
+                .frame(width: 3, height: 3)
+                .offset(x: 5, y: -5)
+        }
+    }
+
+    private var tikTokGlyph: some View {
+        ZStack {
+            Image(systemName: "music.note")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Color(hex: "#25F4EE"))
+                .offset(x: -1.2, y: 0.8)
+
+            Image(systemName: "music.note")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Color(hex: "#FE2C55"))
+                .offset(x: 1.2, y: -0.8)
+
+            Image(systemName: "music.note")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(.white)
+        }
     }
 }
 

@@ -12,6 +12,11 @@ import Supabase
 class UsageTrackingService {
     private let supabase: SupabaseClient
 
+    private struct LocalSubscriptionSnapshot {
+        let hasActiveSubscription: Bool
+        let activeTier: SubscriptionTier?
+    }
+
     init(supabase: SupabaseClient) {
         self.supabase = supabase
     }
@@ -24,6 +29,8 @@ class UsageTrackingService {
             throw UsageTrackingError.notAuthenticated
         }
 
+        let localSubscription = await currentLocalSubscriptionSnapshot()
+
         // Get user's subscription info first
         let profile: UserProfile = try await supabase.database
             .from("user_profiles")
@@ -33,15 +40,21 @@ class UsageTrackingService {
             .execute()
             .value
 
-        guard SubscriptionAccessEvaluator.hasBackendPremiumAccess(profile) else {
+        let tier: SubscriptionTier
+        if SubscriptionAccessEvaluator.hasBackendPremiumAccess(profile),
+           let backendTier = SubscriptionAccessEvaluator.resolvedBackendTier(profile) {
+            tier = backendTier
+        } else if localSubscription.hasActiveSubscription,
+                  let localTier = localSubscription.activeTier {
+            tier = localTier
+        } else {
             throw UsageTrackingError.noActiveSubscription
         }
 
-        // Map BillingPlan to SubscriptionTier
-        guard let tier = SubscriptionTier(rawValue: profile.billingPlan.rawValue) else {
-            throw UsageTrackingError.noActiveSubscription
-        }
+        return try await currentUsageQuota(for: userId, tier: tier)
+    }
 
+    private func currentUsageQuota(for userId: UUID, tier: SubscriptionTier) async throws -> UsageQuota {
         // Get current usage record for this billing period
         let response: [UsageQuota] = try await supabase.database
             .from("usage_tracking")
@@ -73,6 +86,15 @@ class UsageTrackingService {
                 subscriptionTier: tier,
                 createdAt: Date(),
                 updatedAt: Date()
+            )
+        }
+    }
+
+    private func currentLocalSubscriptionSnapshot() async -> LocalSubscriptionSnapshot {
+        await MainActor.run {
+            LocalSubscriptionSnapshot(
+                hasActiveSubscription: SubscriptionStore.shared.hasActiveSubscription,
+                activeTier: SubscriptionStore.shared.activeTier
             )
         }
     }

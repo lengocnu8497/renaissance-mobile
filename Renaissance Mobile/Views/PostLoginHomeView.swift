@@ -66,7 +66,6 @@ private enum HomeProcedureImageResolver {
 
 struct PostLoginHomeView: View {
     @Environment(SubscriptionStore.self) private var subscriptionStore
-    @Environment(\.requestReview) private var requestReview
     @State private var firstName = ""
     @State private var journalViewModel = JournalViewModel()
     @State private var proceduresViewModel = ProceduresViewModel()
@@ -78,6 +77,7 @@ struct PostLoginHomeView: View {
     @State private var recentSessions: [ChatConversation] = []
     @State private var loadingRecentSessions = false
     @State private var showExploreSheet = false
+    @State private var didAttemptValueMomentReview = false
     @State private var showPaywall = false
     @State private var showRecoveryPlan = false
 
@@ -220,13 +220,21 @@ struct PostLoginHomeView: View {
     }
 
     private func requestValueMomentReviewIfNeeded() {
+        guard !didAttemptValueMomentReview else { return }
         guard ReviewPromptStore.shouldRequestAutomaticReview else { return }
         guard isSubscribed else { return }
         guard journalViewModel.entries.count >= 3 else { return }
         guard latestPrimaryWeeklySummary != nil else { return }
 
-        ReviewPromptStore.markAutomaticReviewRequested()
-        requestReview()
+        didAttemptValueMomentReview = true
+        Task { @MainActor in
+            let outcome = await ReviewRequestHelper.requestWhenReady()
+            guard outcome == .requested else {
+                didAttemptValueMomentReview = false
+                return
+            }
+            ReviewPromptStore.markAutomaticReviewRequested()
+        }
     }
 
     private var primaryProcedureName: String {

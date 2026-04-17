@@ -164,6 +164,7 @@ struct UserProfile: Identifiable, Codable {
     var zipCode: String?
     var billingPlan: BillingPlan
     var profileImageUrl: String?
+    var subscriptionTier: SubscriptionTier?
     var subscriptionStatus: SubscriptionStatus?
     var subscriptionCurrentPeriodEnd: Date?
     var subscriptionProvider: SubscriptionProvider?
@@ -193,6 +194,7 @@ struct UserProfile: Identifiable, Codable {
         case zipCode = "zip_code"
         case billingPlan = "billing_plan"
         case profileImageUrl = "profile_image_url"
+        case subscriptionTier = "subscription_tier"
         case subscriptionStatus = "subscription_status"
         case subscriptionCurrentPeriodEnd = "subscription_current_period_end"
         case subscriptionProvider = "subscription_provider"
@@ -221,6 +223,7 @@ struct UserProfile: Identifiable, Codable {
         zipCode: String? = nil,
         billingPlan: BillingPlan = .free,
         profileImageUrl: String? = nil,
+        subscriptionTier: SubscriptionTier? = nil,
         subscriptionStatus: SubscriptionStatus? = nil,
         subscriptionCurrentPeriodEnd: Date? = nil,
         subscriptionProvider: SubscriptionProvider? = nil,
@@ -247,6 +250,7 @@ struct UserProfile: Identifiable, Codable {
         self.zipCode = zipCode
         self.billingPlan = billingPlan
         self.profileImageUrl = profileImageUrl
+        self.subscriptionTier = subscriptionTier
         self.subscriptionStatus = subscriptionStatus
         self.subscriptionCurrentPeriodEnd = subscriptionCurrentPeriodEnd
         self.subscriptionProvider = subscriptionProvider
