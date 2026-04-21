@@ -379,7 +379,7 @@ struct ProfileView: View {
                     iconBackground: Color.white,
                     iconColor: ProfilePalette.primary
                 ) {
-                    UIApplication.shared.open(AppConfig.termsOfUseURL)
+                    UIApplication.shared.open(URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
                 }
             }
         }
