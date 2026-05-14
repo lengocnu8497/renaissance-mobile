@@ -41,6 +41,7 @@ class AuthViewModel {
                     if !session.isExpired {
                         currentUser = session.user
                         isAuthenticated = true
+                        Analytics.identify(userId: session.user.id.uuidString)
                     } else {
                         currentUser = nil
                         isAuthenticated = false
@@ -50,11 +51,15 @@ class AuthViewModel {
             case .signedIn:
                 currentUser = state.session?.user
                 isAuthenticated = state.session != nil
+                if let userId = state.session?.user.id.uuidString {
+                    Analytics.identify(userId: userId)
+                }
 
             case .signedOut:
                 currentUser = nil
                 isAuthenticated = false
                 showUpdatePassword = false
+                Analytics.reset()
 
             case .passwordRecovery:
                 // User clicked password recovery link and is now authenticated
@@ -259,6 +264,10 @@ class AuthViewModel {
             currentUser = session.user
             isAuthenticated = true
         } catch {
+            let nsError = error as NSError
+            if nsError.domain == "com.google.GIDSignIn" && nsError.code == -5 {
+                return
+            }
             errorMessage = error.localizedDescription
             print("Google Sign-In error: \(error)")
         }

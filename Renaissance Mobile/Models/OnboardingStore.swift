@@ -121,6 +121,17 @@ struct OnboardingStore {
     private static let bootstrappedIdKey   = "rena_bootstrapped_procedure_id"
     private static let bootstrappedNameKey = "rena_bootstrapped_procedure_name"
 
+    // Branch selection
+    private static let branchKey                  = "rena_onboarding_branch"
+    // Researching-path data
+    private static let researchStageKey           = "rena_onboarding_research_stage"
+    private static let researchNeedsKey           = "rena_onboarding_research_needs"
+    // Planning-path data
+    private static let planningConsultationKey    = "rena_onboarding_planning_consultation"
+    private static let planningTimelineKey        = "rena_onboarding_planning_timeline"
+    // Recovering-path data
+    private static let recoveringEmotionKey       = "rena_onboarding_recovering_emotion"
+
     // AI personalization context
     private static let genderKey               = "rena_onboarding_gender"
     private static let zipCodeKey              = "rena_onboarding_zip_code"
@@ -271,6 +282,10 @@ struct OnboardingStore {
         }
 
         return OnboardingCompletionReason(rawValue: rawValue)
+    }
+
+    static var isMaybeLaterUser: Bool {
+        completionReason == .maybeLater
     }
 
     static var shouldPresentOnboarding: Bool {
@@ -644,6 +659,43 @@ struct OnboardingStore {
          healthFlagsKey, bodyAreasKey].forEach { removeUserScopedValue(forKey: $0) }
     }
 
+    // MARK: - Branch Data
+
+    static var pendingBranch: String? {
+        protectedString(forKey: userScopedKey(branchKey))
+    }
+    static var pendingResearchStage: String? {
+        protectedString(forKey: userScopedKey(researchStageKey))
+    }
+    static var pendingResearchNeeds: [String] {
+        protectedArray(forKey: userScopedKey(researchNeedsKey))
+    }
+    static var pendingPlanningConsultation: String? {
+        protectedString(forKey: userScopedKey(planningConsultationKey))
+    }
+    static var pendingPlanningTimeline: String? {
+        protectedString(forKey: userScopedKey(planningTimelineKey))
+    }
+    static var pendingRecoveringEmotion: String? {
+        protectedString(forKey: userScopedKey(recoveringEmotionKey))
+    }
+
+    static func saveBranchData(
+        branch: String,
+        researchStage: String? = nil,
+        researchNeeds: [String] = [],
+        planningConsultation: String? = nil,
+        planningTimeline: String? = nil,
+        recoveringEmotion: String? = nil
+    ) {
+        setProtected(branch, forKey: userScopedKey(branchKey))
+        if let v = researchStage { setProtected(v, forKey: userScopedKey(researchStageKey)) }
+        if !researchNeeds.isEmpty { setProtected(researchNeeds, forKey: userScopedKey(researchNeedsKey)) }
+        if let v = planningConsultation { setProtected(v, forKey: userScopedKey(planningConsultationKey)) }
+        if let v = planningTimeline { setProtected(v, forKey: userScopedKey(planningTimelineKey)) }
+        if let v = recoveringEmotion { setProtected(v, forKey: userScopedKey(recoveringEmotionKey)) }
+    }
+
     // MARK: - Save
 
     static func save(procedureName: String, procedureDate: Date) {
@@ -707,6 +759,13 @@ struct OnboardingStore {
         removeUserScopedValue(forKey: feedbackCompletedKey)
         clearBootstrappedProcedure()
         clearUserContext()
+        clearBranchData()
         NotificationCenter.default.post(name: .onboardingStateChanged, object: nil)
+    }
+
+    private static func clearBranchData() {
+        [branchKey, researchStageKey, researchNeedsKey,
+         planningConsultationKey, planningTimelineKey,
+         recoveringEmotionKey].forEach { removeUserScopedValue(forKey: $0) }
     }
 }

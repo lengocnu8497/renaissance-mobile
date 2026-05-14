@@ -29,6 +29,8 @@ class ChatViewModel {
     // Whether the AI has already offered the Consultation Prep Flow for this procedure
     var consultationPrepOffered = false
 
+    private var sessionMessageCount = 0
+
     // Personalization context injected on the first AI call for procedure-context sessions
     private var userContextNote: String? = nil
     private var shouldResetModelContext = false
@@ -300,6 +302,8 @@ class ChatViewModel {
             // Ensure typing indicator is hidden after streaming completes
             isTyping = false
             await MainActor.run { SoundHapticManager.shared.playReplyWoosh() }
+            sessionMessageCount += 1
+            Analytics.askRenaUsed(countPerSession: sessionMessageCount)
 
             // Update existing AI message if created during streaming, or create a new one
             let finalMessage: ChatMessage

@@ -199,6 +199,25 @@ struct Theme {
         static func bold(_ size: CGFloat)     -> Font { .custom("Outfit-Bold",     size: size) }
     }
 
+    // MARK: - Manrope Font Helpers
+    // Bundled via Fonts/Manrope-*.otf + UIAppFonts in Info.plist.
+    // Used for display headings in onboarding and key UI moments.
+
+    struct Manrope {
+        static func bold(_ size: CGFloat)      -> Font { .custom("Manrope-Bold",      size: size) }
+        static func extraBold(_ size: CGFloat) -> Font { .custom("Manrope-ExtraBold", size: size) }
+    }
+
+    // MARK: - Plus Jakarta Sans Font Helpers
+    // Bundled via Fonts/PlusJakartaSans-*.ttf + UIAppFonts in Info.plist.
+    // Used for body, labels, and supporting text throughout onboarding.
+
+    struct PlusJakartaSans {
+        static func regular(_ size: CGFloat)  -> Font { .custom("PlusJakartaSans-Regular",  size: size) }
+        static func medium(_ size: CGFloat)   -> Font { .custom("PlusJakartaSans-Medium",   size: size) }
+        static func semiBold(_ size: CGFloat) -> Font { .custom("PlusJakartaSans-SemiBold", size: size) }
+    }
+
     // MARK: - Typography
     // Headers: Cormorant Garamond via .design(.serif)
     // Body/UI: Outfit via Theme.Outfit helpers

@@ -80,6 +80,9 @@ struct PostLoginHomeView: View {
     @State private var didAttemptValueMomentReview = false
     @State private var showPaywall = false
     @State private var showRecoveryPlan = false
+    @State private var showFreeBanner = false
+    @State private var freeBannerDismissed = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var onNavigateToChat: ((String) -> Void)?
     var onNavigateToJournal: (() -> Void)?
@@ -91,6 +94,9 @@ struct PostLoginHomeView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     headerSection
+                    if showFreeBanner && !freeBannerDismissed && !isSubscribed {
+                        freeTierBanner
+                    }
                     modeSwitch
                     modeContent
                 }
@@ -167,6 +173,14 @@ struct PostLoginHomeView: View {
                 Task {
                     await researchViewModel.load()
                     await loadRecentSessions()
+                }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                guard newPhase == .active, OnboardingStore.isMaybeLaterUser, !isSubscribed else { return }
+                FreeUsageStore.recordForeground()
+                if FreeUsageStore.foregroundCount >= 1 {
+                    freeBannerDismissed = false
+                    showFreeBanner = true
                 }
             }
             .task {
@@ -312,6 +326,52 @@ struct PostLoginHomeView: View {
             .filter { !savedIds.contains($0.id) }
             .sorted { $0.sortOrder < $1.sortOrder }
         return Array((prioritizedSaved + additional).prefix(6))
+    }
+
+    // MARK: - Free tier upgrade banner
+
+    private var freeTierBanner: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Ready to unlock your full plan?")
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                    .foregroundColor(HomeUI.primaryInk)
+                Text("\(FreeUsageStore.questionsRemaining) free question\(FreeUsageStore.questionsRemaining == 1 ? "" : "s") left today")
+                    .font(.custom("PlusJakartaSans-Regular", size: 12))
+                    .foregroundColor(HomeUI.muted)
+            }
+            Spacer()
+            Button {
+                showPaywall = true
+            } label: {
+                Text("See plans")
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 13))
+                    .foregroundColor(HomeUI.rose)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(HomeUI.roseSoft.opacity(0.8))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) { freeBannerDismissed = true }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(HomeUI.muted)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(HomeUI.roseSoft.opacity(0.45))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(HomeUI.rose.opacity(0.18), lineWidth: 1)
+        )
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 
     // MARK: - Sections

@@ -12,6 +12,11 @@
 		<string>Fonts/Outfit-Regular.ttf</string>
 		<string>Fonts/Outfit-SemiBold.ttf</string>
 		<string>Fonts/Outfit-Bold.ttf</string>
+		<string>Fonts/Manrope-Bold.ttf</string>
+		<string>Fonts/Manrope-ExtraBold.ttf</string>
+		<string>Fonts/PlusJakartaSans-Regular.ttf</string>
+		<string>Fonts/PlusJakartaSans-Medium.ttf</string>
+		<string>Fonts/PlusJakartaSans-SemiBold.ttf</string>
 	</array>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>

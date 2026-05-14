@@ -108,10 +108,13 @@ class UsageTrackingService {
         do {
             usage = try await getCurrentUsage()
         } catch UsageTrackingError.noActiveSubscription {
-            // User doesn't have an active subscription - return false with subscription message
-            return (false, UsageTrackingError.noActiveSubscription.errorDescription)
+            // Free-tier path: non-subscribed users get FreeUsageStore.dailyLimit questions/day.
+            // The backend (chat-ai) enforces the hard limit; we consume locally for display.
+            if FreeUsageStore.consumeDailyQuestion() {
+                return (true, nil)
+            }
+            return (false, "You've used your \(FreeUsageStore.dailyLimit) free questions today. Subscribe to unlock unlimited access.")
         } catch {
-            // Other errors (network, database, etc.) should be thrown up to the caller
             throw error
         }
 

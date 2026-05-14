@@ -6,90 +6,57 @@
 import SwiftUI
 import StoreKit
 
-private enum OnboardingPaywallUI {
-    static let shell = Color(hex: "#EEF1E8")
-    static let bg = Color(hex: "#F6F7F2")
-    static let surface = Color(hex: "#FBFCF8")
-    static let card = Color(hex: "#EDF1E8")
-    static let cardStrong = Color(hex: "#E1E7DA")
-    static let text = Color(hex: "#1F261D")
-    static let muted = Color(hex: "#687064")
-    static let primary = Color(hex: "#516048")
-    static let primaryInk = Color(hex: "#314030")
-    static let primarySoft = Color(hex: "#D9E3CE")
-    static let rose = Color(hex: "#B07B7A")
-    static let roseSoft = Color(hex: "#F1DDDA")
-    static let roseTint = Color(hex: "#EAD3D0")
-    static let roseDeep = Color(hex: "#976769")
-    static let shadow = Color(red: 90/255, green: 103/255, blue: 80/255).opacity(0.10)
+// MARK: - Design tokens
+
+private enum OnboardingUI {
+    static let shell      = Color(hex: "#EEEEFF")
+    static let bg         = Color(hex: "#FAFAFF")
+    static let surface    = Color(hex: "#F5F4FF")
+    static let card       = Color(hex: "#EDEAFF")
+    static let text       = Color(hex: "#1E1B4B")
+    static let muted      = Color(hex: "#7B6FC0")
+    static let primary    = Color(hex: "#6C63FF")
+    static let primaryInk = Color(hex: "#2D2575")
+    static let primarySoft = Color(hex: "#D4CCFF")
+    static let rose       = Color(hex: "#8B7FF0")
+    static let roseSoft   = Color(hex: "#EAE7FF")
+    static let roseTint   = Color(hex: "#E0DBFF")
+    static let roseDeep   = Color(hex: "#5B50D6")
+    static let shadow     = Color(red: 70/255, green: 60/255, blue: 180/255).opacity(0.08)
 }
 
-private struct ChipFlowLayout: Layout {
-    var itemSpacing: CGFloat = 8
-    var rowSpacing: CGFloat = 8
+// MARK: - Screen + Branch enums
 
-    private func measuredSize(
-        for subview: LayoutSubview,
-        availableWidth: CGFloat
-    ) -> CGSize {
-        let unconstrainedSize = subview.sizeThatFits(.unspecified)
-        let fittedWidth = min(unconstrainedSize.width, availableWidth)
-        return subview.sizeThatFits(
-            ProposedViewSize(width: fittedWidth, height: nil)
-        )
-    }
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.width ?? UIScreen.main.bounds.width - 72
-        var currentX: CGFloat = 0
-        var currentRowHeight: CGFloat = 0
-        var totalHeight: CGFloat = 0
-
-        for subview in subviews {
-            let size = measuredSize(for: subview, availableWidth: maxWidth)
-            let spacingBeforeItem = currentX > 0 ? itemSpacing : 0
-
-            if currentX > 0, currentX + spacingBeforeItem + size.width > maxWidth {
-                totalHeight += currentRowHeight + rowSpacing
-                currentX = 0
-                currentRowHeight = 0
-            }
-
-            currentRowHeight = max(currentRowHeight, size.height)
-            currentX += size.width + spacingBeforeItem
-        }
-
-        return CGSize(width: maxWidth, height: totalHeight + currentRowHeight)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var currentX = bounds.minX
-        var currentY = bounds.minY
-        var currentRowHeight: CGFloat = 0
-        let availableWidth = bounds.width
-
-        for subview in subviews {
-            let size = measuredSize(for: subview, availableWidth: availableWidth)
-            let spacingBeforeItem = currentX > bounds.minX ? itemSpacing : 0
-
-            if currentX > bounds.minX, currentX + spacingBeforeItem + size.width > bounds.maxX {
-                currentX = bounds.minX
-                currentY += currentRowHeight + rowSpacing
-                currentRowHeight = 0
-            }
-
-            subview.place(
-                at: CGPoint(x: currentX + spacingBeforeItem, y: currentY),
-                proposal: ProposedViewSize(width: size.width, height: size.height)
-            )
-
-            currentX += size.width + spacingBeforeItem
-            currentRowHeight = max(currentRowHeight, size.height)
-        }
-    }
+private enum OnboardingScreen: Equatable {
+    case welcome
+    case branchSelection
+    // Researching path
+    case researchProcedure
+    case researchStage
+    case researchNeeds
+    // Planning path
+    case planProcedure
+    case planConsultation
+    case planHealth
+    case planTimeline
+    // Recovering path
+    case recoverProcedure
+    case recoverTiming
+    case recoverHealth
+    case recoverEmotion
+    // Convergence
+    case personalizedTeaser
+    case softPitch
+    case paywall
 }
 
-// MARK: - Procedure Option
+enum OnboardingBranch: String, Equatable {
+    case researching
+    case planning
+    case recovering
+}
+
+// MARK: - Procedure options (used in recovering + planning paths)
 
 private enum ProcedureOption: String, CaseIterable, Identifiable {
     case rhinoplasty    = "Rhinoplasty"
@@ -129,55 +96,15 @@ private enum ProcedureOption: String, CaseIterable, Identifiable {
         case .other:          return "Combination or another surgical procedure"
         }
     }
-
-    var timelineNodes: [(time: String, desc: String, isCurrent: Bool)] {
-        switch self {
-        case .rhinoplasty:
-            return [
-                ("Today — Day 1–3", "Splint in place. Swelling and bruising around the nose and eyes is expected.", true),
-                ("Days 7–10", "Splint removed. Significant swelling remains — resist judging the result.", false),
-                ("Weeks 3–4", "Most bruising resolved. Initial shape begins to emerge.", false),
-                ("Month 3–12", "Swelling continues to refine. Final result gradually reveals itself.", false),
-            ]
-        case .breastSurgery:
-            return [
-                ("Today — Day 1–3", "Tightness, soreness and swelling are normal. Rest and avoid all lifting.", true),
-                ("Days 5–7", "Drains removed if placed. Discomfort begins to ease noticeably.", false),
-                ("Weeks 3–6", "Implants or tissue begin settling into their final position.", false),
-                ("Month 3–6", "Shape and softness finalise. Ideal time to assess your result.", false),
-            ]
-        case .bodyContouring:
-            return [
-                ("Today — Day 1–3", "Compression garment on. Swelling and bruising expected across treated areas.", true),
-                ("Weeks 1–2", "Swelling peaks then slowly subsides. Garment must remain on.", false),
-                ("Weeks 4–6", "Contours begin to emerge as swelling reduces.", false),
-                ("Month 3–6", "Final shape becomes visible. Skin continues to retract and refine.", false),
-            ]
-        case .facialSurgery:
-            return [
-                ("Today — Day 1–3", "Swelling, bruising and tightness are significant. Rest fully, head elevated.", true),
-                ("Days 7–10", "Sutures removed. Still bruised — avoid public-facing situations.", false),
-                ("Weeks 3–4", "Most bruising fades. Presentable to most. Tightness lingers.", false),
-                ("Month 2–3", "Swelling settles. Natural movement and expression return fully.", false),
-            ]
-        case .other:
-            return [
-                ("Today — Day 1–3", "Initial recovery phase. Rest and document any reactions daily.", true),
-                ("Week 1–2", "Initial swelling reduces. Healing progresses steadily.", false),
-                ("Week 2–4", "Results begin to settle and emerge.", false),
-                ("Week 6+", "Assess outcomes and schedule any follow-up care.", false),
-            ]
-        }
-    }
 }
 
-// MARK: - When Option
+// MARK: - Timing options (recovering path)
 
 private enum WhenOption: String, CaseIterable, Identifiable {
-    case oneToThreeDays  = "1–3 days ago"
-    case fourToSevenDays = "4–7 days ago"
-    case oneToTwoWeeks   = "1–2 weeks ago"
-    case twoToSixWeeks   = "2–6 weeks ago"
+    case oneToThreeDays    = "1–3 days ago"
+    case fourToSevenDays   = "4–7 days ago"
+    case oneToTwoWeeks     = "1–2 weeks ago"
+    case twoToSixWeeks     = "2–6 weeks ago"
     case sixWeeksToThreeMo = "6 weeks – 3 months ago"
     case threeMonthsPlus   = "3+ months ago"
 
@@ -198,6 +125,42 @@ private enum WhenOption: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - ChipFlowLayout
+
+private struct ChipFlowLayout: Layout {
+    var itemSpacing: CGFloat = 8
+    var rowSpacing: CGFloat  = 8
+
+    private func measuredSize(for subview: LayoutSubview, availableWidth: CGFloat) -> CGSize {
+        let unconstrained = subview.sizeThatFits(.unspecified)
+        let fitted = min(unconstrained.width, availableWidth)
+        return subview.sizeThatFits(ProposedViewSize(width: fitted, height: nil))
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxW = proposal.width ?? UIScreen.main.bounds.width - 72
+        var x: CGFloat = 0; var rowH: CGFloat = 0; var totalH: CGFloat = 0
+        for sv in subviews {
+            let s = measuredSize(for: sv, availableWidth: maxW)
+            let sp = x > 0 ? itemSpacing : 0
+            if x > 0, x + sp + s.width > maxW { totalH += rowH + rowSpacing; x = 0; rowH = 0 }
+            rowH = max(rowH, s.height); x += s.width + sp
+        }
+        return CGSize(width: maxW, height: totalH + rowH)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX; var y = bounds.minY; var rowH: CGFloat = 0
+        for sv in subviews {
+            let s = measuredSize(for: sv, availableWidth: bounds.width)
+            let sp = x > bounds.minX ? itemSpacing : 0
+            if x > bounds.minX, x + sp + s.width > bounds.maxX { x = bounds.minX; y += rowH + rowSpacing; rowH = 0 }
+            sv.place(at: CGPoint(x: x + sp, y: y), proposal: ProposedViewSize(width: s.width, height: s.height))
+            x += s.width + sp; rowH = max(rowH, s.height)
+        }
+    }
+}
+
 // MARK: - OnboardingFlowView
 
 struct OnboardingFlowView: View {
@@ -208,64 +171,78 @@ struct OnboardingFlowView: View {
     private enum ActiveAlert: Identifiable, Equatable {
         case onboardingReviewPrompt
         case reviewUnavailable(String)
-
         var id: String {
             switch self {
-            case .onboardingReviewPrompt:
-                return "onboarding-review-prompt"
-            case .reviewUnavailable(let message):
-                return "review-unavailable-\(message)"
+            case .onboardingReviewPrompt: return "review-prompt"
+            case .reviewUnavailable(let m): return "review-unavailable-\(m)"
             }
         }
     }
 
-    @State private var screen = 0
-    @State private var selectedProcedure: ProcedureOption? = nil
-    @State private var selectedWhen: WhenOption? = nil
-    @State private var isCompletingOnboarding = false
+    // Navigation
+    @State private var currentScreen: OnboardingScreen = .welcome
+    @State private var navHistory: [OnboardingScreen] = []
 
-    // User context quiz state (screens 5–7)
-    @State private var selectedGender: String? = nil
-    @State private var selectedAgeRange: String? = nil
-    @State private var selectedRaceEthnicity: String? = nil
-    @State private var selectedAestheticGoals: Set<String> = []
-    @State private var selectedBodyAreas: Set<String> = []
-    @State private var selectedProceduresOfInterest: Set<String> = []
-    @State private var selectedPreviousProcedures: Set<String> = []
-    @State private var selectedHealthFlags: Set<String> = []
-    @State private var selectedAcquisitionSource = OnboardingStore.pendingAcquisitionSource
-    @State private var didQueueOnboardingRecoveryPlanReviewPrompt = false
+    // Branch
+    @State private var selectedBranch: OnboardingBranch? = nil
+
+    // Recovering path state
+    @State private var recoverProcedures: Set<ProcedureOption> = []
+    @State private var recoverWhen: WhenOption? = nil
+    @State private var recoverHealthFlags: Set<String> = []
+    @State private var recoverEmotion: String? = nil
+
+    // Planning path state
+    @State private var planProcedure: ProcedureOption? = nil
+    @State private var planConsultation: String? = nil
+    @State private var planHealthFlags: Set<String> = []
+    @State private var planTimeline: String? = nil
+
+    // Researching path state
+    @State private var researchProcedures: Set<String> = []
+    @State private var researchBodyAreas: Set<String> = []
+    @State private var researchStage: String? = nil
+    @State private var researchNeeds: Set<String> = []
+
+    // Teaser
+    @State private var teaserViewModel = OnboardingTeaserViewModel()
+    @State private var didQueueReviewPrompt = false
     @State private var activeAlert: ActiveAlert?
+    @State private var isCompletingOnboarding = false
 
     private let userProfileService = UserProfileService(supabase: supabase)
     private let recoveryPlanService = RecoveryPlanService()
-
-    private let totalScreens = 9
-    private let onboardingStickyBottomPadding: CGFloat = 112
+    private let stickyBottomPadding: CGFloat = 112
 
     var body: some View {
         ZStack {
-            onboardingShellBackground
-                .ignoresSafeArea()
+            shellBackground.ignoresSafeArea()
             Group {
-                switch screen {
-                case 0: hookScreen
-                case 1: aboutYouScreen
-                case 2: goalsScreen
-                case 3: healthHistoryScreen
-                case 4: whenScreen
-                case 5: attributionScreen
-                case 6: socialProofScreen
-                case 7: recoveryPlanTeaserScreen
-                default: paywallScreen
+                switch currentScreen {
+                case .welcome:            welcomeScreen
+                case .branchSelection:    branchSelectionScreen
+                case .researchProcedure:  researchProcedureScreen
+                case .researchStage:      researchStageScreen
+                case .researchNeeds:      researchNeedsScreen
+                case .planProcedure:      planProcedureScreen
+                case .planConsultation:   planConsultationScreen
+                case .planHealth:         planHealthScreen
+                case .planTimeline:       planTimelineScreen
+                case .recoverProcedure:   recoverProcedureScreen
+                case .recoverTiming:      recoverTimingScreen
+                case .recoverHealth:      recoverHealthScreen
+                case .recoverEmotion:     recoverEmotionScreen
+                case .personalizedTeaser: personalizedTeaserScreen
+                case .softPitch:          softPitchScreen
+                case .paywall:            paywallScreen
                 }
             }
-            .id(screen)
+            .id(currentScreen)
             .transition(.asymmetric(
                 insertion: .move(edge: .trailing).combined(with: .opacity),
                 removal: .move(edge: .leading).combined(with: .opacity)
             ))
-            .animation(.easeInOut(duration: 0.3), value: screen)
+            .animation(.easeInOut(duration: 0.28), value: currentScreen)
         }
         .alert(item: $activeAlert) { alert in
             switch alert {
@@ -274,9 +251,7 @@ struct OnboardingFlowView: View {
                     title: Text("How do you like Rena so far?"),
                     message: Text("If the recovery plan feels helpful, Apple may show a quick rating prompt."),
                     primaryButton: .default(Text("Leave a Rating")) {
-                        Task { @MainActor in
-                            await requestOnboardingRecoveryPlanReview()
-                        }
+                        Task { @MainActor in await requestOnboardingReview() }
                     },
                     secondaryButton: .cancel(Text("Not Now"))
                 )
@@ -291,424 +266,980 @@ struct OnboardingFlowView: View {
         .interactiveDismissDisabled()
     }
 
-    private var onboardingShellBackground: some View {
+    // MARK: - Navigation helpers
+
+    private func push(_ screen: OnboardingScreen) {
+        navHistory.append(currentScreen)
+        withAnimation(.easeInOut(duration: 0.28)) { currentScreen = screen }
+    }
+
+    private func pop() {
+        guard let previous = navHistory.popLast() else { return }
+        withAnimation(.easeInOut(duration: 0.28)) { currentScreen = previous }
+    }
+
+    // MARK: - Progress
+
+    private var branchProgress: (step: Int, total: Int)? {
+        switch selectedBranch {
+        case .researching:
+            switch currentScreen {
+            case .researchProcedure: return (1, 3)
+            case .researchStage:     return (2, 3)
+            case .researchNeeds:     return (3, 3)
+            default: return nil
+            }
+        case .planning:
+            switch currentScreen {
+            case .planProcedure:    return (1, 4)
+            case .planConsultation: return (2, 4)
+            case .planHealth:       return (3, 4)
+            case .planTimeline:     return (4, 4)
+            default: return nil
+            }
+        case .recovering:
+            switch currentScreen {
+            case .recoverProcedure: return (1, 4)
+            case .recoverTiming:    return (2, 4)
+            case .recoverHealth:    return (3, 4)
+            case .recoverEmotion:   return (4, 4)
+            default: return nil
+            }
+        case .none:
+            return nil
+        }
+    }
+
+    // MARK: - Background
+
+    private var shellBackground: some View {
         ZStack {
             LinearGradient(
-                colors: [Color(hex: "#F8FAF4"), Color(hex: "#EFF3E9")],
-                startPoint: .top,
-                endPoint: .bottom
+                colors: [OnboardingUI.bg, OnboardingUI.shell],
+                startPoint: .top, endPoint: .bottom
             )
-
             RadialGradient(
-                colors: [OnboardingPaywallUI.rose.opacity(0.10), .clear],
-                center: .top,
-                startRadius: 0,
-                endRadius: 240
-            )
-
-            LinearGradient(
-                colors: [OnboardingPaywallUI.roseSoft.opacity(0.26), Color.white.opacity(0)],
-                startPoint: .top,
-                endPoint: UnitPoint(x: 0.5, y: 0.24)
+                colors: [OnboardingUI.primary.opacity(0.07), .clear],
+                center: .top, startRadius: 0, endRadius: 280
             )
         }
     }
 
-    // MARK: - Screen 1: Hook
+    // MARK: - Welcome Screen
 
-    private var hookScreen: some View {
+    private var welcomeScreen: some View {
+        VStack(spacing: 0) {
+            // Title block — fixed at top
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Hi, I'm Rena.")
+                    .font(Theme.Manrope.bold(42))
+                    .foregroundColor(OnboardingUI.primaryInk)
+
+                Text("Your guide through every part of the aesthetic journey.")
+                    .font(Theme.Manrope.extraBold(18))
+                    .foregroundColor(OnboardingUI.primary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 28)
+            .padding(.top, 64)
+
+            // Animation fills all remaining space; scaleEffect compensates
+            // for the canvas whitespace in the Lottie file so Rena appears large
+            LottieView(name: "rena-lottie")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .scaleEffect(1.65)
+                .clipped()
+        }
+        .safeAreaInset(edge: .bottom) {
+            Button {
+                Analytics.onboardingStarted()
+                push(.branchSelection)
+            } label: {
+                Text("Let's go")
+                    .font(Theme.PlusJakartaSans.semiBold(16))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(Color.black)
+                    .clipShape(Capsule())
+            }
+            .padding(.horizontal, 28)
+            .padding(.bottom, 16)
+            .padding(.top, 8)
+            .background(OnboardingUI.bg)
+        }
+    }
+
+    // MARK: - Personalize Transition Screen
+
+    private func renaLogoMark(size: CGFloat, color: Color) -> some View {
+        ZStack {
+            Circle()
+                .stroke(color.opacity(0.5), lineWidth: 1.5)
+                .frame(width: size, height: size)
+            Circle()
+                .stroke(color.opacity(0.75), lineWidth: 1.2)
+                .frame(width: size * 0.74, height: size * 0.74)
+            Circle()
+                .stroke(color, lineWidth: 1.5)
+                .frame(width: size * 0.47, height: size * 0.47)
+            Circle()
+                .trim(from: 0, to: 0.5)
+                .stroke(color.opacity(0.65), lineWidth: 1.2)
+                .frame(width: size * 0.74, height: size * 0.74)
+                .rotationEffect(.degrees(90))
+            Circle()
+                .fill(color)
+                .frame(width: size * 0.1, height: size * 0.1)
+        }
+    }
+
+    // MARK: - Branch Selection Screen
+
+    private var branchSelectionScreen: some View {
+        VStack(spacing: 0) {
+            backButton { pop() }
+
+            ScrollView(showsIndicators: false) {
+                screenCard {
+                    introBlock(eyebrow: "Your journey", title: "Let's personalize your experience", body: "Wherever you are in your journey, Rena tailors everything to you.")
+
+                    VStack(spacing: 12) {
+                        branchCard(
+                            branch: .researching,
+                            label: "Just researching",
+                            sub: "I'm exploring options, not committed yet",
+                            icon: "magnifyingglass"
+                        ) {
+                            selectedBranch = .researching
+                            Analytics.onboardingBranchSelected(.researching)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { push(.researchProcedure) }
+                        }
+                        branchCard(
+                            branch: .planning,
+                            label: "Planning a procedure",
+                            sub: "I have something in mind or coming up",
+                            icon: "calendar.badge.plus"
+                        ) {
+                            selectedBranch = .planning
+                            Analytics.onboardingBranchSelected(.planning)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { push(.planProcedure) }
+                        }
+                        branchCard(
+                            branch: .recovering,
+                            label: "Recovering",
+                            sub: "I've already had something done",
+                            icon: "waveform.path.ecg"
+                        ) {
+                            selectedBranch = .recovering
+                            Analytics.onboardingBranchSelected(.recovering)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { push(.recoverProcedure) }
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+            }
+        }
+    }
+
+    private func branchCard(branch: OnboardingBranch, label: String, sub: String, icon: String, action: @escaping () -> Void) -> some View {
+        let isSelected = selectedBranch == branch
+        return Button(action: action) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(isSelected ? OnboardingUI.roseSoft.opacity(0.9) : OnboardingUI.card)
+                        .frame(width: 44, height: 44)
+                    Image(systemName: icon)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(isSelected ? OnboardingUI.roseDeep : OnboardingUI.muted)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 16))
+                        .foregroundColor(OnboardingUI.primaryInk)
+                    Text(sub)
+                        .font(.custom("PlusJakartaSans-Regular", size: 13))
+                        .foregroundColor(OnboardingUI.muted)
+                        .lineSpacing(2)
+                }
+                Spacer()
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22))
+                    .foregroundColor(isSelected ? OnboardingUI.primary : OnboardingUI.muted.opacity(0.35))
+            }
+            .padding(16)
+            .background(isSelected ? OnboardingUI.roseSoft.opacity(0.45) : Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(isSelected ? OnboardingUI.rose.opacity(0.42) : Color.black.opacity(0.05), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Researching Path
+
+    private var researchProcedureScreen: some View {
+        VStack(spacing: 0) {
+            progressBar(step: 1, total: 3)
+
+            ScrollView(showsIndicators: false) {
+                screenCard {
+                    introBlock(eyebrow: "Step 1 of 3", title: "What's catching your interest?", body: "Select everything you're curious about — no commitment.")
+
+                    VStack(alignment: .leading, spacing: 18) {
+                        contextSection(title: "Procedures") {
+                            chipGrid(
+                                options: ProfileSelectionCatalog.procedureOptions,
+                                selected: Array(researchProcedures),
+                                multiSelect: true
+                            ) { val in
+                                toggle(&researchProcedures, val)
+                            }
+                        }
+                        contextSection(title: "Body areas") {
+                            chipGrid(
+                                options: ProfileSelectionCatalog.bodyAreaOptions,
+                                selected: Array(researchBodyAreas),
+                                multiSelect: true
+                            ) { val in
+                                toggle(&researchBodyAreas, val)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, stickyBottomPadding)
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            blendedCTA {
+                primaryButton(label: "Continue", enabled: !researchProcedures.isEmpty) {
+                    Analytics.onboardingStepCompleted(stepName: "research_procedure", branch: .researching)
+                    push(.researchStage)
+                }
+                .padding(.bottom, 8)
+            }
+        }
+    }
+
+    private var researchStageScreen: some View {
+        let stages = ["Just curious", "Comparing options", "Saving up", "Almost ready to consult"]
+        return VStack(spacing: 0) {
+            progressBar(step: 2, total: 3)
+
+            ScrollView(showsIndicators: false) {
+                screenCard {
+                    introBlock(eyebrow: "Step 2 of 3", title: "Where are you in your research?", body: "Tap to continue")
+
+                    VStack(spacing: 10) {
+                        ForEach(stages, id: \.self) { stage in
+                            selectionPill(label: stage, isSelected: researchStage == stage) {
+                                researchStage = stage
+                                Analytics.onboardingStepCompleted(stepName: "research_stage", branch: .researching)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { push(.researchNeeds) }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, stickyBottomPadding)
+            }
+        }
+    }
+
+    private var researchNeedsScreen: some View {
+        let needs = ["Realistic results", "Recovery time", "Cost", "Finding a surgeon", "Complications", "Alternatives"]
+        return VStack(spacing: 0) {
+            progressBar(step: 3, total: 3)
+
+            ScrollView(showsIndicators: false) {
+                screenCard {
+                    introBlock(eyebrow: "Step 3 of 3", title: "What would you most want answered?", body: "Select everything that matters to you.")
+
+                    chipGrid(
+                        options: needs,
+                        selected: Array(researchNeeds),
+                        multiSelect: true
+                    ) { val in toggle(&researchNeeds, val) }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, stickyBottomPadding)
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            blendedCTA {
+                primaryButton(label: "Show me what's next", enabled: !researchNeeds.isEmpty) {
+                    Analytics.onboardingStepCompleted(stepName: "research_needs", branch: .researching)
+                    saveResearchData()
+                    push(.personalizedTeaser)
+                }
+                .padding(.bottom, 8)
+            }
+        }
+    }
+
+    // MARK: - Planning Path
+
+    private var planProcedureScreen: some View {
+        VStack(spacing: 0) {
+            progressBar(step: 1, total: 4)
+
+            ScrollView(showsIndicators: false) {
+                screenCard {
+                    introBlock(eyebrow: "Step 1 of 4", title: "Which procedure are you considering?", body: nil)
+
+                    VStack(spacing: 10) {
+                        ForEach(ProcedureOption.allCases) { option in
+                            optionPill(
+                                icon: option.icon,
+                                title: option.rawValue,
+                                desc: option.optionDescription,
+                                isSelected: planProcedure == option
+                            ) {
+                                planProcedure = option
+                                Analytics.onboardingStepCompleted(stepName: "plan_procedure", branch: .planning)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { push(.planConsultation) }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+            }
+        }
+    }
+
+    private var planConsultationScreen: some View {
+        let options = ["Not yet booked", "Booked", "Already had it"]
+        return VStack(spacing: 0) {
+            progressBar(step: 2, total: 4)
+
+            ScrollView(showsIndicators: false) {
+                screenCard {
+                    introBlock(eyebrow: "Step 2 of 4", title: "Have you booked a consultation?", body: "Tap to continue")
+
+                    VStack(spacing: 10) {
+                        ForEach(options, id: \.self) { option in
+                            selectionPill(label: option, isSelected: planConsultation == option) {
+                                planConsultation = option
+                                Analytics.onboardingStepCompleted(stepName: "plan_consultation", branch: .planning)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { push(.planHealth) }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, stickyBottomPadding)
+            }
+        }
+    }
+
+    private var planHealthScreen: some View {
+        VStack(spacing: 0) {
+            progressBar(step: 3, total: 4)
+
+            ScrollView(showsIndicators: false) {
+                screenCard {
+                    introBlock(eyebrow: "Step 3 of 4", title: "Any health considerations?", body: "This helps Rena flag anything relevant to your procedure.")
+
+                    chipGrid(
+                        options: ProfileSelectionCatalog.healthFlagOptions,
+                        selected: Array(planHealthFlags),
+                        multiSelect: true
+                    ) { val in toggle(&planHealthFlags, val) }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, stickyBottomPadding)
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            blendedCTA {
+                VStack(spacing: 0) {
+                    primaryButton(label: "Continue", enabled: true) {
+                        Analytics.onboardingStepCompleted(stepName: "plan_health", branch: .planning)
+                        push(.planTimeline)
+                    }
+                    skipButton {
+                        Analytics.onboardingStepCompleted(stepName: "plan_health_skipped", branch: .planning)
+                        push(.planTimeline)
+                    }
+                }
+                .padding(.bottom, 8)
+            }
+        }
+    }
+
+    private var planTimelineScreen: some View {
+        let options = ["Within a month", "1–3 months", "3–6 months", "Later", "Just open"]
+        return VStack(spacing: 0) {
+            progressBar(step: 4, total: 4)
+
+            ScrollView(showsIndicators: false) {
+                screenCard {
+                    introBlock(eyebrow: "Step 4 of 4", title: "When are you hoping to do this?", body: "Tap to continue")
+
+                    VStack(spacing: 10) {
+                        ForEach(options, id: \.self) { option in
+                            selectionPill(label: option, isSelected: planTimeline == option) {
+                                planTimeline = option
+                                Analytics.onboardingStepCompleted(stepName: "plan_timeline", branch: .planning)
+                                savePlanningData()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { push(.personalizedTeaser) }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, stickyBottomPadding)
+            }
+        }
+    }
+
+    // MARK: - Recovering Path
+
+    private var recoverProcedureScreen: some View {
+        VStack(spacing: 0) {
+            progressBar(step: 1, total: 4)
+
+            ScrollView(showsIndicators: false) {
+                screenCard {
+                    introBlock(eyebrow: "Step 1 of 4", title: "What did you have done?", body: nil)
+
+                    VStack(spacing: 10) {
+                        ForEach(ProcedureOption.allCases) { option in
+                            optionPill(
+                                icon: option.icon,
+                                title: option.rawValue,
+                                desc: option.optionDescription,
+                                isSelected: recoverProcedures.contains(option)
+                            ) {
+                                if recoverProcedures.contains(option) {
+                                    recoverProcedures.remove(option)
+                                } else {
+                                    recoverProcedures.insert(option)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, stickyBottomPadding)
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            blendedCTA {
+                primaryButton(label: "Continue", enabled: !recoverProcedures.isEmpty) {
+                    Analytics.onboardingStepCompleted(stepName: "recover_procedure", branch: .recovering)
+                    push(.recoverTiming)
+                }
+                .padding(.bottom, 8)
+            }
+        }
+    }
+
+    private var recoverTimingScreen: some View {
+        VStack(spacing: 0) {
+            progressBar(step: 2, total: 4)
+
+            ScrollView(showsIndicators: false) {
+                screenCard {
+                    introBlock(eyebrow: "Step 2 of 4", title: "When was your procedure?", body: "Tap to continue")
+
+                    VStack(spacing: 10) {
+                        ForEach(WhenOption.allCases) { option in
+                            selectionPill(label: option.rawValue, isSelected: recoverWhen == option) {
+                                recoverWhen = option
+                                Analytics.onboardingStepCompleted(stepName: "recover_timing", branch: .recovering)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { push(.recoverHealth) }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, stickyBottomPadding)
+            }
+        }
+    }
+
+    private var recoverHealthScreen: some View {
+        VStack(spacing: 0) {
+            progressBar(step: 3, total: 4)
+
+            ScrollView(showsIndicators: false) {
+                screenCard {
+                    introBlock(eyebrow: "Step 3 of 4", title: "Any health considerations to factor in?", body: nil)
+
+                    chipGrid(
+                        options: ProfileSelectionCatalog.healthFlagOptions,
+                        selected: Array(recoverHealthFlags),
+                        multiSelect: true
+                    ) { val in toggle(&recoverHealthFlags, val) }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, stickyBottomPadding)
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            blendedCTA {
+                VStack(spacing: 0) {
+                    primaryButton(label: "Continue", enabled: true) {
+                        Analytics.onboardingStepCompleted(stepName: "recover_health", branch: .recovering)
+                        push(.recoverEmotion)
+                    }
+                    skipButton {
+                        Analytics.onboardingStepCompleted(stepName: "recover_health_skipped", branch: .recovering)
+                        push(.recoverEmotion)
+                    }
+                }
+                .padding(.bottom, 8)
+            }
+        }
+    }
+
+    private var recoverEmotionScreen: some View {
+        let options = ["Great", "Mostly good", "A bit anxious", "Worried about something specific"]
+        return VStack(spacing: 0) {
+            progressBar(step: 4, total: 4)
+
+            ScrollView(showsIndicators: false) {
+                screenCard {
+                    introBlock(eyebrow: "Step 4 of 4", title: "How are you feeling about your recovery so far?", body: "Tap to continue")
+
+                    VStack(spacing: 10) {
+                        ForEach(options, id: \.self) { option in
+                            selectionPill(label: option, isSelected: recoverEmotion == option) {
+                                recoverEmotion = option
+                                Analytics.onboardingStepCompleted(stepName: "recover_emotion", branch: .recovering)
+                                saveRecoveringData()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { push(.personalizedTeaser) }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, stickyBottomPadding)
+            }
+        }
+    }
+
+    // MARK: - Personalized Teaser Screen
+
+    private var personalizedTeaserScreen: some View {
         VStack(spacing: 0) {
             Text("Rena")
                 .font(.custom("Manrope", size: 14))
                 .fontWeight(.medium)
                 .italic()
                 .tracking(4.5)
-                .foregroundColor(OnboardingPaywallUI.roseDeep)
+                .foregroundColor(OnboardingUI.roseDeep)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.top, 16)
-                .padding(.bottom, 18)
+                .padding(.bottom, 10)
 
-            GeometryReader { proxy in
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 16) {
+                    if teaserViewModel.isLoading {
+                        teaserLoadingCard
+                    } else if let content = teaserViewModel.content {
+                        teaserContentCard(content)
+                    } else if teaserViewModel.errorMessage != nil {
+                        teaserErrorCard
+                    } else {
+                        teaserLoadingCard
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, stickyBottomPadding)
+            }
+        }
+        .task {
+            await loadTeaser()
+            let branch = selectedBranch ?? .researching
+            let procedure: String? = switch branch {
+            case .researching: researchProcedures.sorted().first
+            case .planning:    planProcedure?.storedName
+            case .recovering:  recoverProcedures.first?.storedName
+            }
+            Analytics.personalizedTeaserViewed(branch: branch, procedure: procedure)
+        }
+        .safeAreaInset(edge: .bottom) {
+            blendedCTA {
+                primaryButton(
+                    label: "See what's waiting for you",
+                    enabled: teaserViewModel.content != nil || teaserViewModel.errorMessage != nil
+                ) {
+                    push(.softPitch)
+                }
+                .padding(.bottom, 8)
+            }
+        }
+    }
+
+    private var teaserLoadingCard: some View {
+        contentCard {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Your free preview")
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+                    .tracking(2.2)
+
+                Text("Building your personalized preview right now")
+                    .font(.custom("Manrope", size: 26))
+                    .fontWeight(.heavy)
+                    .lineSpacing(2)
+                    .padding(.top, 14)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Rena is analyzing your procedure details and goals")
+                    Text("to generate insights specific to your situation")
+                    Text("and what to expect in your recovery journey")
+                }
+                .font(.custom("PlusJakartaSans-Regular", size: 14))
+                .lineSpacing(6)
+                .padding(.top, 16)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        HStack(alignment: .top, spacing: 10) {
+                            Circle()
+                                .frame(width: 22, height: 22)
+                            Text("Personalized insight based on your recovery profile")
+                                .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(.top, 20)
+                .padding(.horizontal, 4)
+            }
+        }
+        .redacted(reason: .placeholder)
+    }
+
+    private func teaserContentCard(_ content: OnboardingTeaserContent) -> some View {
+        contentCard {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Your free preview")
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+                    .tracking(2.2)
+                    .textCase(.uppercase)
+                    .foregroundColor(OnboardingUI.roseDeep)
+
+                Text(content.headline)
+                    .font(.custom("Manrope", size: 26))
+                    .fontWeight(.heavy)
+                    .foregroundColor(OnboardingUI.primaryInk)
+                    .lineSpacing(2)
+                    .padding(.top, 14)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(content.body)
+                    .font(.custom("PlusJakartaSans-Regular", size: 14))
+                    .foregroundColor(OnboardingUI.muted)
+                    .lineSpacing(6)
+                    .padding(.top, 16)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !content.bullets.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(content.bullets, id: \.self) { bullet in
+                            HStack(alignment: .top, spacing: 10) {
+                                Text("→")
+                                    .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                                    .foregroundColor(OnboardingUI.roseDeep)
+                                    .frame(width: 16, alignment: .leading)
+                                Text(bullet)
+                                    .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                                    .foregroundColor(OnboardingUI.primaryInk)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .padding(.top, 20)
+                    .padding(.horizontal, 4)
+                }
+
+                Text("🔒 Subscribe to unlock your full plan")
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 13))
+                    .foregroundColor(OnboardingUI.rose)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 24)
+            }
+        }
+    }
+
+    private var teaserErrorCard: some View {
+        contentCard {
+            VStack(spacing: 12) {
+                Text("We couldn't generate your preview right now.")
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 15))
+                    .foregroundColor(OnboardingUI.primaryInk)
+                    .multilineTextAlignment(.center)
+                Text("Your personalized plan will be ready inside the app.")
+                    .font(.custom("PlusJakartaSans-Regular", size: 13))
+                    .foregroundColor(OnboardingUI.muted)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 32)
+        }
+    }
+
+    // MARK: - Soft Pitch Screen
+
+    private var softPitchScreen: some View {
+        let bullets = softPitchBullets
+
+        return ZStack {
+            VStack(spacing: 0) {
                 ScrollView(showsIndicators: false) {
-                    onboardingScreenCard {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("Step 1")
-                                .font(.custom("PlusJakartaSans-SemiBold", size: 10))
-                                .tracking(2.3)
-                                .textCase(.uppercase)
-                                .foregroundColor(OnboardingPaywallUI.roseDeep)
-                                .padding(.top, 2)
+                    VStack(alignment: .center, spacing: 0) {
+                        // Rena logo mark hero
+                        renaLogoMark(size: 72, color: OnboardingUI.primary)
+                            .padding(.top, 60)
+                            .padding(.bottom, 36)
 
-                            Text("Your recovery, finally documented.")
-                                .font(.custom("Manrope", size: 34))
-                                .fontWeight(.heavy)
-                                .tracking(-0.6)
-                                .foregroundColor(OnboardingPaywallUI.primaryInk)
-                                .lineSpacing(1)
-                                .padding(.top, 18)
+                        Text("Enjoy a free week\nof Rena on us")
+                            .font(.custom("Manrope", size: 32))
+                            .fontWeight(.heavy)
+                            .foregroundColor(OnboardingUI.primaryInk)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 24)
 
-                            Text("Turn scattered memories, photo rolls, and half-remembered details into one calm record of what happened, when it happened, and how you healed.")
-                                .font(.custom("PlusJakartaSans-Regular", size: 13))
-                                .foregroundColor(OnboardingPaywallUI.muted)
-                                .lineSpacing(6)
-                                .padding(.top, 22)
-                                .padding(.bottom, 22)
+                        Text("Everything you need for your aesthetic journey,\npersonalized from day one.")
+                            .font(.custom("PlusJakartaSans-Regular", size: 14))
+                            .foregroundColor(OnboardingUI.muted)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(5)
+                            .padding(.top, 12)
+                            .padding(.horizontal, 32)
 
-                            contrastGrid
-
-                            Spacer(minLength: 24)
-
-                            HStack(spacing: 5) {
-                                ForEach(0..<totalScreens, id: \.self) { i in
-                                    Capsule()
-                                        .fill(i == 0 ? OnboardingPaywallUI.roseDeep : OnboardingPaywallUI.roseSoft.opacity(0.75))
-                                        .frame(width: i == 0 ? 24 : 6, height: 6)
+                        VStack(alignment: .leading, spacing: 14) {
+                            ForEach(bullets, id: \.self) { bullet in
+                                HStack(alignment: .top, spacing: 12) {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(OnboardingUI.primary)
+                                        .frame(width: 22, height: 22)
+                                        .background(OnboardingUI.primarySoft.opacity(0.7))
+                                        .clipShape(Circle())
+                                    Text(bullet)
+                                        .font(.custom("PlusJakartaSans-SemiBold", size: 15))
+                                        .foregroundColor(OnboardingUI.primaryInk)
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
                             }
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, 20)
-                            .padding(.bottom, 2)
                         }
-                        .frame(minHeight: proxy.size.height - 18, alignment: .top)
-                    }
-                    .frame(minHeight: proxy.size.height)
-                    .padding(.top, 6)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, onboardingStickyBottomPadding)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .background(onboardingShellBackground.ignoresSafeArea())
-        .safeAreaInset(edge: .bottom) {
-            blendedBottomCTA(backgroundColor: OnboardingPaywallUI.bg) {
-                primaryButton(label: "Get Started", enabled: true, gradient: false, horizontalPadding: 20, topPadding: 0) {
-                    withAnimation { screen = 1 }
-                }
-                .padding(.bottom, 8)
-            }
-        }
-    }
-
-    private var contrastGrid: some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Without tracking")
-                    .font(.custom("PlusJakartaSans-Bold", size: 9))
-                    .foregroundColor(OnboardingPaywallUI.muted)
-                    .tracking(2.2)
-                    .textCase(.uppercase)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, 2)
-
-                contrastDot(text: "Forgot when you last had Botox", good: false)
-                contrastDot(text: "Can't remember your units or provider", good: false)
-                contrastDot(text: "No photos to compare results", good: false)
-                contrastDot(text: "Noticed something off — waited too long", good: false)
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(OnboardingPaywallUI.card)
-            .cornerRadius(24)
-            .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.black.opacity(0.05), lineWidth: 1))
-
-            VStack(alignment: .leading, spacing: 12) {
-                Text("With Rena")
-                    .font(.custom("PlusJakartaSans-Bold", size: 9))
-                    .foregroundColor(OnboardingPaywallUI.roseDeep)
-                    .tracking(2.2)
-                    .textCase(.uppercase)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, 2)
-
-                contrastDot(text: "Knows exactly what was done & when", good: true)
-                contrastDot(text: "Day 1 through week 4 — all documented", good: true)
-                contrastDot(text: "Chose the right provider next time", good: true)
-                contrastDot(text: "Caught early bruising before it worsened", good: true)
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(
-                LinearGradient(
-                    colors: [Color(hex: "#F6E5E8"), Color(hex: "#EED6DC")],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .cornerRadius(24)
-            .overlay(RoundedRectangle(cornerRadius: 24).stroke(OnboardingPaywallUI.roseSoft.opacity(0.7), lineWidth: 1))
-        }
-    }
-
-    private func contrastDot(text: String, good: Bool) -> some View {
-        Text(text)
-            .font(.custom("PlusJakartaSans-Regular", size: 12))
-            .foregroundColor(good ? OnboardingPaywallUI.primaryInk : OnboardingPaywallUI.muted)
-            .fixedSize(horizontal: false, vertical: true)
-            .lineSpacing(5)
-    }
-
-    // MARK: - Screen 2: Q1 Procedure
-
-    // MARK: - Screen 4: When
-
-    private var whenScreen: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            questionTopBar(step: 4, total: 4)
-
-            ScrollView(showsIndicators: false) {
-                onboardingScreenCard {
-                    introBlock(
-                        eyebrow: "Your timing",
-                        title: "When did it happen?",
-                        body: nil
-                    )
-
-                    VStack(spacing: 12) {
-                        ForEach(WhenOption.allCases) { option in
-                            whenPill(option)
-                        }
-                    }
-                    .padding(.top, 4)
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, onboardingStickyBottomPadding)
-            }
-            Spacer().frame(height: 14)
-        }
-        .safeAreaInset(edge: .bottom) {
-            blendedBottomCTA(backgroundColor: OnboardingPaywallUI.bg) {
-                primaryButton(label: "Continue", enabled: selectedWhen != nil, gradient: false, horizontalPadding: 20, topPadding: 0) {
-                    if let when = selectedWhen {
-                        OnboardingStore.save(
-                            procedureName: resolvedOnboardingProcedureName,
-                            procedureDate: when.procedureDate
-                        )
-                    }
-                    withAnimation { screen = 5 }
-                }
-                .padding(.bottom, 8)
-            }
-        }
-    }
-
-    // MARK: - Screen 5: Social Proof
-
-    private var socialProofScreen: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Spacer().frame(height: 14)
-
-            ScrollView(showsIndicators: false) {
-                onboardingScreenCard {
-                    introBlock(
-                        eyebrow: "The difference it makes",
-                        title: "Trackers vs. non-trackers.",
-                        body: nil,
-                        eyebrowColor: OnboardingPaywallUI.roseDeep
-                    )
-
-                    VStack(spacing: 12) {
-                        statCard(number: "30%",
-                                 title: "Higher satisfaction with their result",
-                                 desc: "Patients using photo-based recovery tracking report better outcomes and arrive to follow-ups fully prepared")
-                        statCard(number: "2 in 5",
-                                 title: "Go on to have another procedure",
-                                 desc: "Your documented recovery becomes a personal health record — sharper decisions every time")
-                        statCard(number: "1 in 4",
-                                 title: "Surgical records have missing fields",
-                                 desc: "Patients who self-document always have the full picture — dates, photos, and how they healed")
-                    }
-                    .padding(.top, 4)
-                    .padding(.bottom, 14)
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("\"My surgeon told me it takes a full year to see the final result. I had no idea what 'normal' looked like week by week — logging photos gave me something to actually reference at every check-up.\"")
-                            .font(.custom("PlusJakartaSans-Regular", size: 12))
-                            .foregroundColor(OnboardingPaywallUI.primaryInk)
-                            .lineSpacing(4)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Text("Maya R. · Beta user")
-                            .font(.custom("PlusJakartaSans-SemiBold", size: 11))
-                            .foregroundColor(OnboardingPaywallUI.roseDeep)
-                        Text("Rhinoplasty · 4 months post-op")
-                            .font(.custom("PlusJakartaSans-Regular", size: 10))
-                            .foregroundColor(OnboardingPaywallUI.muted)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(OnboardingPaywallUI.roseSoft.opacity(0.94))
-                    .cornerRadius(24)
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, onboardingStickyBottomPadding)
-            }
-            Spacer().frame(height: 14)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .safeAreaInset(edge: .bottom) {
-            blendedBottomCTA(backgroundColor: OnboardingPaywallUI.bg) {
-                primaryButton(label: "I'm ready", enabled: true, gradient: false, horizontalPadding: 20, topPadding: 0) {
-                    withAnimation { screen = 7 }
-                }
-                .padding(.bottom, 8)
-            }
-        }
-    }
-
-    private func statCard(number: String, title: String, desc: String) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Text(number)
-                .font(.custom("Manrope", size: 34))
-                .fontWeight(.bold)
-                .foregroundColor(OnboardingPaywallUI.roseDeep)
-                .frame(width: 88, alignment: .center)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.custom("PlusJakartaSans-SemiBold", size: 14))
-                    .foregroundColor(OnboardingPaywallUI.primaryInk)
-                    .lineSpacing(2)
-                Text(desc)
-                    .font(.custom("PlusJakartaSans-Regular", size: 12))
-                    .foregroundColor(OnboardingPaywallUI.muted)
-                    .lineSpacing(5)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(.horizontal, 16).padding(.vertical, 16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OnboardingPaywallUI.card)
-        .cornerRadius(22)
-    }
-
-    // MARK: - Screen 6: Recovery Plan Teaser
-
-    private var recoveryPlanTeaserScreen: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            questionTopBar(step: 4, total: 4)
-
-            RecoveryPlanTeaserView(
-                viewModel: RecoveryPlanViewModel(
-                    service: recoveryPlanService,
-                    isLocked: true
-                ),
-                onPlanReady: {
-                    scheduleOnboardingRecoveryPlanReviewPromptIfNeeded()
-                },
-                onUnlock: {
-                    withAnimation { screen = 8 }
-                }
-            )
-        }
-        .background(onboardingShellBackground.ignoresSafeArea())
-    }
-
-    private func scheduleOnboardingRecoveryPlanReviewPromptIfNeeded() {
-        guard OnboardingReviewPromptPolicy.shouldQueuePrompt(
-            hasQueuedPromptInSession: didQueueOnboardingRecoveryPlanReviewPrompt
-        ) else { return }
-
-        didQueueOnboardingRecoveryPlanReviewPrompt = true
-
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(700))
-            guard screen == 7 else { return }
-            activeAlert = .onboardingReviewPrompt
-        }
-    }
-
-    private var attributionScreen: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Spacer().frame(height: 14)
-
-            ScrollView(showsIndicators: false) {
-                onboardingScreenCard {
-                    introBlock(
-                        eyebrow: "One quick thing",
-                        title: "How did you hear about us?",
-                        body: nil,
-                        eyebrowColor: OnboardingPaywallUI.roseDeep,
-                        titleSize: 32
-                    )
-
-                    VStack(spacing: 10) {
-                        ForEach(AcquisitionSource.onboardingChoices) { source in
-                            onboardingSourceRow(for: source)
-                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 32)
+                        .padding(.bottom, stickyBottomPadding)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, onboardingStickyBottomPadding)
             }
-            Spacer().frame(height: 14)
-        }
-        .safeAreaInset(edge: .bottom) {
-            blendedBottomCTA(backgroundColor: OnboardingPaywallUI.bg) {
-                primaryButton(label: "Continue", enabled: selectedAcquisitionSource != nil, gradient: false, horizontalPadding: 20, topPadding: 0) {
-                    guard let selectedAcquisitionSource else { return }
-                    OnboardingStore.savePendingAcquisitionSource(selectedAcquisitionSource)
-                    withAnimation { screen = 6 }
+            .safeAreaInset(edge: .bottom) {
+                blendedCTA {
+                    primaryButton(label: "Start free trial", enabled: true) {
+                        push(.paywall)
+                    }
+                    .padding(.bottom, 8)
                 }
-                .padding(.bottom, 8)
             }
+
+            // Confetti — plays once on appear, non-interactive
+            LottieView(name: "Confetti-small", loop: false)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+                .ignoresSafeArea()
+        }
+        .onAppear { Analytics.softPitchViewed(branch: selectedBranch ?? .researching) }
+    }
+
+    private var softPitchBullets: [String] {
+        switch selectedBranch {
+        case .researching:
+            return [
+                "Deep-dives on every procedure you're considering",
+                "Unlimited Ask Rena — answers in seconds, not days",
+                "Consultation prep tailored to your goals",
+                "Realistic results, timelines, and what surgeons don't always say",
+                "Procedure comparisons side by side",
+            ]
+        case .planning:
+            return [
+                "Your full consultation prep, week by week",
+                "Questions to ask based on your health history",
+                "Unlimited Ask Rena — answers in seconds, not days",
+                "Procedure deep-dives with realistic expectations",
+                "Timeline tracking from first consult through recovery",
+            ]
+        case .recovering, .none:
+            return [
+                "Your full personalized roadmap, week by week",
+                "Unlimited Ask Rena — answers in seconds, not days",
+                "Photo timeline tracking with side-by-side comparison",
+                "Consultation prep tailored to your goals and history",
+                "Procedure deep-dives with realistic recovery expectations",
+            ]
         }
     }
 
-    // MARK: - Screen 7: Paywall
+    // MARK: - Paywall Screen
 
     private var paywallScreen: some View {
         SubscriptionPaywallView(
             onDismiss: {
-                Task {
-                    await completeOnboardingWithoutSubscription()
-                }
+                Analytics.paywallDismissed(method: "skip")
+                Task { await completeOnboardingWithoutSubscription() }
             },
             onSubscribed: {
-                Task { @MainActor in
-                    completeOnboardingAfterSubscription()
-                }
+                Task { @MainActor in completeOnboardingAfterSubscription() }
             }
         )
-        .background(OnboardingPaywallUI.bg.ignoresSafeArea())
+        .onAppear {
+            Analytics.paywallViewed(branch: selectedBranch, source: "onboarding")
+        }
     }
 
-    @MainActor
-    private func completeOnboardingWithoutSubscription() async {
-        await completeOnboarding(
-            reason: .maybeLater,
-            source: "paywallCloseButton"
-        )
+    // MARK: - Teaser loading
+
+    private func loadTeaser() async {
+        guard teaserViewModel.content == nil else { return }
+        let request = buildTeaserRequest()
+        await teaserViewModel.load(request: request)
     }
 
-    @MainActor
-    private func completeOnboardingAfterSubscription() {
-        Task {
-            await completeOnboarding(
-                reason: .purchased,
-                source: "paywallSubscriptionSuccess"
+    private func buildTeaserRequest() -> OnboardingTeaserRequest {
+        let isoFormatter = ISO8601DateFormatter()
+
+        switch selectedBranch {
+        case .researching, .none:
+            return OnboardingTeaserRequest(
+                branch: "researching",
+                procedureName: researchProcedures.sorted().first,
+                bodyAreas: Array(researchBodyAreas),
+                healthFlags: [],
+                researchStage: researchStage,
+                researchNeeds: Array(researchNeeds),
+                consultationStatus: nil,
+                planningTimeline: nil,
+                procedureDate: nil,
+                emotionalState: nil
+            )
+        case .planning:
+            return OnboardingTeaserRequest(
+                branch: "planning",
+                procedureName: planProcedure?.storedName,
+                bodyAreas: nil,
+                healthFlags: Array(planHealthFlags),
+                researchStage: nil,
+                researchNeeds: nil,
+                consultationStatus: planConsultation,
+                planningTimeline: planTimeline,
+                procedureDate: nil,
+                emotionalState: nil
+            )
+        case .recovering:
+            let date = recoverWhen?.procedureDate
+            return OnboardingTeaserRequest(
+                branch: "recovering",
+                procedureName: recoverProcedures.first?.storedName,
+                bodyAreas: nil,
+                healthFlags: Array(recoverHealthFlags),
+                researchStage: nil,
+                researchNeeds: nil,
+                consultationStatus: nil,
+                planningTimeline: nil,
+                procedureDate: date.map { isoFormatter.string(from: $0) },
+                emotionalState: recoverEmotion
             )
         }
     }
 
-    @MainActor
-    private func requestOnboardingRecoveryPlanReview() async {
-        let outcome = await ReviewRequestHelper.requestWhenReady(
-            initialDelayMilliseconds: 900,
-            maxAttempts: 8,
-            retryDelayMilliseconds: 500
-        )
+    // MARK: - Data save helpers
 
-        if let message = outcome.userFacingMessage {
-            activeAlert = .reviewUnavailable(message)
-        }
+    private func saveResearchData() {
+        OnboardingStore.saveUserContext(
+            gender: nil, zipCode: nil, ageRange: nil, raceEthnicity: nil,
+            aestheticGoals: [],
+            proceduresOfInterest: Array(researchProcedures),
+            previousProcedures: [],
+            healthFlags: [],
+            bodyAreas: Array(researchBodyAreas)
+        )
+        OnboardingStore.saveBranchData(
+            branch: OnboardingBranch.researching.rawValue,
+            researchStage: researchStage,
+            researchNeeds: Array(researchNeeds)
+        )
     }
 
-    private func syncOnboardingProfileDataInBackground() {
+    private func savePlanningData() {
+        OnboardingStore.saveUserContext(
+            gender: nil, zipCode: nil, ageRange: nil, raceEthnicity: nil,
+            aestheticGoals: [],
+            proceduresOfInterest: planProcedure.map { [$0.storedName] } ?? [],
+            previousProcedures: [],
+            healthFlags: Array(planHealthFlags),
+            bodyAreas: []
+        )
+        OnboardingStore.saveBranchData(
+            branch: OnboardingBranch.planning.rawValue,
+            planningConsultation: planConsultation,
+            planningTimeline: planTimeline
+        )
+    }
+
+    private func saveRecoveringData() {
+        if let when = recoverWhen, let proc = recoverProcedures.first {
+            OnboardingStore.save(procedureName: proc.storedName, procedureDate: when.procedureDate)
+        }
+        OnboardingStore.saveUserContext(
+            gender: nil, zipCode: nil, ageRange: nil, raceEthnicity: nil,
+            aestheticGoals: [],
+            proceduresOfInterest: [],
+            previousProcedures: [],
+            healthFlags: Array(recoverHealthFlags),
+            bodyAreas: []
+        )
+        OnboardingStore.saveBranchData(
+            branch: OnboardingBranch.recovering.rawValue,
+            recoveringEmotion: recoverEmotion
+        )
+    }
+
+    // MARK: - Onboarding completion
+
+    @MainActor
+    private func completeOnboardingWithoutSubscription() async {
+        await completeOnboarding(reason: .maybeLater, source: "paywallMaybeLater")
+    }
+
+    @MainActor
+    private func completeOnboardingAfterSubscription() {
+        Task { await completeOnboarding(reason: .purchased, source: "paywallSubscribed") }
+    }
+
+    @MainActor
+    private func completeOnboarding(reason: OnboardingCompletionReason, source: String) async {
+        guard !isCompletingOnboarding else { return }
+        isCompletingOnboarding = true
+        OnboardingStore.completePostOnboardingFeedback()
+        OnboardingStore.completeOnboarding(reason: reason, source: source)
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { onFinish() }
+        syncInBackground()
+    }
+
+    private func syncInBackground() {
         Task {
             await OnboardingStore.syncUserContextIfNeeded(using: userProfileService)
             await OnboardingStore.syncAttributionIfNeeded(using: userProfileService)
@@ -716,308 +1247,68 @@ struct OnboardingFlowView: View {
     }
 
     @MainActor
-    private func completeOnboarding(
-        reason: OnboardingCompletionReason,
-        source: String
-    ) async {
-        guard !isCompletingOnboarding else {
-            logOnboardingEvent(
-                "flow.completeOnboarding.ignoredWhileInFlight",
-                details: [
-                    "sessionID": onboardingSessionID.uuidString,
-                    "reason": reason.rawValue,
-                    "source": source
-                ]
+    private func requestOnboardingReview() async {
+        let outcome = await ReviewRequestHelper.requestWhenReady(
+            initialDelayMilliseconds: 900,
+            maxAttempts: 8,
+            retryDelayMilliseconds: 500
+        )
+        if let message = outcome.userFacingMessage {
+            activeAlert = .reviewUnavailable(message)
+        }
+    }
+
+    // MARK: - Shared UI components
+
+    // Flat passthrough — content sits directly on the background (Fluency style)
+    private func screenCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) { content() }
+    }
+
+    // Styled card — kept for AI teaser content where visual grouping helps
+    private func contentCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) { content() }
+            .padding(24)
+            .background(OnboardingUI.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(OnboardingUI.roseTint, lineWidth: 1)
             )
-            return
-        }
-
-        isCompletingOnboarding = true
-
-        logOnboardingEvent(
-            "flow.completeOnboarding.requested",
-            details: [
-                "sessionID": onboardingSessionID.uuidString,
-                "reason": reason.rawValue,
-                "source": source
-            ]
-        )
-
-        OnboardingStore.completePostOnboardingFeedback()
-        OnboardingStore.completeOnboarding(reason: reason, source: source)
-        finishOnboarding(reason: reason, source: source)
-        syncOnboardingProfileDataInBackground()
+            .shadow(color: OnboardingUI.shadow.opacity(0.6), radius: 12, x: 0, y: 5)
     }
 
-    @MainActor
-    private func finishOnboarding(
-        reason: OnboardingCompletionReason,
-        source: String
-    ) {
-        logOnboardingEvent(
-            "flow.finishOnboarding",
-            details: [
-                "sessionID": onboardingSessionID.uuidString,
-                "reason": reason.rawValue,
-                "source": source
-            ]
-        )
-
-        dismiss()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            onFinish()
-        }
-    }
-
-    private func logOnboardingEvent(_ event: String, details: [String: String?] = [:]) {
-        let payload = details
-            .compactMap { key, value -> String? in
-                guard let value else { return nil }
-                return "\(key)=\(value)"
-            }
-            .sorted()
-            .joined(separator: " ")
-
-        if payload.isEmpty {
-            print("[OnboardingFlow] \(event)")
-        } else {
-            print("[OnboardingFlow] \(event) \(payload)")
-        }
-    }
-
-    // MARK: - Screen 6: About You
-
-    private var aboutYouScreen: some View {
+    private func introBlock(eyebrow: String, title: String, body: String?, titleSize: CGFloat = 34) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            questionTopBar(step: 1, total: 4)
-
-            ScrollView(showsIndicators: false) {
-                onboardingScreenCard {
-                    introBlock(
-                        eyebrow: "About you",
-                        title: "Help Rena know you better.",
-                        body: nil
-                    )
-
-                    VStack(alignment: .leading, spacing: 18) {
-                        contextSection(title: "Gender identity") {
-                            chipGrid(options: ProfileSelectionCatalog.genderOptions,
-                                     selected: selectedGender.map { [$0] } ?? [],
-                                     multiSelect: false) { val in
-                                selectedGender = selectedGender == val ? nil : val
-                            }
-                        }
-                        contextSection(title: "Age range") {
-                            chipGrid(options: ProfileSelectionCatalog.ageRangeOptions,
-                                     selected: selectedAgeRange.map { [$0] } ?? [],
-                                     multiSelect: false) { val in
-                                selectedAgeRange = selectedAgeRange == val ? nil : val
-                            }
-                        }
-                        contextSection(title: "Race / Ethnicity") {
-                            chipGrid(
-                                options: ProfileSelectionCatalog.raceOptions,
-                                selected: selectedRaceEthnicity.map { [$0] } ?? [],
-                                multiSelect: false
-                            ) { val in
-                                selectedRaceEthnicity = selectedRaceEthnicity == val ? nil : val
-                            }
-                        }
-                    }
-
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, onboardingStickyBottomPadding)
-            }
-            Spacer().frame(height: 14)
-        }
-        .safeAreaInset(edge: .bottom) {
-            blendedBottomCTA(backgroundColor: OnboardingPaywallUI.bg) {
-                VStack(spacing: 0) {
-                    primaryButton(label: "Continue", enabled: true, gradient: false, horizontalPadding: 20, topPadding: 0) {
-                        withAnimation { screen = 2 }
-                    }
-                    secondarySkipButton(topPadding: 10) {
-                        withAnimation { screen = 2 }
-                    }
-                }
-                .padding(.bottom, 8)
+            Text(eyebrow)
+                .font(Theme.PlusJakartaSans.semiBold(10))
+                .foregroundColor(OnboardingUI.roseDeep)
+                .tracking(2.3)
+                .textCase(.uppercase)
+            Text(title)
+                .font(Theme.Manrope.extraBold(titleSize))
+                .foregroundColor(OnboardingUI.primaryInk)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 14)
+            if let body, !body.isEmpty {
+                Text(body)
+                    .font(Theme.PlusJakartaSans.semiBold(13))
+                    .foregroundColor(OnboardingUI.muted)
+                    .lineSpacing(5)
+                    .padding(.top, 16)
             }
         }
+        .padding(.bottom, 24)
     }
-
-    // MARK: - Screen 7: Goals & Interests
-
-    private var goalsScreen: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            questionTopBar(step: 2, total: 4)
-
-            ScrollView(showsIndicators: false) {
-                onboardingScreenCard {
-                    introBlock(
-                        eyebrow: "Your goals",
-                        title: "What are you hoping to achieve?",
-                        body: nil
-                    )
-
-                    VStack(alignment: .leading, spacing: 18) {
-                        contextSection(title: "Aesthetic goals") {
-                            chipGrid(
-                                options: ProfileSelectionCatalog.goalOptions,
-                                selected: Array(selectedAestheticGoals),
-                                multiSelect: true
-                            ) { val in
-                                if selectedAestheticGoals.contains(val) { selectedAestheticGoals.remove(val) }
-                                else { selectedAestheticGoals.insert(val) }
-                            }
-                        }
-                        contextSection(title: "Body areas of interest") {
-                            chipGrid(
-                                options: ProfileSelectionCatalog.bodyAreaOptions,
-                                selected: Array(selectedBodyAreas),
-                                multiSelect: true
-                            ) { val in
-                                if selectedBodyAreas.contains(val) { selectedBodyAreas.remove(val) }
-                                else { selectedBodyAreas.insert(val) }
-                            }
-                        }
-                        contextSection(title: "Procedures you're considering") {
-                            chipGrid(
-                                options: ProfileSelectionCatalog.procedureOptions,
-                                selected: Array(selectedProceduresOfInterest),
-                                multiSelect: true
-                            ) { val in
-                                if selectedProceduresOfInterest.contains(val) { selectedProceduresOfInterest.remove(val) }
-                                else { selectedProceduresOfInterest.insert(val) }
-                            }
-                        }
-                    }
-
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, onboardingStickyBottomPadding)
-            }
-            Spacer().frame(height: 14)
-        }
-        .safeAreaInset(edge: .bottom) {
-            blendedBottomCTA(backgroundColor: OnboardingPaywallUI.bg) {
-                VStack(spacing: 0) {
-                    primaryButton(label: "Continue", enabled: true, gradient: false, horizontalPadding: 20, topPadding: 0) {
-                        withAnimation { screen = 3 }
-                    }
-                    secondarySkipButton(topPadding: 10) {
-                        withAnimation { screen = 3 }
-                    }
-                }
-                .padding(.bottom, 8)
-            }
-        }
-    }
-
-    // MARK: - Screen 8: Health & History
-
-    private var healthHistoryScreen: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            questionTopBar(step: 3, total: 4)
-
-            ScrollView(showsIndicators: false) {
-                onboardingScreenCard {
-                    introBlock(
-                        eyebrow: "Health & history",
-                        title: "A few quick context questions.",
-                        body: nil
-                    )
-
-                    VStack(alignment: .leading, spacing: 18) {
-                        contextSection(title: "Procedures you've already had") {
-                            chipGrid(
-                                options: ProfileSelectionCatalog.previousProcedureOptions,
-                                selected: Array(selectedPreviousProcedures),
-                                multiSelect: true
-                            ) { val in
-                                if selectedPreviousProcedures.contains(val) { selectedPreviousProcedures.remove(val) }
-                                else { selectedPreviousProcedures.insert(val) }
-                            }
-                        }
-                        contextSection(title: "Any health considerations?") {
-                            chipGrid(
-                                options: ProfileSelectionCatalog.healthFlagOptions,
-                                selected: Array(selectedHealthFlags),
-                                multiSelect: true
-                            ) { val in
-                                if selectedHealthFlags.contains(val) { selectedHealthFlags.remove(val) }
-                                else { selectedHealthFlags.insert(val) }
-                            }
-                        }
-                    }
-
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, onboardingStickyBottomPadding)
-            }
-            Spacer().frame(height: 14)
-        }
-        .safeAreaInset(edge: .bottom) {
-            blendedBottomCTA(backgroundColor: OnboardingPaywallUI.bg) {
-                VStack(spacing: 0) {
-                    primaryButton(label: "Continue", enabled: true, gradient: false, horizontalPadding: 20, topPadding: 0) {
-                        OnboardingStore.saveUserContext(
-                            gender: selectedGender,
-                            zipCode: nil,
-                            ageRange: selectedAgeRange,
-                            raceEthnicity: selectedRaceEthnicity,
-                            aestheticGoals: Array(selectedAestheticGoals),
-                            proceduresOfInterest: Array(selectedProceduresOfInterest),
-                            previousProcedures: Array(selectedPreviousProcedures),
-                            healthFlags: Array(selectedHealthFlags),
-                            bodyAreas: Array(selectedBodyAreas)
-                        )
-                        withAnimation { screen = 4 }
-                    }
-                    secondarySkipButton(topPadding: 10) {
-                        OnboardingStore.saveUserContext(
-                            gender: selectedGender,
-                            zipCode: nil,
-                            ageRange: selectedAgeRange,
-                            raceEthnicity: selectedRaceEthnicity,
-                            aestheticGoals: Array(selectedAestheticGoals),
-                            proceduresOfInterest: Array(selectedProceduresOfInterest),
-                            previousProcedures: Array(selectedPreviousProcedures),
-                            healthFlags: Array(selectedHealthFlags),
-                            bodyAreas: Array(selectedBodyAreas)
-                        )
-                        withAnimation { screen = 4 }
-                    }
-                }
-                .padding(.bottom, 8)
-            }
-        }
-    }
-
-    // MARK: - Context Quiz Helpers
 
     private func contextSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             Text(title)
                 .font(.custom("PlusJakartaSans-SemiBold", size: 12))
-                .foregroundColor(OnboardingPaywallUI.primaryInk)
-                .tracking(0.2)
+                .foregroundColor(OnboardingUI.primaryInk)
             content()
         }
-    }
-
-    private func onboardingScreenCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            content()
-        }
-        .padding(24)
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 32, style: .continuous)
-                .stroke(Color.black.opacity(0.05), lineWidth: 1)
-        )
-        .shadow(color: OnboardingPaywallUI.shadow.opacity(0.8), radius: 14, x: 0, y: 6)
     }
 
     private func chipGrid(options: [String], selected: [String], multiSelect: Bool, onTap: @escaping (String) -> Void) -> some View {
@@ -1027,25 +1318,16 @@ struct OnboardingFlowView: View {
                 Button { onTap(option) } label: {
                     Text(option)
                         .font(.custom("PlusJakartaSans-Medium", size: 13))
-                        .foregroundColor(isSelected ? Color(hex: "#5F4546") : OnboardingPaywallUI.primaryInk)
-                        .multilineTextAlignment(.center)
+                        .foregroundColor(isSelected ? OnboardingUI.roseDeep : OnboardingUI.primaryInk)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
-                        .background {
-                            if isSelected {
-                                LinearGradient(
-                                    colors: [Color(hex: "#F5E3E0"), Color(hex: "#F8EFED")],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            } else {
-                                Color.white.opacity(0.88)
-                            }
-                        }
+                        .background(isSelected ? OnboardingUI.roseSoft : OnboardingUI.surface)
                         .clipShape(Capsule())
                         .overlay(
-                            Capsule()
-                                .stroke(isSelected ? OnboardingPaywallUI.rose.opacity(0.46) : Color.black.opacity(0.05), lineWidth: 1)
+                            Capsule().stroke(
+                                isSelected ? OnboardingUI.rose : OnboardingUI.roseTint,
+                                lineWidth: 1.5
+                            )
                         )
                 }
                 .buttonStyle(.plain)
@@ -1054,108 +1336,55 @@ struct OnboardingFlowView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: - Shared Components
-
-    private func introBlock(
-        eyebrow: String,
-        title: String,
-        body: String?,
-        eyebrowColor: Color = OnboardingPaywallUI.muted,
-        titleSize: CGFloat = 36
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(eyebrow)
-                .font(.custom("PlusJakartaSans-SemiBold", size: 10))
-                .foregroundColor(eyebrowColor)
-                .tracking(2.3)
-                .textCase(.uppercase)
-
-            Text(title)
-                .font(.custom("Manrope", size: titleSize))
-                .fontWeight(.black)
-                .foregroundColor(OnboardingPaywallUI.primaryInk)
-                .lineSpacing(2)
-                .padding(.top, 16)
-
-            if let body, !body.isEmpty {
-                Text(body)
-                    .font(.custom("PlusJakartaSans-Regular", size: 13))
-                    .foregroundColor(OnboardingPaywallUI.muted)
-                    .lineSpacing(6)
-                    .padding(.top, 20)
+    private func selectionPill(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Text(label)
+                    .font(.custom("PlusJakartaSans-Medium", size: 15))
+                    .foregroundColor(isSelected ? OnboardingUI.roseDeep : OnboardingUI.primaryInk)
+                Spacer()
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundColor(isSelected ? OnboardingUI.primary : OnboardingUI.muted.opacity(0.35))
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+            .background(isSelected ? OnboardingUI.roseSoft : OnboardingUI.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(isSelected ? OnboardingUI.rose : OnboardingUI.roseTint, lineWidth: 1.5)
+            )
         }
-        .padding(.bottom, 28)
-    }
-
-    private func questionTopBar(step: Int, total: Int) -> some View {
-        HStack(spacing: 10) {
-            Button { withAnimation { screen -= 1 } } label: {
-                ZStack {
-                    Circle()
-                        .fill(Color.white.opacity(0.92))
-                        .frame(width: 38, height: 38)
-                        .shadow(color: OnboardingPaywallUI.shadow.opacity(0.34), radius: 5, x: 0, y: 2)
-                    Circle()
-                        .stroke(Color.black.opacity(0.04), lineWidth: 1)
-                        .frame(width: 38, height: 38)
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(OnboardingPaywallUI.roseDeep)
-                }
-            }
-
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(OnboardingPaywallUI.rose.opacity(0.16)).frame(height: 4)
-                    Capsule()
-                        .fill(OnboardingPaywallUI.roseDeep)
-                        .frame(width: geo.size.width * CGFloat(step) / CGFloat(total), height: 4)
-                }
-            }
-            .frame(height: 4)
-
-            Text("\(step) of \(total)")
-                .font(.custom("PlusJakartaSans-Medium", size: 11))
-                .foregroundColor(OnboardingPaywallUI.muted)
-                .fixedSize()
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 58)
-        .padding(.bottom, 24)
+        .buttonStyle(.plain)
     }
 
     private func optionPill(icon: String, title: String, desc: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 11) {
-                // Rounded-rect icon (not circle)
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(OnboardingPaywallUI.roseSoft.opacity(isSelected ? 0.92 : 0.55))
+                        .fill(OnboardingUI.roseSoft.opacity(isSelected ? 0.92 : 0.55))
                         .frame(width: 32, height: 32)
                     Image(systemName: icon)
                         .font(.system(size: 14))
-                        .foregroundColor(OnboardingPaywallUI.roseDeep)
+                        .foregroundColor(OnboardingUI.roseDeep)
                 }
-
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
                         .font(.custom("PlusJakartaSans-SemiBold", size: 13))
-                        .foregroundColor(OnboardingPaywallUI.primaryInk)
+                        .foregroundColor(OnboardingUI.primaryInk)
                     Text(desc)
                         .font(.custom("PlusJakartaSans-Regular", size: 11))
-                        .foregroundColor(OnboardingPaywallUI.muted)
+                        .foregroundColor(OnboardingUI.muted)
                 }
-
                 Spacer()
-
-                // Circle check
                 ZStack {
                     Circle()
-                        .fill(isSelected ? OnboardingPaywallUI.primary : Color.clear)
+                        .fill(isSelected ? OnboardingUI.primary : Color.clear)
                         .frame(width: 18, height: 18)
                     Circle()
-                        .stroke(isSelected ? OnboardingPaywallUI.primary : Color.black.opacity(0.08), lineWidth: 1.5)
+                        .stroke(isSelected ? OnboardingUI.primary : Color.black.opacity(0.08), lineWidth: 1.5)
                         .frame(width: 18, height: 18)
                     if isSelected {
                         Image(systemName: "checkmark")
@@ -1165,350 +1394,105 @@ struct OnboardingFlowView: View {
                 }
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
-            .background(isSelected ? OnboardingPaywallUI.roseSoft.opacity(0.9) : Color.white)
+            .background(isSelected ? OnboardingUI.roseSoft : OnboardingUI.surface)
             .cornerRadius(16)
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
-                    .stroke(isSelected ? OnboardingPaywallUI.rose.opacity(0.45) : Color.black.opacity(0.05), lineWidth: 1)
+                    .stroke(isSelected ? OnboardingUI.rose : OnboardingUI.roseTint, lineWidth: 1.5)
             )
-            .shadow(color: OnboardingPaywallUI.shadow.opacity(0.5), radius: 8, x: 0, y: 3)
         }
         .buttonStyle(.plain)
     }
 
-    private func whenPill(_ option: WhenOption) -> some View {
-        let isSelected = selectedWhen == option
-        return Button {
-            withAnimation(.spring(response: 0.3)) { selectedWhen = option }
-        } label: {
-            HStack {
-                Text(option.rawValue)
-                    .font(.custom("PlusJakartaSans-Medium", size: 14))
-                    .foregroundColor(isSelected ? Color(hex: "#5F4546") : OnboardingPaywallUI.primaryInk)
-                Spacer()
-            }
-            .padding(.horizontal, 16).padding(.vertical, 16)
-            .background {
-                if isSelected {
-                    LinearGradient(
-                        colors: [Color(hex: "#F5E3E0"), Color(hex: "#F8EFED")],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                } else {
-                    Color.white.opacity(0.88)
+    private func progressBar(step: Int, total: Int) -> some View {
+        HStack(spacing: 12) {
+            Button { pop() } label: {
+                ZStack {
+                    Circle()
+                        .fill(OnboardingUI.surface)
+                        .frame(width: 38, height: 38)
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(OnboardingUI.primaryInk)
                 }
             }
-            .cornerRadius(20)
-            .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(isSelected ? OnboardingPaywallUI.rose.opacity(0.46) : Color.black.opacity(0.05), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func onboardingSourceRow(for source: AcquisitionSource) -> some View {
-        let isSelected = selectedAcquisitionSource == source
-
-        return Button {
-            selectedAcquisitionSource = source
-        } label: {
-            HStack(spacing: 12) {
-                OnboardingAcquisitionSourceIcon(source: source, isSelected: isSelected)
-
-                Text(source.displayName)
-                    .font(.custom("PlusJakartaSans-Medium", size: 14))
-                    .foregroundColor(OnboardingPaywallUI.primaryInk)
-
-                Spacer()
-
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20))
-                    .foregroundColor(isSelected ? OnboardingPaywallUI.primary : OnboardingPaywallUI.muted.opacity(0.45))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
-            .background(isSelected ? OnboardingPaywallUI.primarySoft.opacity(0.55) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(isSelected ? OnboardingPaywallUI.primary.opacity(0.18) : Color.black.opacity(0.04), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func unlockCard(icon: String, tint: some ShapeStyle, iconColor: Color, title: String, body: String? = nil) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(tint)
-                .frame(width: 32, height: 32)
-                .overlay(
-                    Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(iconColor)
-                )
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.custom("PlusJakartaSans-SemiBold", size: 14))
-                    .foregroundColor(OnboardingPaywallUI.primaryInk)
-                if let body {
-                    Text(body)
-                        .font(.custom("PlusJakartaSans-Regular", size: 12))
-                        .foregroundColor(OnboardingPaywallUI.muted)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(OnboardingUI.roseTint).frame(height: 3)
+                    Capsule()
+                        .fill(OnboardingUI.primary)
+                        .frame(width: geo.size.width * CGFloat(step) / CGFloat(total), height: 3)
+                        .animation(.easeInOut(duration: 0.3), value: step)
                 }
             }
-
-            Spacer(minLength: 0)
+            .frame(height: 3)
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white)
-        .cornerRadius(18)
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(OnboardingPaywallUI.roseSoft.opacity(0.65), lineWidth: 1)
-        )
+        .padding(.horizontal, 16)
+        .padding(.top, 58)
+        .padding(.bottom, 24)
     }
 
-    private func primaryButton(
-        label: String,
-        enabled: Bool,
-        gradient: Bool,
-        horizontalPadding: CGFloat = 16,
-        topPadding: CGFloat = 14,
-        action: @escaping () -> Void
-    ) -> some View {
+    private func backButton(action: @escaping () -> Void) -> some View {
+        HStack {
+            Button(action: action) {
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.92))
+                        .frame(width: 38, height: 38)
+                        .shadow(color: OnboardingUI.shadow.opacity(0.34), radius: 5, x: 0, y: 2)
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(OnboardingUI.roseDeep)
+                }
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 58)
+        .padding(.bottom, 16)
+    }
+
+    private func primaryButton(label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(.custom("PlusJakartaSans-SemiBold", size: 15))
+                .font(.custom("PlusJakartaSans-SemiBold", size: 16))
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
-                .background {
-                    if !enabled {
-                        OnboardingPaywallUI.primary.opacity(0.35).cornerRadius(24)
-                    } else {
-                        OnboardingPaywallUI.primary.cornerRadius(24)
-                    }
-                }
-                .shadow(color: enabled ? OnboardingPaywallUI.shadow.opacity(0.8) : Color.clear, radius: 10, x: 0, y: 5)
+                .background(enabled ? OnboardingUI.primary : OnboardingUI.primary.opacity(0.35))
+                .clipShape(Capsule())
         }
         .disabled(!enabled)
-        .padding(.horizontal, horizontalPadding)
-        .padding(.top, topPadding)
+        .padding(.horizontal, 24)
     }
 
-    private func blendedBottomCTA<Content: View>(
-        backgroundColor: Color,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(spacing: 0) {
-            LinearGradient(
-                colors: [Color.clear, backgroundColor.opacity(0.96)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 24)
-
-            content()
-                .background(backgroundColor.opacity(0.96))
-        }
-    }
-
-    private func secondarySkipButton(
-        topPadding: CGFloat = 14,
-        action: @escaping () -> Void
-    ) -> some View {
+    private func skipButton(action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text("Skip for now")
                 .font(.custom("PlusJakartaSans-Medium", size: 14))
-                .foregroundColor(OnboardingPaywallUI.muted)
+                .foregroundColor(OnboardingUI.muted)
                 .underline()
                 .frame(maxWidth: .infinity)
         }
-        .padding(.top, topPadding)
+        .padding(.top, 10)
     }
 
-    private var resolvedOnboardingProcedureName: String {
-        if let selectedProcedure {
-            return selectedProcedure.storedName
-        }
-
-        let prioritizedSelections = Array(selectedProceduresOfInterest) + Array(selectedPreviousProcedures)
-        for option in prioritizedSelections {
-            let normalized = option.lowercased()
-            if normalized.contains("rhinoplasty") || normalized.contains("nose") {
-                return "Rhinoplasty"
-            }
-            if normalized.contains("facelift") || normalized.contains("eyelid") || normalized.contains("facial") {
-                return "Facial Surgery"
-            }
-            if normalized.contains("breast") {
-                return "Breast Surgery"
-            }
-            if normalized.contains("body contour") || normalized.contains("bbl") || normalized.contains("tummy tuck") {
-                return "Body Contouring"
-            }
-            if normalized.contains("botox") || normalized.contains("fillers") || normalized.contains("laser") {
-                return "Facial Surgery"
-            }
-        }
-
-        if selectedBodyAreas.contains("Nose") {
-            return "Rhinoplasty"
-        }
-        if selectedBodyAreas.contains("Breasts") {
-            return "Breast Surgery"
-        }
-        if selectedBodyAreas.contains("Abdomen / Waist")
-            || selectedBodyAreas.contains("Thighs / Buttocks")
-            || selectedBodyAreas.contains("Full body") {
-            return "Body Contouring"
-        }
-        if selectedBodyAreas.contains("Face")
-            || selectedBodyAreas.contains("Eyes / Brow")
-            || selectedBodyAreas.contains("Neck / Jawline") {
-            return "Facial Surgery"
-        }
-
-        return "Surgery"
-    }
-}
-
-private struct OnboardingAcquisitionSourceIcon: View {
-    let source: AcquisitionSource
-    let isSelected: Bool
-
-    var body: some View {
-        ZStack {
-            backgroundShape
-
-            switch source {
-            case .instagram:
-                instagramGlyph
-            case .tiktok:
-                tikTokGlyph
-            case .googleSearch:
-                Text("G")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundStyle(googleGradient)
-            case .friendOrFamily:
-                Image(systemName: "person.2.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(iconForeground)
-            case .doctorOrClinic:
-                Image(systemName: "cross.case.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(iconForeground)
-            case .appStoreSearch:
-                Image(systemName: "apple.logo")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
-            case .pressOrBlog:
-                Image(systemName: "newspaper.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(iconForeground)
-            case .other:
-                Image(systemName: "ellipsis.circle.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(iconForeground)
-            }
-        }
-        .frame(width: 36, height: 36)
-    }
-
-    @ViewBuilder
-    private var backgroundShape: some View {
-        switch source {
-        case .instagram:
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(hex: "#FEDA75"),
-                            Color(hex: "#FA7E1E"),
-                            Color(hex: "#D62976"),
-                            Color(hex: "#962FBF"),
-                            Color(hex: "#4F5BD5"),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        case .tiktok:
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .fill(Color.black)
-        case .googleSearch:
-            Circle()
-                .fill(Color.white)
-                .overlay(
-                    Circle()
-                        .stroke(Color.black.opacity(0.06), lineWidth: 1)
-                )
-        case .appStoreSearch:
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(hex: "#1677F2"))
-        default:
-            Circle()
-                .fill((isSelected ? OnboardingPaywallUI.primarySoft : OnboardingPaywallUI.roseSoft.opacity(0.92)))
+    private func blendedCTA<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [Color.clear, OnboardingUI.bg.opacity(0.96)],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(height: 24)
+            content()
+                .background(OnboardingUI.bg.opacity(0.96))
         }
     }
 
-    private var iconForeground: Color {
-        isSelected ? OnboardingPaywallUI.primary : OnboardingPaywallUI.roseDeep
-    }
+    // MARK: - Helpers
 
-    private var googleGradient: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color(hex: "#4285F4"),
-                Color(hex: "#34A853"),
-                Color(hex: "#FBBC05"),
-                Color(hex: "#EA4335"),
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
-    private var instagramGlyph: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(Color.white, lineWidth: 1.9)
-                .frame(width: 17, height: 17)
-
-            Circle()
-                .strokeBorder(Color.white, lineWidth: 1.9)
-                .frame(width: 7, height: 7)
-
-            Circle()
-                .fill(Color.white)
-                .frame(width: 3, height: 3)
-                .offset(x: 5, y: -5)
-        }
-    }
-
-    private var tikTokGlyph: some View {
-        ZStack {
-            Image(systemName: "music.note")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(Color(hex: "#25F4EE"))
-                .offset(x: -1.2, y: 0.8)
-
-            Image(systemName: "music.note")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(Color(hex: "#FE2C55"))
-                .offset(x: 1.2, y: -0.8)
-
-            Image(systemName: "music.note")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(.white)
-        }
+    private func toggle(_ set: inout Set<String>, _ value: String) {
+        if set.contains(value) { set.remove(value) } else { set.insert(value) }
     }
 }
 
