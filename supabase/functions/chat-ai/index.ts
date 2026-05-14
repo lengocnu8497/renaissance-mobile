@@ -15,6 +15,7 @@ import {
   type RecoveryPlanCacheRow,
 } from './knowledgeResolvers.ts'
 
+const FREE_DAILY_LIMIT = 3
 const modelUsed = 'gpt-4o'
 const scopeClassifierModel = 'gpt-4o-mini'
 const blockedReply = "I can help with Renaissance app questions, cosmetic procedure research, consultation prep, and recovery tracking. I can't help with unrelated coding or general knowledge requests."
@@ -599,76 +600,105 @@ Deno.serve(async (req) => {
 
     const { subscription_tier, subscription_current_period_end, subscription_status } = userProfile
 
-    // Check if user has active subscription
-    // Allow 'active' status, but also allow 'canceled' if still within the paid period
-    // (Stripe cancellations set cancel_at_period_end=true, meaning access continues until period end)
     const isActive = subscription_status === 'active'
     const isCanceledButStillInPeriod = subscription_status === 'canceled'
       && subscription_current_period_end
       && new Date(subscription_current_period_end) > new Date()
+    const hasActiveSubscription = !!subscription_tier && (isActive || isCanceledButStillInPeriod)
 
-    if (!subscription_tier || (!isActive && !isCanceledButStillInPeriod)) {
-      return new Response(
-        JSON.stringify({
-          error: 'No active subscription',
-          code: 'NO_SUBSCRIPTION',
-          message: 'Please upgrade to a Weekly or Monthly plan to use the AI concierge.'
-        }),
-        { status: 403, headers: { 'Content-Type': 'application/json' } }
-      )
+    // FREE TIER: Non-subscribed users get FREE_DAILY_LIMIT questions per day.
+    let isFreeTierRequest = false
+    if (!hasActiveSubscription) {
+      const today = new Date().toISOString().split('T')[0]
+      const { data: freeUsage } = await adminClient
+        .from('free_chat_usage')
+        .select('count')
+        .eq('user_id', user.id)
+        .eq('usage_date', today)
+        .maybeSingle()
+
+      const usedToday = freeUsage?.count ?? 0
+
+      if (usedToday >= FREE_DAILY_LIMIT) {
+        return new Response(
+          JSON.stringify({
+            error: 'Free daily limit reached',
+            code: 'FREE_LIMIT_REACHED',
+            questionsLimit: FREE_DAILY_LIMIT,
+            message: `You've used your ${FREE_DAILY_LIMIT} free questions today. Subscribe to unlock unlimited access.`
+          }),
+          { status: 403, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // Consume one free question (upsert so the first question creates the row)
+      await adminClient
+        .from('free_chat_usage')
+        .upsert(
+          { user_id: user.id, usage_date: today, count: usedToday + 1, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id,usage_date' }
+        )
+
+      isFreeTierRequest = true
     }
 
-    // Calculate billing period boundaries
-    const periodEnd   = new Date(subscription_current_period_end)
-    const periodStart = subtractOneMonth(periodEnd)
+    // SUBSCRIPTION QUOTA: Only for paying users.
+    let usageRecord: any = null
+    if (!isFreeTierRequest) {
+      const periodEnd   = new Date(subscription_current_period_end)
+      const periodStart = subtractOneMonth(periodEnd)
 
-    // Get or create usage record for current period using RPC
-    const { data: usageRecord, error: usageError } = await adminClient
-      .rpc('get_or_create_usage_record', {
-        p_user_id: user.id,
-        p_period_start: periodStart.toISOString(),
-        p_period_end: periodEnd.toISOString(),
-        p_tier: subscription_tier
-      })
+      const { data: record, error: usageError } = await adminClient
+        .rpc('get_or_create_usage_record', {
+          p_user_id: user.id,
+          p_period_start: periodStart.toISOString(),
+          p_period_end: periodEnd.toISOString(),
+          p_tier: subscription_tier
+        })
 
-    if (usageError || !usageRecord) {
-      console.error('Failed to fetch usage record:', usageError)
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch usage data' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      )
+      if (usageError || !record) {
+        console.error('Failed to fetch usage record:', usageError)
+        return new Response(
+          JSON.stringify({ error: 'Failed to fetch usage data' }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
+
+      usageRecord = record
+
+      const hasImage = !!imageBase64
+      const messageCost = 1
+      const imageCost = hasImage ? 1 : 0
+      const creditCost = hasImage ? 4 : 2
+
+      const wouldExceedMessages = (usageRecord.messages_used + messageCost) > usageRecord.messages_limit
+      const wouldExceedImages = hasImage && ((usageRecord.images_used + imageCost) > usageRecord.images_limit)
+      const wouldExceedCredits = (usageRecord.credits_used + creditCost) > usageRecord.credits_limit
+
+      if (wouldExceedMessages || wouldExceedImages || wouldExceedCredits) {
+        const limitType = wouldExceedMessages ? 'messages' :
+                          wouldExceedImages ? 'images' : 'credits'
+        return new Response(
+          JSON.stringify({
+            error: 'Quota exceeded',
+            code: 'QUOTA_EXCEEDED',
+            limitType: limitType,
+            usage: {
+              messages: { used: usageRecord.messages_used, limit: usageRecord.messages_limit },
+              images: { used: usageRecord.images_used, limit: usageRecord.images_limit },
+              credits: { used: usageRecord.credits_used, limit: usageRecord.credits_limit }
+            },
+            periodEnd: subscription_current_period_end
+          }),
+          { status: 429, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
     }
 
-    // Calculate cost of this request
     const hasImage = !!imageBase64
     const messageCost = 1
     const imageCost = hasImage ? 1 : 0
     const creditCost = hasImage ? 4 : 2
-
-    // Check if request would exceed any quota limit
-    const wouldExceedMessages = (usageRecord.messages_used + messageCost) > usageRecord.messages_limit
-    const wouldExceedImages = hasImage && ((usageRecord.images_used + imageCost) > usageRecord.images_limit)
-    const wouldExceedCredits = (usageRecord.credits_used + creditCost) > usageRecord.credits_limit
-
-    if (wouldExceedMessages || wouldExceedImages || wouldExceedCredits) {
-      const limitType = wouldExceedMessages ? 'messages' :
-                        wouldExceedImages ? 'images' : 'credits'
-
-      return new Response(
-        JSON.stringify({
-          error: 'Quota exceeded',
-          code: 'QUOTA_EXCEEDED',
-          limitType: limitType,
-          usage: {
-            messages: { used: usageRecord.messages_used, limit: usageRecord.messages_limit },
-            images: { used: usageRecord.images_used, limit: usageRecord.images_limit },
-            credits: { used: usageRecord.credits_used, limit: usageRecord.credits_limit }
-          },
-          periodEnd: subscription_current_period_end
-        }),
-        { status: 429, headers: { 'Content-Type': 'application/json' } }
-      )
-    }
 
     // Validate input
     if (!message || typeof message !== 'string') {
@@ -731,21 +761,22 @@ Deno.serve(async (req) => {
     )
 
     if (!scopeDecision.allowed) {
-      try {
-        const { error: updateError } = await adminClient
-          .rpc('increment_usage', {
-            p_usage_id: usageRecord.id,
-            p_user_id:  user.id,
-            p_messages: messageCost,
-            p_images:   0,
-            p_credits:  0
-          })
-
-        if (updateError) {
-          console.error('Failed to update usage for blocked response:', updateError)
+      if (!isFreeTierRequest) {
+        try {
+          const { error: updateError } = await adminClient
+            .rpc('increment_usage', {
+              p_usage_id: usageRecord.id,
+              p_user_id:  user.id,
+              p_messages: messageCost,
+              p_images:   0,
+              p_credits:  0
+            })
+          if (updateError) {
+            console.error('Failed to update usage for blocked response:', updateError)
+          }
+        } catch (usageUpdateError) {
+          console.error('Exception updating usage for blocked response:', usageUpdateError)
         }
-      } catch (usageUpdateError) {
-        console.error('Exception updating usage for blocked response:', usageUpdateError)
       }
 
       return new Response(
@@ -897,23 +928,24 @@ Deno.serve(async (req) => {
       }
     }
 
-    // INCREMENT USAGE COUNTERS after successful response
-    // Uses SECURITY DEFINER RPC so the increment lands regardless of RLS policies.
-    try {
-      const { error: updateError } = await adminClient
-        .rpc('increment_usage', {
-          p_usage_id: usageRecord.id,
-          p_user_id:  user.id,
-          p_messages: messageCost,
-          p_images:   imageCost + (generatedImageUrl ? 1 : 0),
-          p_credits:  creditCost + dalleCreditsUsed
-        })
+    // INCREMENT USAGE COUNTERS after successful response (subscribed users only)
+    if (!isFreeTierRequest) {
+      try {
+        const { error: updateError } = await adminClient
+          .rpc('increment_usage', {
+            p_usage_id: usageRecord.id,
+            p_user_id:  user.id,
+            p_messages: messageCost,
+            p_images:   imageCost + (generatedImageUrl ? 1 : 0),
+            p_credits:  creditCost + dalleCreditsUsed
+          })
 
-      if (updateError) {
-        console.error('Failed to update usage:', updateError)
+        if (updateError) {
+          console.error('Failed to update usage:', updateError)
+        }
+      } catch (usageUpdateError) {
+        console.error('Exception updating usage:', usageUpdateError)
       }
-    } catch (usageUpdateError) {
-      console.error('Exception updating usage:', usageUpdateError)
     }
 
     // Return the response as JSON

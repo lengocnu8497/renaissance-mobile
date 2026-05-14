@@ -24,3 +24,8 @@ entrypoint = "./functions/app-store-server-notifications/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/delete-account/index.ts"
+
+[functions.generate-onboarding-teaser]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/generate-onboarding-teaser/index.ts"

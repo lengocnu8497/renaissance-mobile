@@ -2,11 +2,8 @@
 //  SignUpView.swift
 //  Renaissance Mobile
 //
-//  Created by Nu Le on 12/4/25.
-//
 
 import SwiftUI
-import UIKit
 
 struct SignUpView: View {
     @Environment(\.dismiss) private var dismiss
@@ -30,148 +27,123 @@ struct SignUpView: View {
         password == confirmPassword
     }
 
-    private var isBusy: Bool {
-        authViewModel.isLoading
-    }
+    private var isBusy: Bool { authViewModel.isLoading }
+
+    private var fieldStroke: Color { Color(hex: "#D4CCFF") }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
-                    // Let's get started text
-                    Text("Let's get started")
-                        .font(.system(size: 32, weight: .semibold))
-                        .foregroundColor(Theme.Colors.textWelcomePrimary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 32)
-                        .padding(.bottom, 32)
-
-                    // Full Name field
-                    VStack(alignment: .leading, spacing: 8) {
-                        TextField("", text: $fullName, prompt: Text("Full Name").foregroundColor(Color.gray.opacity(0.7)))
-                            .font(.system(size: 16))
-                            .foregroundColor(.black)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 18)
-                            .background(Color.white)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                            )
-                            .cornerRadius(12)
-                            .autocapitalization(.words)
+                    // Full Name
+                    inputField {
+                        TextField(
+                            "",
+                            text: $fullName,
+                            prompt: Text("Full Name").foregroundColor(Color(hex: "#7B6FC0").opacity(0.7))
+                        )
+                        .font(.custom("PlusJakartaSans-Regular", size: 16))
+                        .foregroundColor(Color(hex: "#2D2575"))
+                        .autocapitalization(.words)
                     }
+                    .padding(.top, 28)
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 16)
 
-                    // Email field
-                    VStack(alignment: .leading, spacing: 8) {
-                        TextField("", text: $email, prompt: Text("Email").foregroundColor(Color.gray.opacity(0.7)))
-                            .font(.system(size: 16))
-                            .foregroundColor(.black)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 18)
-                            .background(Color.white)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                            )
-                            .cornerRadius(12)
-                            .autocapitalization(.none)
-                            .keyboardType(.emailAddress)
+                    // Email
+                    inputField {
+                        TextField(
+                            "",
+                            text: $email,
+                            prompt: Text("Email").foregroundColor(Color(hex: "#7B6FC0").opacity(0.7))
+                        )
+                        .font(.custom("PlusJakartaSans-Regular", size: 16))
+                        .foregroundColor(Color(hex: "#2D2575"))
+                        .autocapitalization(.none)
+                        .keyboardType(.emailAddress)
                     }
+                    .padding(.top, 12)
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 16)
 
-                    // Password field
-                    VStack(alignment: .leading, spacing: 8) {
+                    // Password
+                    inputField {
                         HStack {
-                            if isPasswordVisible {
-                                TextField("", text: $password, prompt: Text("Password").foregroundColor(Color.gray.opacity(0.7)))
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.black)
-                            } else {
-                                SecureField("", text: $password, prompt: Text("Password").foregroundColor(Color.gray.opacity(0.7)))
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.black)
+                            Group {
+                                if isPasswordVisible {
+                                    TextField(
+                                        "",
+                                        text: $password,
+                                        prompt: Text("Password").foregroundColor(Color(hex: "#7B6FC0").opacity(0.7))
+                                    )
+                                } else {
+                                    SecureField(
+                                        "",
+                                        text: $password,
+                                        prompt: Text("Password").foregroundColor(Color(hex: "#7B6FC0").opacity(0.7))
+                                    )
+                                }
                             }
+                            .font(.custom("PlusJakartaSans-Regular", size: 16))
+                            .foregroundColor(Color(hex: "#2D2575"))
 
-                            Button(action: {
-                                isPasswordVisible.toggle()
-                            }) {
+                            Button { isPasswordVisible.toggle() } label: {
                                 Image(systemName: isPasswordVisible ? "eye" : "eye.slash")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(Color(hex: "#2badee"))
+                                    .font(.system(size: 18))
+                                    .foregroundColor(Color(hex: "#6C63FF"))
                             }
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 18)
-                        .background(Color.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                        )
-                        .cornerRadius(12)
                     }
+                    .padding(.top, 12)
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 16)
 
-                    // Confirm Password field
-                    VStack(alignment: .leading, spacing: 8) {
+                    // Confirm Password
+                    inputField(strokeOverride: !confirmPassword.isEmpty && password != confirmPassword
+                        ? Color.red.opacity(0.5) : nil) {
                         HStack {
-                            if isConfirmPasswordVisible {
-                                TextField("", text: $confirmPassword, prompt: Text("Confirm Password").foregroundColor(Color.gray.opacity(0.7)))
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.black)
-                            } else {
-                                SecureField("", text: $confirmPassword, prompt: Text("Confirm Password").foregroundColor(Color.gray.opacity(0.7)))
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.black)
+                            Group {
+                                if isConfirmPasswordVisible {
+                                    TextField(
+                                        "",
+                                        text: $confirmPassword,
+                                        prompt: Text("Confirm Password").foregroundColor(Color(hex: "#7B6FC0").opacity(0.7))
+                                    )
+                                } else {
+                                    SecureField(
+                                        "",
+                                        text: $confirmPassword,
+                                        prompt: Text("Confirm Password").foregroundColor(Color(hex: "#7B6FC0").opacity(0.7))
+                                    )
+                                }
                             }
+                            .font(.custom("PlusJakartaSans-Regular", size: 16))
+                            .foregroundColor(Color(hex: "#2D2575"))
 
-                            Button(action: {
-                                isConfirmPasswordVisible.toggle()
-                            }) {
+                            Button { isConfirmPasswordVisible.toggle() } label: {
                                 Image(systemName: isConfirmPasswordVisible ? "eye" : "eye.slash")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(Color(hex: "#2badee"))
+                                    .font(.system(size: 18))
+                                    .foregroundColor(Color(hex: "#6C63FF"))
                             }
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 18)
-                        .background(Color.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(
-                                    !confirmPassword.isEmpty && password != confirmPassword
-                                    ? Color.red.opacity(0.5)
-                                    : Color.gray.opacity(0.3),
-                                    lineWidth: 1
-                                )
-                        )
-                        .cornerRadius(12)
                     }
+                    .padding(.top, 12)
                     .padding(.horizontal, 24)
 
-                    // Password mismatch error
+                    // Password mismatch
                     if !confirmPassword.isEmpty && password != confirmPassword {
                         Text("Passwords do not match")
-                            .font(.system(size: 12))
+                            .font(.custom("PlusJakartaSans-Regular", size: 12))
                             .foregroundColor(.red)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 24)
-                            .padding(.top, 4)
-                            .padding(.bottom, 16)
+                            .padding(.top, 6)
+                            .padding(.bottom, 10)
                     } else {
-                        // Spacer to maintain layout
                         Color.clear.frame(height: 24)
                     }
 
-                    // Error message from auth
+                    // Auth error
                     if let errorMessage = authViewModel.errorMessage {
                         Text(errorMessage)
-                            .font(.system(size: 14))
+                            .font(.custom("PlusJakartaSans-Regular", size: 14))
                             .foregroundColor(.red)
                             .padding(.horizontal, 24)
                             .padding(.bottom, 12)
@@ -179,136 +151,48 @@ struct SignUpView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    // Create Account button
-                    Button(action: {
+                    // Create account button
+                    Button {
                         Task {
                             await authViewModel.signUp(email: email, password: password)
-                            if authViewModel.isAuthenticated {
-                                onSignUp?()
+                            if authViewModel.isAuthenticated { onSignUp?() }
+                        }
+                    } label: {
+                        Group {
+                            if isBusy {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            } else {
+                                Text("Create Account")
+                                    .font(.custom("PlusJakartaSans-SemiBold", size: 16).weight(.bold))
+                                    .foregroundColor(.white)
                             }
                         }
-                    }) {
-                        if isBusy {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 56)
-                                .background(Color.black)
-                                .cornerRadius(12)
-                        } else {
-                            Text("Create Account")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 56)
-                                .background(isFormValid ? Color.black : Color.gray.opacity(0.5))
-                                .cornerRadius(12)
-                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                        .background(isFormValid ? Color(hex: "#2D2575") : Color(hex: "#2D2575").opacity(0.4))
+                        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                     }
                     .disabled(isBusy || !isFormValid)
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
-
-                    // Divider with "or"
-                    HStack {
-                        Rectangle()
-                            .frame(height: 1)
-                            .foregroundColor(Color.gray.opacity(0.3))
-
-                        Text("or")
-                            .font(.system(size: 14))
-                            .foregroundColor(Theme.Colors.textSecondary)
-                            .padding(.horizontal, 12)
-
-                        Rectangle()
-                            .frame(height: 1)
-                            .foregroundColor(Color.gray.opacity(0.3))
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
-
-                    // Continue with Google
-                    Button(action: {
-                        Task {
-                            guard let viewController = getRootViewController() else {
-                                authViewModel.errorMessage = "Unable to present Google Sign-In"
-                                return
-                            }
-                            await authViewModel.signInWithGoogle(presentingViewController: viewController)
-                            if authViewModel.isAuthenticated {
-                                onSignUp?()
-                            }
-                        }
-                    }) {
-                        HStack(spacing: 12) {
-                            googleColorIcon
-
-                            Text("Continue With Google")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(Theme.Colors.textWelcomePrimary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(Color.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                        )
-                        .cornerRadius(12)
-                    }
-                    .disabled(isBusy)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 16)
-
-                    // Continue with Apple
-                    Button(action: {
-                        Task {
-                            await authViewModel.signInWithApple()
-                            if authViewModel.isAuthenticated {
-                                onSignUp?()
-                            }
-                        }
-                    }) {
-                        HStack(spacing: 12) {
-                            Image(systemName: "apple.logo")
-                                .font(.system(size: 20))
-                                .foregroundColor(Theme.Colors.textWelcomePrimary)
-
-                            Text("Continue With Apple")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(Theme.Colors.textWelcomePrimary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(Color.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                        )
-                        .cornerRadius(12)
-                    }
-                    .disabled(isBusy)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 40)
+                    .padding(.bottom, 32)
 
                     // Sign in link
                     HStack(spacing: 4) {
                         Text("Already have an account?")
-                            .font(.system(size: 14))
-                            .foregroundColor(Theme.Colors.textSecondary)
+                            .font(.custom("PlusJakartaSans-Regular", size: 14))
+                            .foregroundColor(Color(hex: "#7B6FC0"))
 
-                        Button(action: {
-                            onSignIn?()
-                        }) {
+                        Button { onSignIn?() } label: {
                             Text("Sign in")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Color(hex: "#6366f1"))
+                                .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                                .foregroundColor(Color(hex: "#6C63FF"))
                         }
                     }
-                    .padding(.bottom, 32)
+                    .padding(.bottom, 40)
                 }
             }
-            .background(Theme.Colors.backgroundWelcome)
+            .background(Color(hex: "#FAFAFF"))
             .onAppear {
                 if !prefillEmail.isEmpty { email = prefillEmail }
             }
@@ -316,75 +200,34 @@ struct SignUpView: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("Create account")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(Theme.Colors.textWelcomePrimary)
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 18))
+                        .foregroundColor(Color(hex: "#2D2575"))
                 }
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        dismiss()
-                    }) {
+                    Button { dismiss() } label: {
                         Image(systemName: "arrow.left")
-                            .font(.system(size: 20))
-                            .foregroundColor(Theme.Colors.textWelcomePrimary)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(Color(hex: "#2D2575"))
                     }
                 }
             }
         }
     }
 
-    // MARK: - Google Icon
-    private var googleColorIcon: some View {
-        Canvas { context, size in
-            let cx = size.width / 2
-            let cy = size.height / 2
-            let r = size.width * 0.36
-            let lw = size.width * 0.22
-
-            let blue   = Color(red: 0.259, green: 0.522, blue: 0.957)
-            let red    = Color(red: 0.918, green: 0.263, blue: 0.208)
-            let yellow = Color(red: 0.984, green: 0.737, blue: 0.020)
-            let green  = Color(red: 0.204, green: 0.659, blue: 0.325)
-
-            let segments: [(Color, Double, Double)] = [
-                (blue,   -15,  75),
-                (red,     75, 195),
-                (yellow, 195, 255),
-                (green,  255, 345)
-            ]
-            for (color, start, end) in segments {
-                var arc = Path()
-                arc.addArc(center: CGPoint(x: cx, y: cy), radius: r,
-                           startAngle: .degrees(start), endAngle: .degrees(end),
-                           clockwise: false)
-                context.stroke(arc, with: .color(color),
-                               style: StrokeStyle(lineWidth: lw, lineCap: .butt))
-            }
-
-            let half = lw * 0.3
-            var bar = Path()
-            bar.addRect(CGRect(x: cx, y: cy - half, width: r + lw * 0.5, height: half * 2))
-            context.fill(bar, with: .color(blue))
-        }
-        .frame(width: 22, height: 22)
+    private func inputField<Content: View>(
+        strokeOverride: Color? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .padding(.horizontal, 20)
+            .padding(.vertical, 18)
+            .background(Color.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(strokeOverride ?? fieldStroke, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
-
-    // Helper function to get the root view controller for presenting Google Sign-In
-    private func getRootViewController() -> UIViewController? {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = windowScene.windows.first,
-              let rootViewController = window.rootViewController else {
-            return nil
-        }
-
-        // Get the topmost presented view controller
-        var topController = rootViewController
-        while let presented = topController.presentedViewController {
-            topController = presented
-        }
-
-        return topController
-    }
-
 }
 
 #Preview {

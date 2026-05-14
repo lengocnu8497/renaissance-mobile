@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		91873C974C79413185AEE3BE /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = 67B80D8560624BD0B24F007B /* PostHog */; };
+		A11610FE2FB4441A00BD1278 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = A11610FD2FB4441A00BD1278 /* Lottie */; };
 		A15FB14D2EE14397009BF65B /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = A15FB14C2EE14397009BF65B /* Supabase */; };
 		A15FB14F2EE14397009BF65B /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = A15FB14E2EE14397009BF65B /* Auth */; };
 		A15FB1512EE14397009BF65B /* Functions in Frameworks */ = {isa = PBXBuildFile; productRef = A15FB1502EE14397009BF65B /* Functions */; };
@@ -60,9 +62,11 @@
 				A15FB4FF2EE297C4009BF65B /* GoogleSignInSwift in Frameworks */,
 				A15FB14F2EE14397009BF65B /* Auth in Frameworks */,
 				A15FB1572EE14397009BF65B /* Storage in Frameworks */,
+				A11610FE2FB4441A00BD1278 /* Lottie in Frameworks */,
 				A15FB1552EE14397009BF65B /* Realtime in Frameworks */,
 				A17342A52F845EE80069F9EB /* StoreKit.framework in Frameworks */,
 				A15FB4FD2EE297C4009BF65B /* GoogleSignIn in Frameworks */,
+				91873C974C79413185AEE3BE /* PostHog in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -170,6 +174,8 @@
 				A15FB1562EE14397009BF65B /* Storage */,
 				A15FB4FC2EE297C4009BF65B /* GoogleSignIn */,
 				A15FB4FE2EE297C4009BF65B /* GoogleSignInSwift */,
+				67B80D8560624BD0B24F007B /* PostHog */,
+				A11610FD2FB4441A00BD1278 /* Lottie */,
 			);
 			productName = "Renaissance Mobile";
 			productReference = A14F67B02EDE95650066D405 /* Renaissance Mobile.app */;
@@ -206,6 +212,8 @@
 			packageReferences = (
 				A15FB14D2EE14363009BF65B /* XCRemoteSwiftPackageReference "supabase-swift" */,
 				A15FB4FB2EE297C4009BF65B /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				A12F39532FB2FC680092397F /* XCRemoteSwiftPackageReference "posthog-ios" */,
+				A144A0E72FB436D3002B0034 /* XCRemoteSwiftPackageReference "lottie-spm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A14F67B12EDE95650066D405 /* Products */;
@@ -413,7 +421,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Renaissance Mobile/Renaissance Mobile.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = CDWQYPD23H;
+				DEVELOPMENT_TEAM = PH592578CR;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Renaissance-Mobile-Info.plist";
@@ -456,7 +464,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Renaissance Mobile/Renaissance Mobile.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = CDWQYPD23H;
+				DEVELOPMENT_TEAM = PH592578CR;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Renaissance-Mobile-Info.plist";
@@ -545,6 +553,22 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		A12F39532FB2FC680092397F /* XCRemoteSwiftPackageReference "posthog-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/PostHog/posthog-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.58.1;
+			};
+		};
+		A144A0E72FB436D3002B0034 /* XCRemoteSwiftPackageReference "lottie-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/airbnb/lottie-spm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.6.0;
+			};
+		};
 		A15FB14D2EE14363009BF65B /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/supabase/supabase-swift";
@@ -564,6 +588,16 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		67B80D8560624BD0B24F007B /* PostHog */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A12F39532FB2FC680092397F /* XCRemoteSwiftPackageReference "posthog-ios" */;
+			productName = PostHog;
+		};
+		A11610FD2FB4441A00BD1278 /* Lottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A144A0E72FB436D3002B0034 /* XCRemoteSwiftPackageReference "lottie-spm" */;
+			productName = Lottie;
+		};
 		A15FB14C2EE14397009BF65B /* Supabase */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A15FB14D2EE14363009BF65B /* XCRemoteSwiftPackageReference "supabase-swift" */;

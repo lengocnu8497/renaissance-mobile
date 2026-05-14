@@ -2,12 +2,12 @@
 //  WelcomeView.swift
 //  Renaissance Mobile
 //
-//  Created by Nu Le on 12/2/25.
-//
 
 import SwiftUI
+import UIKit
 
 struct WelcomeView: View {
+    @Environment(AuthViewModel.self) private var authViewModel
     @State private var showSignIn = false
     @State private var showSignUp = false
 
@@ -24,17 +24,14 @@ struct WelcomeView: View {
 
     var body: some View {
         ZStack {
-            // Background — dusty rose during animation, cream after
-            Theme.Colors.backgroundWelcome
-                .ignoresSafeArea()
+            Color(hex: "#FAFAFF").ignoresSafeArea()
 
             if loadingPhase != .complete {
-                Color(red: 196/255, green: 146/255, blue: 154/255)
+                Color(hex: "#6C63FF")
                     .ignoresSafeArea()
                     .transition(.opacity)
             }
 
-            // Centered loading logo — visible during animation phases
             if loadingPhase != .complete {
                 concentricCirclesLogo(useWhite: true)
                     .opacity(logoOpacity)
@@ -42,10 +39,9 @@ struct WelcomeView: View {
                     .rotationEffect(.degrees(rotationDegrees))
             }
 
-            // Full content — fades in after animation
             if loadingPhase == .complete || loadingPhase == .expanding {
                 VStack(spacing: 0) {
-                    Spacer(minLength: 72)
+                    Spacer(minLength: 98)
 
                     mainContent
                         .padding(.horizontal, 36)
@@ -83,15 +79,14 @@ struct WelcomeView: View {
     }
 
     // MARK: - Loading Animation
+
     private func startLoadingAnimation() {
-        // Phase 1: Logo appears
         loadingPhase = .appearing
         withAnimation(.easeOut(duration: 0.55)) {
             logoOpacity = 1
             logoScale = 1
         }
 
-        // Phase 2: Spin (2 full rotations)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
             loadingPhase = .spinning
             withAnimation(.linear(duration: 1.4)) {
@@ -99,7 +94,6 @@ struct WelcomeView: View {
             }
         }
 
-        // Phase 3: Expand + fade out logo
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.15) {
             loadingPhase = .expanding
             withAnimation(.easeIn(duration: 0.35)) {
@@ -108,7 +102,6 @@ struct WelcomeView: View {
             }
         }
 
-        // Phase 4: Full content fades in, background transitions to cream
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) {
             withAnimation(.easeOut(duration: 0.45)) {
                 loadingPhase = .complete
@@ -118,73 +111,49 @@ struct WelcomeView: View {
     }
 
     // MARK: - Main Content
+
     private var mainContent: some View {
         VStack(spacing: 0) {
             concentricCirclesLogo()
-                .padding(.top, 2)
 
-            VStack(spacing: 0) {
-                Text("Rena Aesthetic")
-                    .font(.system(size: 30, weight: .light, design: .serif))
-                    .foregroundColor(Color(red: 61/255, green: 43/255, blue: 46/255))
-                    .padding(.top, 30)
+            Text("Your aesthetic companion.")
+                .font(.custom("Manrope", size: 32).weight(.heavy))
+                .foregroundColor(Color(hex: "#2D2575"))
+                .multilineTextAlignment(.center)
+                .padding(.top, 36)
 
-                Text("LAB")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Color(red: 196/255, green: 146/255, blue: 154/255))
-                    .kerning(4.1)
-                    .padding(.top, 8)
-            }
-
-            VStack(spacing: 0) {
-                Text("Your aesthetic companion.")
-                    .font(.system(size: 34, weight: .bold, design: .default))
-                    .foregroundColor(Color(red: 54/255, green: 71/255, blue: 60/255))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(0)
-                    .padding(.top, 64)
-                    .frame(maxWidth: 280)
-
-                Text("Track, ask, and remember.")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundColor(Color(red: 122/255, green: 130/255, blue: 120/255))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(8)
-                    .padding(.top, 20)
-                    .frame(maxWidth: 285)
-            }
-            .frame(maxWidth: .infinity)
+            Text("Track, ask, and remember.")
+                .font(.custom("PlusJakartaSans-Regular", size: 15))
+                .foregroundColor(Color(hex: "#7B6FC0"))
+                .multilineTextAlignment(.center)
+                .padding(.top, 12)
         }
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Logo
+    // MARK: - Logo (violet palette)
+
     private func concentricCirclesLogo(useWhite: Bool = false) -> some View {
-        let dustyRose = useWhite ? Color.white : Color(red: 196/255, green: 146/255, blue: 154/255)
-        let mauveberry = useWhite ? Color.white : Color(red: 142/255, green: 76/255, blue: 92/255)
+        let primary = useWhite ? Color.white : Color(hex: "#8B7FF0")
+        let accent  = useWhite ? Color.white : Color(hex: "#6C63FF")
 
         return Canvas { context, size in
-            // Scale all SVG coordinates (base viewBox: 80×80, center: 40,40)
-            let s = size.width / 80
+            let s  = size.width / 80
             let cx = size.width / 2
             let cy = size.height / 2
 
-            // Outer circle (r=38)
             var outer = Path()
             outer.addEllipse(in: CGRect(x: cx - 38*s, y: cy - 38*s, width: 76*s, height: 76*s))
-            context.stroke(outer, with: .color(dustyRose), lineWidth: 1.5)
+            context.stroke(outer, with: .color(primary), lineWidth: 1.5)
 
-            // Middle circle (r=28)
             var middle = Path()
             middle.addEllipse(in: CGRect(x: cx - 28*s, y: cy - 28*s, width: 56*s, height: 56*s))
-            context.stroke(middle, with: .color(dustyRose), lineWidth: 1.2)
+            context.stroke(middle, with: .color(primary), lineWidth: 1.2)
 
-            // Inner circle (r=18) — Mauve Berry
             var inner = Path()
             inner.addEllipse(in: CGRect(x: cx - 18*s, y: cy - 18*s, width: 36*s, height: 36*s))
-            context.stroke(inner, with: .color(mauveberry), lineWidth: 1.5)
+            context.stroke(inner, with: .color(accent), lineWidth: 1.5)
 
-            // Right-side arc: M40 26 C48 26, 54 32, 54 40 C54 48, 48 54, 40 54
             var arc = Path()
             arc.move(to: CGPoint(x: 40*s, y: 26*s))
             arc.addCurve(
@@ -197,61 +166,175 @@ struct WelcomeView: View {
                 control1: CGPoint(x: 54*s, y: 48*s),
                 control2: CGPoint(x: 48*s, y: 54*s)
             )
-            context.stroke(arc, with: .color(dustyRose), style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+            context.stroke(arc, with: .color(primary), style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
 
-            // Center dot (r=4)
             var dot = Path()
             dot.addEllipse(in: CGRect(x: cx - 4*s, y: cy - 4*s, width: 8*s, height: 8*s))
-            context.fill(dot, with: .color(dustyRose))
+            context.fill(dot, with: .color(accent))
         }
         .frame(width: 110, height: 110)
     }
 
-    // MARK: - Footer Section
+    // MARK: - Footer
+
     private var footerSection: some View {
         VStack(spacing: 0) {
-            Button(action: {
-                showSignUp = true
-            }) {
-                Text("Start My Consultation")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .background(Color(red: 84/255, green: 99/255, blue: 89/255))
-                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            // Apple
+            Button {
+                Task {
+                    await authViewModel.signInWithApple()
+                    if authViewModel.isAuthenticated { onSignIn?() }
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "apple.logo")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                    Text("Continue with Apple")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 16).weight(.bold))
+                        .foregroundColor(.white)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(Color(hex: "#2D2575"))
+                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
             }
+            .disabled(authViewModel.isLoading)
 
-            Button(action: {
-                showSignUp = true
-            }) {
-                Text("Create Account")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Color(red: 61/255, green: 43/255, blue: 46/255))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .background(Color.white.opacity(0.8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 26, style: .continuous)
-                            .stroke(Color(red: 196/255, green: 146/255, blue: 154/255).opacity(0.3), lineWidth: 1)
-                    )
+            // Google
+            Button {
+                Task {
+                    guard let vc = getRootViewController() else {
+                        return
+                    }
+                    await authViewModel.signInWithGoogle(presentingViewController: vc)
+                    if authViewModel.isAuthenticated { onSignIn?() }
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    googleColorIcon
+                    Text("Continue with Google")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 16).weight(.bold))
+                        .foregroundColor(Color(hex: "#2D2575"))
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(Color.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(Color(hex: "#D4CCFF"), lineWidth: 1.5)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
             }
-            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
             .padding(.top, 12)
+            .disabled(authViewModel.isLoading)
 
-            Button(action: {
-                showSignIn = true
-            }) {
-                Text("Sign In")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(Color(red: 122/255, green: 130/255, blue: 120/255))
-                    .underline()
+            // Divider
+            HStack {
+                Rectangle()
+                    .frame(height: 1)
+                    .foregroundColor(Color(hex: "#D4CCFF"))
+                Text("or")
+                    .font(.custom("PlusJakartaSans-Regular", size: 14))
+                    .foregroundColor(Color(hex: "#7B6FC0"))
+                    .padding(.horizontal, 14)
+                Rectangle()
+                    .frame(height: 1)
+                    .foregroundColor(Color(hex: "#D4CCFF"))
             }
-            .padding(.top, 16)
+            .padding(.vertical, 18)
+
+            // Email
+            Button { showSignIn = true } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "envelope")
+                        .font(.system(size: 16))
+                        .foregroundColor(Color(hex: "#6C63FF"))
+                    Text("Continue with email")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 16).weight(.bold))
+                        .foregroundColor(Color(hex: "#6C63FF"))
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(Color(hex: "#EAE7FF"))
+                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            }
+            .disabled(authViewModel.isLoading)
+
+            legalFootnote
+                .padding(.top, 24)
         }
+    }
+
+    private var legalFootnote: some View {
+        Text(legalAttributedString)
+            .font(.custom("PlusJakartaSans-Regular", size: 13))
+            .foregroundColor(Color(hex: "#7B6FC0"))
+            .tint(Color(hex: "#6C63FF"))
+            .multilineTextAlignment(.center)
+    }
+
+    private var legalAttributedString: AttributedString {
+        let terms   = AppConfig.termsOfUseURL.absoluteString
+        let privacy = AppConfig.privacyPolicyURL.absoluteString
+        let md = "By continuing, you agree to our [Terms of Use](\(terms)) and [Privacy Policy](\(privacy))"
+        return (try? AttributedString(markdown: md))
+            ?? AttributedString("By continuing, you agree to our Terms of Use and Privacy Policy")
+    }
+
+    // MARK: - Google icon
+
+    private var googleColorIcon: some View {
+        Canvas { context, size in
+            let cx = size.width / 2
+            let cy = size.height / 2
+            let r  = size.width * 0.36
+            let lw = size.width * 0.22
+
+            let blue   = Color(red: 0.259, green: 0.522, blue: 0.957)
+            let red    = Color(red: 0.918, green: 0.263, blue: 0.208)
+            let yellow = Color(red: 0.984, green: 0.737, blue: 0.020)
+            let green  = Color(red: 0.204, green: 0.659, blue: 0.325)
+
+            let segments: [(Color, Double, Double)] = [
+                (blue,   -15,  75),
+                (red,     75, 195),
+                (yellow, 195, 255),
+                (green,  255, 345)
+            ]
+            for (color, start, end) in segments {
+                var arc = Path()
+                arc.addArc(
+                    center: CGPoint(x: cx, y: cy),
+                    radius: r,
+                    startAngle: .degrees(start),
+                    endAngle: .degrees(end),
+                    clockwise: false
+                )
+                context.stroke(arc, with: .color(color), style: StrokeStyle(lineWidth: lw, lineCap: .butt))
+            }
+
+            let half = lw * 0.3
+            var bar = Path()
+            bar.addRect(CGRect(x: cx, y: cy - half, width: r + lw * 0.5, height: half * 2))
+            context.fill(bar, with: .color(blue))
+        }
+        .frame(width: 22, height: 22)
+    }
+
+    // MARK: - Root VC helper for Google sign-in
+
+    private func getRootViewController() -> UIViewController? {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first,
+              let root = window.rootViewController else { return nil }
+        var top = root
+        while let presented = top.presentedViewController { top = presented }
+        return top
     }
 }
 
 #Preview {
     WelcomeView()
+        .environment(AuthViewModel())
 }

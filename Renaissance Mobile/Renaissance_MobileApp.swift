@@ -9,17 +9,36 @@ import SwiftUI
 import GoogleSignIn
 import Auth
 import Supabase
+import CoreText
 
 @main
 struct Renaissance_MobileApp: App {
     @State private var authViewModel = AuthViewModel()
     @State private var subscriptionStore = SubscriptionStore.shared
 
+    @Environment(\.scenePhase) private var scenePhase
+
     init() {
-        // Configure Google Sign-In with your iOS Client ID
+        Analytics.setup()
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(
             clientID: "636103668184-sflddmlbj90salbiit9ted0m0lhrdmag.apps.googleusercontent.com"
         )
+        Self.registerFonts()
+    }
+
+    private static func registerFonts() {
+        let fonts = [
+            "Manrope-Bold", "Manrope-ExtraBold",
+            "Outfit-Light", "Outfit-Regular", "Outfit-SemiBold", "Outfit-Bold",
+            "PlusJakartaSans-Regular", "PlusJakartaSans-Medium", "PlusJakartaSans-SemiBold"
+        ]
+        for name in fonts {
+            guard let url = Bundle.main.url(forResource: name, withExtension: "ttf",
+                                            subdirectory: "Fonts") ??
+                            Bundle.main.url(forResource: name, withExtension: "ttf")
+            else { continue }
+            CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+        }
     }
 
     var body: some Scene {
@@ -69,6 +88,11 @@ struct Renaissance_MobileApp: App {
                 // beta (type metadata for Dependencies lives in dyld __DATA_DIRTY
                 // which iOS 26 restricts from concurrent lazy initialization).
                 _ = try? await supabase.auth.session
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    Analytics.sessionStart()
+                }
             }
         }
     }

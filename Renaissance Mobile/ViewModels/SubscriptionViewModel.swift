@@ -136,6 +136,12 @@ final class SubscriptionStore {
                 }
 
                 await transaction.finish()
+                let hasTrial = productsByTier[tier]?.subscription?.introductoryOffer?.paymentMode == .freeTrial
+                if hasTrial {
+                    Analytics.trialStarted(plan: tier.rawValue)
+                } else {
+                    Analytics.subscriptionStarted(plan: tier.rawValue)
+                }
                 _ = await ensurePremiumAccessIsSynced()
                 NotificationCenter.default.post(name: .subscriptionStatusChanged, object: nil)
                 return .success

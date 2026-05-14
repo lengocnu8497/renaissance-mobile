@@ -1,5 +1,5 @@
 {
-  "originHash" : "8de5b337144e438cbe48a36b87b6eee592125e636a425d2eed1bfbb0e50816ca",
+  "originHash" : "281b6357a79c58d0436f1536f235399eceda44cb4930708bca15375fe25b0e3b",
   "pins" : [
     {
       "identity" : "app-check",
@@ -53,6 +53,24 @@
       "state" : {
         "revision" : "56e0ccf09a6dd29dc7e68bdf729598240ca8aa16",
         "version" : "5.0.0"
+      }
+    },
+    {
+      "identity" : "lottie-spm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/airbnb/lottie-spm.git",
+      "state" : {
+        "revision" : "69faaefa7721fba9e434a52c16adf4329c9084db",
+        "version" : "4.6.0"
+      }
+    },
+    {
+      "identity" : "posthog-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/PostHog/posthog-ios",
+      "state" : {
+        "revision" : "39e527bd41124ab907bfa31e4b3384b124c36e07",
+        "version" : "3.58.1"
       }
     },
     {

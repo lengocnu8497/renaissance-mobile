@@ -32,11 +32,8 @@ struct SubscriptionPaywallView: View {
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(Color(hex: "#7D7B74"))
+                        .foregroundColor(Color(hex: "#7B6FC0"))
                         .frame(width: 42, height: 42)
-                        .background(Color.white.opacity(0.92))
-                        .clipShape(Circle())
-                        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 3)
                 }
                 .padding(.top, 28)
                 .padding(.leading, 18)
@@ -55,33 +52,59 @@ struct SubscriptionPaywallView: View {
     }
 
     private var topBarSpacing: some View {
-        HStack {
-            Spacer()
-
-            if showsRestoreButton {
-                Button("Restore") {
-                    Task { await restorePurchases() }
-                }
-                .font(.custom("PlusJakartaSans-SemiBold", size: 15))
-                .foregroundStyle(Color(hex: "#8A8C83"))
-                .disabled(subscriptionStore.isPurchasing)
-            }
-        }
-        .padding(.top, onDismiss == nil ? 2 : 8)
-        .padding(.bottom, 22)
+        Color.clear.frame(height: onDismiss == nil ? 2 : 52)
     }
 
     private var headlineSection: some View {
-        Text("Get full access")
-            .font(.custom("Manrope", size: 34).weight(.heavy))
-            .foregroundStyle(Color(hex: "#171714"))
+        Text("Get full access to your personalized guide")
+            .font(.custom("Manrope", size: 30).weight(.heavy))
+            .foregroundStyle(Color(hex: "#2D2575"))
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
             .padding(.bottom, 18)
     }
 
+    private var featureListSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            featureRow("Your full personalized roadmap, week by week")
+            featureRow("Unlimited Ask Rena — answers in seconds, not days")
+            featureRow("Photo timeline tracking with side-by-side comparison")
+            featureRow("Consultation prep tailored to your goals and history")
+            featureRow("Procedure deep-dives with realistic recovery expectations")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.bottom, 18)
+    }
+
+    private func featureRow(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text("✓")
+                .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                .foregroundStyle(Color(hex: "#6F7D67"))
+                .frame(width: 16, alignment: .leading)
+            Text(text)
+                .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                .foregroundStyle(Color(hex: "#34322D"))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func trustRow(_ text: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Color(hex: "#6C63FF"))
+                .frame(width: 20, height: 20)
+                .background(Color(hex: "#D4CCFF"))
+                .clipShape(Circle())
+            Text(text)
+                .font(.custom("PlusJakartaSans-SemiBold", size: 14).weight(.bold))
+                .foregroundStyle(Color(hex: "#1E1B4B"))
+        }
+    }
+
     private var planSection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 4) {
             ForEach(SubscriptionTier.allCases, id: \.self) { tier in
                 planCard(for: tier)
             }
@@ -99,32 +122,64 @@ struct SubscriptionPaywallView: View {
         } label: {
             HStack(alignment: .top, spacing: 14) {
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         Text(metadata.title)
                             .font(.custom("Outfit-Bold", size: 23))
-                            .foregroundStyle(isSelected ? Color(hex: "#6F4F4E") : Color(hex: "#55624F"))
+                            .foregroundStyle(isSelected ? Color(hex: "#2D2575") : Color(hex: "#5B50D6"))
 
                         if tier == .yearly {
                             Text("Best Value")
                                 .font(.custom("Outfit-Bold", size: 11))
                                 .tracking(1.1)
-                                .foregroundStyle(Color(hex: "#7E5F5D"))
+                                .foregroundStyle(Color(hex: "#5B50D6"))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 7)
-                                .background(Color(hex: "#F3E8E4"))
+                                .background(Color(hex: "#D4CCFF"))
                                 .clipShape(Capsule())
+
+                            if let savings = annualSavingsLabel {
+                                Text(savings)
+                                    .font(.custom("Outfit-Bold", size: 11))
+                                    .tracking(1.1)
+                                    .foregroundStyle(Color(hex: "#3D8A4E"))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 7)
+                                    .background(Color(hex: "#D4EDDA"))
+                                    .clipShape(Capsule())
+                            }
                         }
                     }
 
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(metadata.primaryPrice)
-                            .font(.custom("Manrope", size: 33).weight(.heavy))
-                            .foregroundStyle(isSelected ? Color(hex: "#6A5754") : Color(hex: "#4C5847"))
+                    if let trialLabel = metadata.trialLabel {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(trialLabel)
+                                .font(.custom("PlusJakartaSans-SemiBold", size: 16).weight(.bold))
+                                .foregroundStyle(isSelected ? Color(hex: "#2D2575") : Color(hex: "#5B50D6"))
+                            if let monthlyLine = metadata.trialMonthlyLine {
+                                HStack(spacing: 5) {
+                                    if let strikeLabel = metadata.trialMonthlyStrikeLabel {
+                                        Text(strikeLabel)
+                                            .strikethrough(true, color: Color(hex: "#7B6FC0").opacity(0.6))
+                                            .font(.custom("PlusJakartaSans-Regular", size: 13))
+                                            .foregroundStyle(Color(hex: "#7B6FC0").opacity(0.6))
+                                    }
+                                    Text(monthlyLine)
+                                        .font(.custom("PlusJakartaSans-Regular", size: 13))
+                                        .foregroundStyle(Color(hex: "#7B6FC0"))
+                                }
+                            }
+                        }
+                    } else {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(metadata.primaryPrice)
+                                .font(.custom("Manrope", size: 33).weight(.heavy))
+                                .foregroundStyle(isSelected ? Color(hex: "#2D2575") : Color(hex: "#5B50D6"))
 
-                        Text(metadata.periodLabel)
-                            .font(.custom("PlusJakartaSans-SemiBold", size: 14).weight(.bold))
-                            .tracking(1.0)
-                            .foregroundStyle(isSelected ? Color(hex: "#9A8683") : Color(hex: "#8A8C83"))
+                            Text(metadata.periodLabel)
+                                .font(.custom("PlusJakartaSans-SemiBold", size: 14).weight(.bold))
+                                .tracking(1.0)
+                                .foregroundStyle(Color(hex: "#7B6FC0"))
+                        }
                     }
                 }
 
@@ -132,7 +187,7 @@ struct SubscriptionPaywallView: View {
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 27, weight: .semibold))
-                    .foregroundStyle(isSelected ? Color(hex: "#6F7D67") : Color(hex: "#C9CEC4"))
+                    .foregroundStyle(isSelected ? Color(hex: "#6C63FF") : Color(hex: "#D4CCFF"))
                     .padding(.top, 2)
             }
             .padding(18)
@@ -141,7 +196,7 @@ struct SubscriptionPaywallView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 26, style: .continuous)
                     .stroke(
-                        isSelected ? Color(hex: "#BF9490").opacity(0.42) : Color(hex: "#6F7D67").opacity(0.10),
+                        isSelected ? Color(hex: "#8B7FF0").opacity(0.42) : Color(hex: "#6C63FF").opacity(0.10),
                         lineWidth: 1
                     )
             )
@@ -151,12 +206,38 @@ struct SubscriptionPaywallView: View {
         .buttonStyle(.plain)
     }
 
+    private var annualProductHasFreeTrial: Bool {
+        subscriptionStore.product(for: .yearly)?.subscription?.introductoryOffer?.paymentMode == .freeTrial
+    }
+
+    private var annualSavingsLabel: String? {
+        guard let annual = subscriptionStore.product(for: .yearly),
+              let monthly = subscriptionStore.product(for: .monthly) else { return "Save 50%" }
+        let annualPrice  = (annual.price  as NSDecimalNumber).doubleValue
+        let monthlyPrice = (monthly.price as NSDecimalNumber).doubleValue
+        let monthlyAnnualized = monthlyPrice * 12
+        guard monthlyAnnualized > 0 else { return nil }
+        let percent = Int(((monthlyAnnualized - annualPrice) / monthlyAnnualized * 100).rounded())
+        guard percent > 0 else { return nil }
+        return "Save \(percent)%"
+    }
+
+    private var ctaButtonText: String {
+        if selectedTier == .yearly && annualProductHasFreeTrial {
+            return "Enjoy a free week of Rena on us"
+        }
+        if selectedTier == .monthly {
+            return "Start my recovery plan"
+        }
+        return "Continue with \(selectedTier.ctaTitle)"
+    }
+
     private var ctaSection: some View {
         VStack(spacing: 0) {
             if let statusMessage, !statusMessage.isEmpty {
                 Text(statusMessage)
                     .font(.custom("PlusJakartaSans-Regular", size: 13))
-                    .foregroundStyle(Color(hex: "#6F4F4E"))
+                    .foregroundStyle(Color(hex: "#5B50D6"))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
@@ -166,18 +247,13 @@ struct SubscriptionPaywallView: View {
                     .padding(.bottom, 14)
             }
 
-            HStack(spacing: 10) {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Color(hex: "#6F7D67"))
-                    .frame(width: 22, height: 22)
-                    .background(Color(hex: "#EDF2E8"))
-                    .clipShape(Circle())
-
-                Text("No hidden pricing. Cancel anytime.")
-                    .font(.custom("PlusJakartaSans-SemiBold", size: 15).weight(.bold))
-                    .foregroundStyle(Color(hex: "#34322D"))
+            VStack(alignment: .leading, spacing: 8) {
+                trustRow(annualProductHasFreeTrial && selectedTier == .yearly
+                    ? "7-day free trial · cancel anytime"
+                    : "Cancel anytime")
+                trustRow("No hidden pricing · your data stays yours")
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, 14)
 
             if showsPurchaseCTA {
@@ -190,14 +266,14 @@ struct SubscriptionPaywallView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 18)
                     } else {
-                        Text("Continue with \(selectedTier.ctaTitle)")
+                        Text(ctaButtonText)
                             .font(.custom("PlusJakartaSans-SemiBold", size: 20).weight(.bold))
-                            .foregroundStyle(Color(hex: "#FAF8F3"))
+                            .foregroundStyle(Color.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 18)
                     }
                 }
-                .background(Color(hex: "#465241"))
+                .background(Color(hex: "#6C63FF"))
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                 .disabled(subscriptionStore.isPurchasing || selectedProduct == nil)
             }
@@ -205,13 +281,13 @@ struct SubscriptionPaywallView: View {
             VStack(spacing: 4) {
                 Text(selectedPlanSummaryLine)
                     .font(.custom("Manrope", size: 18).weight(.heavy))
-                    .foregroundStyle(Color(hex: "#171714"))
+                    .foregroundStyle(Color(hex: "#2D2575"))
                     .multilineTextAlignment(.center)
                     .padding(.top, 16)
 
                 Text(selectedPlanBillingLine)
                     .font(.custom("PlusJakartaSans-Regular", size: 13))
-                    .foregroundStyle(Color(hex: "#7D7B74"))
+                    .foregroundStyle(Color(hex: "#7B6FC0"))
                     .multilineTextAlignment(.center)
             }
         }
@@ -220,7 +296,7 @@ struct SubscriptionPaywallView: View {
             LinearGradient(
                 colors: [
                     Color.white.opacity(0.94),
-                    Color(hex: "#FBF9F4").opacity(0.90)
+                    Color(hex: "#F5F4FF").opacity(0.90)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -228,7 +304,7 @@ struct SubscriptionPaywallView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(Color(hex: "#6F7D67").opacity(0.08), lineWidth: 1)
+                .stroke(Color(hex: "#6C63FF").opacity(0.08), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .shadow(color: Color.black.opacity(0.06), radius: 18, x: 0, y: 8)
@@ -236,16 +312,38 @@ struct SubscriptionPaywallView: View {
     }
 
     private var footerSection: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 0) {
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Text(selectedTier == .monthly ? "Remind me later" : "Maybe later")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 15))
+                        .foregroundStyle(Color(hex: "#7B6FC0"))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .padding(.top, 4)
+            }
+
             HStack(spacing: 10) {
                 footerLink(title: "Terms of Use", url: AppConfig.termsOfUseURL)
                 Text("•")
                     .font(.custom("PlusJakartaSans-Regular", size: 13))
-                    .foregroundStyle(Color(hex: "#A5A198"))
+                    .foregroundStyle(Color(hex: "#7B6FC0"))
                 footerLink(title: "Privacy Policy", url: AppConfig.privacyPolicyURL)
+                if showsRestoreButton {
+                    Text("•")
+                        .font(.custom("PlusJakartaSans-Regular", size: 13))
+                        .foregroundStyle(Color(hex: "#7B6FC0"))
+                    Button("Restore") {
+                        Task { await restorePurchases() }
+                    }
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 13).weight(.bold))
+                    .foregroundStyle(Color(hex: "#6C63FF"))
+                    .disabled(subscriptionStore.isPurchasing)
+                }
             }
             .frame(maxWidth: .infinity)
-            .padding(.top, 14)
+            .padding(.top, onDismiss != nil ? 4 : 14)
         }
         .padding(.bottom, 4)
     }
@@ -254,29 +352,29 @@ struct SubscriptionPaywallView: View {
         Link(destination: url) {
             Text(title)
                 .font(.custom("PlusJakartaSans-SemiBold", size: 13).weight(.bold))
-                .foregroundStyle(Color(hex: "#6F7D67"))
+                .foregroundStyle(Color(hex: "#6C63FF"))
         }
     }
 
     private var paywallBackground: some View {
         LinearGradient(
             colors: [
-                Color(hex: "#FAF7F0"),
-                Color(hex: "#F6F4EE")
+                Color(hex: "#FAFAFF"),
+                Color(hex: "#F5F4FF")
             ],
             startPoint: .top,
             endPoint: .bottom
         )
         .overlay(alignment: .top) {
             Circle()
-                .fill(Color(hex: "#F7EBE8"))
+                .fill(Color(hex: "#EAE7FF"))
                 .frame(width: 240, height: 240)
                 .blur(radius: 24)
                 .offset(x: 40, y: -110)
         }
         .overlay(alignment: .bottomLeading) {
             Circle()
-                .fill(Color(hex: "#EDF2E8"))
+                .fill(Color(hex: "#D4CCFF"))
                 .frame(width: 220, height: 220)
                 .blur(radius: 28)
                 .offset(x: -50, y: 120)
@@ -287,12 +385,12 @@ struct SubscriptionPaywallView: View {
         LinearGradient(
             colors: isSelected
                 ? [
-                    Color(hex: "#F7EBE8").opacity(0.92),
-                    Color(hex: "#FFF9F7").opacity(0.96)
+                    Color(hex: "#EAE7FF").opacity(0.92),
+                    Color(hex: "#F5F4FF").opacity(0.96)
                 ]
                 : [
                     Color.white.opacity(0.94),
-                    Color(hex: "#F8F6F0").opacity(0.92)
+                    Color(hex: "#FAFAFF").opacity(0.92)
                 ],
             startPoint: .top,
             endPoint: .bottom
@@ -316,14 +414,6 @@ struct SubscriptionPaywallView: View {
         let displayPrice = product?.displayPrice ?? fallbackDisplayPrice(for: tier)
 
         switch tier {
-        case .weekly:
-            return PlanMetadata(
-                title: "Weekly Plan",
-                primaryPrice: displayPrice,
-                periodLabel: "7 Days",
-                summaryHeadline: "\(displayPrice) per week",
-                billingDescription: "Billed every 7 days for the Weekly auto-renewing subscription."
-            )
         case .monthly:
             return PlanMetadata(
                 title: "Monthly Plan",
@@ -334,14 +424,42 @@ struct SubscriptionPaywallView: View {
             )
         case .yearly:
             let monthlyEquivalent = monthlyEquivalentText(for: product)
-            let summaryHeadline = monthlyEquivalent.map { "\(displayPrice) per year (\($0)/month)" } ?? "\(displayPrice) per year"
 
+            if annualProductHasFreeTrial {
+                let monthlyLine = monthlyEquivalent.map { "\($0)/month" }
+                let monthlyStrike = subscriptionStore.product(for: .monthly)?.displayPrice
+                let summaryHeadline = monthlyEquivalent.map {
+                    "7 days free, then \(displayPrice)/year · \($0)/month"
+                } ?? "7 days free, then \(displayPrice)/year"
+                return PlanMetadata(
+                    title: "Annual Plan",
+                    primaryPrice: displayPrice,
+                    periodLabel: "Year",
+                    summaryHeadline: summaryHeadline,
+                    billingDescription: "\(displayPrice) billed once yearly. Auto-renewing.",
+                    trialLabel: "7 days free, then \(displayPrice)/yr",
+                    trialMonthlyLine: monthlyLine,
+                    trialMonthlyStrikeLabel: monthlyStrike.map { "\($0)/mo" }
+                )
+            } else {
+                let summaryHeadline = monthlyEquivalent.map {
+                    "\(displayPrice) per year (\($0)/month)"
+                } ?? "\(displayPrice) per year"
+                return PlanMetadata(
+                    title: "Annual Plan",
+                    primaryPrice: displayPrice,
+                    periodLabel: "Year",
+                    summaryHeadline: summaryHeadline,
+                    billingDescription: "Billed once yearly for the Annual auto-renewing subscription."
+                )
+            }
+        default:
             return PlanMetadata(
-                title: "Annual Plan",
+                title: tier.displayName,
                 primaryPrice: displayPrice,
-                periodLabel: "Year",
-                summaryHeadline: summaryHeadline,
-                billingDescription: "Billed once yearly for the Annual auto-renewing subscription."
+                periodLabel: "",
+                summaryHeadline: "\(displayPrice)",
+                billingDescription: "Auto-renewing subscription."
             )
         }
     }
@@ -379,9 +497,9 @@ struct SubscriptionPaywallView: View {
 
     private func fallbackDisplayPrice(for tier: SubscriptionTier) -> String {
         switch tier {
-        case .weekly: "$8.99"
         case .monthly: "$19.99"
         case .yearly: "$89.99"
+        default: ""
         }
     }
 
@@ -465,16 +583,19 @@ private struct PlanMetadata {
     let periodLabel: String
     let summaryHeadline: String
     let billingDescription: String
+    var trialLabel: String? = nil
+    var trialMonthlyLine: String? = nil
+    var trialMonthlyStrikeLabel: String? = nil
 }
 
 private extension SubscriptionTier {
-    static let allCases: [SubscriptionTier] = [.weekly, .monthly, .yearly]
+    static let allCases: [SubscriptionTier] = [.yearly, .monthly]
 
     var ctaTitle: String {
         switch self {
-        case .weekly: "Weekly"
         case .monthly: "Monthly"
         case .yearly: "Annual"
+        default: rawValue.capitalized
         }
     }
 }
