@@ -326,7 +326,7 @@ struct SubscriptionPaywallView: View {
             }
 
             HStack(spacing: 10) {
-                footerLink(title: "Terms of Use", url: AppConfig.termsOfUseURL)
+                footerLink(title: "Terms of Use", url: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
                 Text("•")
                     .font(.custom("PlusJakartaSans-Regular", size: 13))
                     .foregroundStyle(Color(hex: "#7B6FC0"))
