@@ -48,7 +48,7 @@ struct ProcedureEntriesView: View {
                 }
             }
         }
-        .background(Color(hex: "#FFF8F6").ignoresSafeArea())
+        .background(Color(hex: "#EEEEFF").ignoresSafeArea())
         .navigationBarHidden(true)
         .sheet(isPresented: $showComparison) {
             WeekComparisonView(entries: entries)
@@ -90,17 +90,17 @@ struct ProcedureEntriesView: View {
                     .overlay(
                         Image(systemName: "arrow.left")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(Color(hex: "#3D2B2E"))
+                            .foregroundColor(Color(hex: "#2D2575"))
                     )
-                    .shadow(color: Color(hex: "#8E4C5C").opacity(0.08), radius: 6, x: 0, y: 2)
+                    .shadow(color: Color(hex: "#6C63FF").opacity(0.12), radius: 6, x: 0, y: 2)
             }
             .buttonStyle(.plain)
 
             Spacer()
 
             Text("All Entries")
-                .font(.system(size: 20, weight: .semibold, design: .serif))
-                .foregroundColor(Color(hex: "#3D2B2E"))
+                .font(.custom("PlusJakartaSans-SemiBold", size: 20))
+                .foregroundColor(Color(hex: "#2D2575"))
 
             Spacer()
 
@@ -113,14 +113,13 @@ struct ProcedureEntriesView: View {
                             .overlay(
                                 Image(systemName: "plus")
                                     .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(Color(hex: "#3D2B2E"))
+                                    .foregroundColor(Color(hex: "#2D2575"))
                             )
-                            .shadow(color: Color(hex: "#8E4C5C").opacity(0.08), radius: 6, x: 0, y: 2)
+                            .shadow(color: Color(hex: "#6C63FF").opacity(0.12), radius: 6, x: 0, y: 2)
                     }
                     .buttonStyle(.plain)
                 }
 
-                // Compare button — only meaningful with 2+ entries
                 if entries.count >= 2 {
                     Button { showComparison = true } label: {
                         Circle()
@@ -129,9 +128,9 @@ struct ProcedureEntriesView: View {
                             .overlay(
                                 Image(systemName: "square.2.layers.3d.top.filled")
                                     .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(Color(hex: "#8E4C5C"))
+                                    .foregroundColor(Color(hex: "#6C63FF"))
                             )
-                            .shadow(color: Color(hex: "#8E4C5C").opacity(0.08), radius: 6, x: 0, y: 2)
+                            .shadow(color: Color(hex: "#6C63FF").opacity(0.12), radius: 6, x: 0, y: 2)
                     }
                     .buttonStyle(.plain)
                 }
@@ -153,9 +152,9 @@ struct ProcedureEntriesView: View {
                         .overlay(
                             Image(systemName: showSearch ? "xmark" : "magnifyingglass")
                                 .font(.system(size: 14, weight: showSearch ? .medium : .semibold))
-                                .foregroundColor(Color(hex: "#3D2B2E"))
+                                .foregroundColor(Color(hex: "#2D2575"))
                         )
-                        .shadow(color: Color(hex: "#8E4C5C").opacity(0.08), radius: 6, x: 0, y: 2)
+                        .shadow(color: Color(hex: "#6C63FF").opacity(0.12), radius: 6, x: 0, y: 2)
                 }
                 .buttonStyle(.plain)
             }
@@ -171,10 +170,10 @@ struct ProcedureEntriesView: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 14))
-                .foregroundColor(Color(hex: "#B8A9AB"))
+                .foregroundColor(Color(hex: "#9C93C8"))
             TextField("Search entries…", text: $searchText)
-                .font(.custom("Outfit-Regular", size: 14))
-                .foregroundColor(Color(hex: "#3D2B2E"))
+                .font(.custom("PlusJakartaSans-Regular", size: 14))
+                .foregroundColor(Color(hex: "#2D2575"))
                 .focused($searchFocused)
                 .autocorrectionDisabled()
         }
@@ -182,8 +181,8 @@ struct ProcedureEntriesView: View {
         .padding(.vertical, 11)
         .background(Color.white)
         .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 1))
-        .shadow(color: Color(hex: "#8E4C5C").opacity(0.06), radius: 6, x: 0, y: 2)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#D4CCFF"), lineWidth: 1))
+        .shadow(color: Color(hex: "#6C63FF").opacity(0.08), radius: 6, x: 0, y: 2)
         .padding(.horizontal, 18)
         .padding(.bottom, 12)
     }
@@ -196,19 +195,17 @@ struct ProcedureEntriesView: View {
             VStack(spacing: 8) {
                 Spacer().frame(height: 60)
                 Text(searchText.isEmpty ? "No entries yet." : "No results for \"\(searchText)\".")
-                    .font(.custom("Outfit-Light", size: 14))
-                    .foregroundColor(Color(hex: "#B8A9AB"))
+                    .font(.custom("PlusJakartaSans-Regular", size: 14))
+                    .foregroundColor(Color(hex: "#9C93C8"))
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 18)
         } else if searchText.isEmpty {
-            // Featured card (most recent)
             sectionLabel("Recent")
             featuredCard(entry: filteredEntries[0])
                 .padding(.horizontal, 18)
 
-            // Remaining entries grouped by week
             let rest = Array(filteredEntries.dropFirst())
             if !rest.isEmpty {
                 ForEach(groupedEntries(rest), id: \.label) { section in
@@ -222,7 +219,6 @@ struct ProcedureEntriesView: View {
                 }
             }
         } else {
-            // Search results — all compact
             ForEach(groupedEntries(filteredEntries), id: \.label) { section in
                 sectionLabel(section.label)
                 VStack(spacing: 10) {
@@ -237,9 +233,9 @@ struct ProcedureEntriesView: View {
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text.uppercased())
-            .font(.system(size: 11, weight: .semibold))
-            .tracking(1.2)
-            .foregroundColor(Color(hex: "#B8A9AB"))
+            .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+            .tracking(1.4)
+            .foregroundColor(Color(hex: "#9C93C8"))
             .padding(.horizontal, 18)
             .padding(.top, 20)
             .padding(.bottom, 10)
@@ -250,7 +246,6 @@ struct ProcedureEntriesView: View {
     private func featuredCard(entry: JournalEntry) -> some View {
         NavigationLink(value: entry.id) {
             VStack(alignment: .leading, spacing: 0) {
-                // Photo (if any)
                 if entry.photoUrl != nil {
                     photoContent(for: entry)
                         .frame(height: 180)
@@ -260,75 +255,47 @@ struct ProcedureEntriesView: View {
                         .padding(.bottom, 14)
                 }
 
-                // Pills row
                 HStack(spacing: 6) {
                     Text(shortDate(entry.entryDateAsDate))
-                        .font(.custom("Outfit-Regular", size: 11))
-                        .foregroundColor(Color(hex: "#8E4C5C"))
+                        .font(.custom("PlusJakartaSans-Medium", size: 11))
+                        .foregroundColor(Color(hex: "#6C63FF"))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(Color(hex: "#8E4C5C").opacity(0.12))
+                        .background(Color(hex: "#EAE7FF"))
                         .clipShape(Capsule())
 
                     Text(procedureName ?? entry.procedureName)
-                        .font(.custom("Outfit-SemiBold", size: 11))
-                        .foregroundColor(Color(hex: "#8E4C5C"))
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+                        .foregroundColor(Color(hex: "#6C63FF"))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(Color(hex: "#8E4C5C").opacity(0.12))
+                        .background(Color(hex: "#EAE7FF"))
                         .clipShape(Capsule())
 
                     Spacer()
                 }
                 .padding(.bottom, 10)
 
-                // Title
                 Text(titleFor(entry))
-                    .font(.system(size: 17, weight: .semibold, design: .serif))
-                    .foregroundColor(Color(hex: "#3D2B2E"))
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 17))
+                    .foregroundColor(Color(hex: "#2D2575"))
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.bottom, 6)
 
-                // Notes excerpt
                 if let notes = entry.notes, !notes.isEmpty {
                     Text(notes)
-                        .font(.custom("Outfit-Light", size: 13))
-                        .foregroundColor(Color(hex: "#3D2B2E").opacity(0.65))
+                        .font(.custom("PlusJakartaSans-Regular", size: 13))
+                        .foregroundColor(Color(hex: "#7B6FC0"))
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.bottom, 16)
-                }
-
-                // Footer
-                HStack {
-                    Text("Read full entry")
-                        .font(.custom("Outfit-SemiBold", size: 12))
-                        .foregroundColor(Color(hex: "#8E4C5C"))
-
-                    Spacer()
-
-                    Circle()
-                        .fill(Color(hex: "#8E4C5C").opacity(0.12))
-                        .frame(width: 30, height: 30)
-                        .overlay(
-                            Image(systemName: "arrow.forward")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(Color(hex: "#8E4C5C"))
-                        )
                 }
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                LinearGradient(
-                    colors: [Color(hex: "#f8e9ef"), Color(hex: "#efcfd9")],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
+            .background(Color(hex: "#E8E4FF"))
             .cornerRadius(16)
-            .shadow(color: Color(hex: "#8E4C5C").opacity(0.10), radius: 10, x: 0, y: 4)
+            .shadow(color: Color(hex: "#6C63FF").opacity(0.10), radius: 10, x: 0, y: 4)
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -346,55 +313,52 @@ struct ProcedureEntriesView: View {
     private func compactCard(entry: JournalEntry) -> some View {
         NavigationLink(value: entry.id) {
             HStack(alignment: .center, spacing: 12) {
-                // Date column
                 VStack(spacing: 1) {
                     Text(entry.entryDateAsDate, format: .dateTime.weekday(.abbreviated))
-                        .font(.custom("Outfit-Regular", size: 10))
-                        .foregroundColor(Color(hex: "#B8A9AB"))
+                        .font(.custom("PlusJakartaSans-Regular", size: 10))
+                        .foregroundColor(Color(hex: "#9C93C8"))
                     Text(entry.entryDateAsDate, format: .dateTime.day())
-                        .font(.custom("Outfit-SemiBold", size: 18))
-                        .foregroundColor(Color(hex: "#3D2B2E"))
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 18))
+                        .foregroundColor(Color(hex: "#2D2575"))
                 }
                 .frame(width: 36)
 
-                // Separator
                 Rectangle()
-                    .fill(Color(hex: "#C4929A").opacity(0.25))
-                    .frame(width: 1, height: 34)
+                    .fill(Color(hex: "#D4CCFF"))
+                    .frame(width: 1)
+                    .frame(minHeight: 34)
 
-                // Text
                 VStack(alignment: .leading, spacing: 3) {
                     Text(titleFor(entry))
-                        .font(.system(size: 14, weight: .semibold, design: .serif))
-                        .foregroundColor(Color(hex: "#3D2B2E"))
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                        .foregroundColor(Color(hex: "#2D2575"))
                         .lineLimit(1)
 
                     if let sub = subtitleFor(entry) {
                         Text(sub)
-                            .font(.custom("Outfit-Light", size: 12))
-                            .foregroundColor(Color(hex: "#B8A9AB"))
-                            .lineLimit(1)
+                            .font(.custom("PlusJakartaSans-Regular", size: 12))
+                            .foregroundColor(Color(hex: "#9C93C8"))
+                            .lineLimit(2)
                     }
                 }
 
                 Spacer(minLength: 8)
 
-                // Arrow
                 Circle()
-                    .fill(Color(hex: "#8E4C5C").opacity(0.08))
+                    .fill(Color(hex: "#EAE7FF"))
                     .frame(width: 28, height: 28)
                     .overlay(
                         Image(systemName: "arrow.forward")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(Color(hex: "#8E4C5C"))
+                            .foregroundColor(Color(hex: "#6C63FF"))
                     )
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 13)
             .background(Color.white)
             .cornerRadius(14)
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 1))
-            .shadow(color: Color(hex: "#8E4C5C").opacity(0.06), radius: 7, x: 0, y: 2)
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: "#E8E4FF"), lineWidth: 1))
+            .shadow(color: Color(hex: "#6C63FF").opacity(0.06), radius: 7, x: 0, y: 2)
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -459,12 +423,17 @@ struct ProcedureEntriesView: View {
     }
 
     private func subtitleFor(_ entry: JournalEntry) -> String? {
-        guard let notes = entry.notes else { return nil }
-        let lines = notes.components(separatedBy: "\n")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        guard lines.count > 1 else { return nil }
-        return lines[1]
+        guard let notes = entry.notes, !notes.isEmpty else { return nil }
+        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let title = titleFor(entry)
+        // If title is the Day N fallback, show all notes as preview
+        if title == "Day \(entry.dayNumber)" { return trimmed }
+        // Title came from notes — show content after it to avoid repetition
+        let rest = trimmed.hasPrefix(title)
+            ? String(trimmed.dropFirst(title.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            : trimmed
+        return rest.isEmpty ? nil : rest
     }
 
     private func shortDate(_ date: Date) -> String {
@@ -506,12 +475,12 @@ struct ProcedureEntriesView: View {
                 case .success(let image):
                     image.resizable().scaledToFill()
                 default:
-                    Color(hex: "#f8e9ef")
+                    Color(hex: "#EAE7FF")
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            Color(hex: "#f8e9ef")
+            Color(hex: "#EAE7FF")
         }
     }
 }

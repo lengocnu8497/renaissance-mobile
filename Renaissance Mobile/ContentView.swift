@@ -38,6 +38,17 @@ struct ContentView: View {
                 },
                 onNavigateToJournal: {
                     selectedTab = 3
+                },
+                onNavigateToResearch: {
+                    selectedTab = 4
+                },
+                onReopenConversation: { conversationId in
+                    chatConversationIdToLoad = conversationId
+                    chatLinkedSavedProcedureId = nil
+                    chatProcedureContext = nil
+                    searchQuery = ""
+                    chatSessionId = UUID()
+                    selectedTab = 1
                 }
             )
             .tag(0)
@@ -52,9 +63,7 @@ struct ContentView: View {
             )
             .tag(1)
 
-            PhotoJournalView(addEntryTrigger: $journalAddTrigger, onBackButtonTapped: {
-                selectedTab = 0
-            })
+            PhotoJournalView(addEntryTrigger: $journalAddTrigger)
             .tag(3)
 
             ResearchTabView(
@@ -86,9 +95,6 @@ struct ContentView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if selectedTab != 1 && selectedTab != 5 {
                 customTabBar
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 6)
-                    .padding(.top, 8)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -136,21 +142,16 @@ struct ContentView: View {
             navItem(icon: "doc.text", label: "Journal", tag: 3)
             navItem(icon: "person", label: "Profile", tag: 5)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 8)
-        .background(
-            LinearGradient(
-                colors: [Color.white.opacity(0.95), Color(hex: "#F8F9F4").opacity(0.98)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 34, style: .continuous)
-                .stroke(Color.white.opacity(0.72), lineWidth: 1)
-        )
-        .shadow(color: Color(hex: "#3D2B2E").opacity(0.12), radius: 18, x: 0, y: 4)
+        .padding(.horizontal, 6)
+        .padding(.top, 6)
+        .padding(.bottom, 1)
+        .frame(maxWidth: .infinity)
+        .background(Color.white)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color(hex: "#E8E4FF"))
+                .frame(height: 1)
+        }
     }
 
     private func navItem(icon: String, label: String, tag: Int) -> some View {
@@ -158,26 +159,23 @@ struct ContentView: View {
         return Button {
             selectedTab = tag
         } label: {
-            VStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: isActive ? .medium : .regular))
-                    .foregroundColor(isActive ? Color(hex: "#976769") : Color(hex: "#8D9288"))
+            VStack(spacing: 3) {
+                ZStack {
+                    if isActive {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color(hex: "#EAE7FF"))
+                            .frame(width: 30, height: 30)
+                    }
+                    Image(systemName: isActive ? "\(icon).fill" : icon)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(isActive ? Color(hex: "#6C63FF") : Color(hex: "#9C93C8"))
+                }
+                .frame(width: 30, height: 30)
                 Text(label)
-                    .font(.system(size: 11, weight: isActive ? .semibold : .medium))
-                    .foregroundColor(isActive ? Color(hex: "#976769") : Color(hex: "#8D9288"))
+                    .font(.custom("PlusJakartaSans-Medium", size: 10))
+                    .foregroundColor(isActive ? Color(hex: "#6C63FF") : Color(hex: "#9C93C8"))
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 11)
-            .background(
-                isActive
-                    ? LinearGradient(
-                        colors: [Color(hex: "#F4E2DF"), Color(hex: "#F8EFED")],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    : LinearGradient(colors: [.clear, .clear], startPoint: .top, endPoint: .bottom)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
         .buttonStyle(.plain)
     }

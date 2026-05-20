@@ -37,6 +37,10 @@ struct ChatConversation: Identifiable, Codable {
         self.isArchived = isArchived
         self.metadata = metadata
     }
+
+    var isPinned: Bool { (metadata?["is_pinned"]?.value as? Bool) == true }
+    var lastPreview: String? { metadata?["last_preview"]?.value as? String }
+    var storedMessageCount: Int? { metadata?["message_count"]?.value as? Int }
 }
 
 // MARK: - Chat Message Model (Database)
@@ -152,6 +156,38 @@ struct ChatMessage: Identifiable, Codable {
         self.metadata = nil
         self.imageData = imageData
         self.generatedImageUrl = nil
+    }
+}
+
+// MARK: - Notification Mode
+
+enum NotificationMode: String, CaseIterable, Codable {
+    case off    = "off"
+    case daily  = "daily"
+    case weekly = "weekly"
+
+    var label: String {
+        switch self {
+        case .off:    return "Off"
+        case .daily:  return "Daily"
+        case .weekly: return "Weekly"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .off:    return "No recovery reminders"
+        case .daily:  return "Once a day — pick your time"
+        case .weekly: return "Once a week — pick your day and time"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .off:    return "bell.slash.fill"
+        case .daily:  return "calendar.badge.clock"
+        case .weekly: return "calendar"
+        }
     }
 }
 

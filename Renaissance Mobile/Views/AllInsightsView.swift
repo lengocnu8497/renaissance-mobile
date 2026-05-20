@@ -16,17 +16,22 @@ import SwiftUI
 // MARK: - Design tokens
 
 private enum AI {
-    static let primary  = Color(hex: "#8E4C5C")
-    static let gradA    = Color(hex: "#6B3346")
-    static let gradB    = Color(hex: "#B76E79")
-    static let accent   = Color(hex: "#C4929A")
-    static let textHi   = Color(hex: "#3D2B2E")
-    static let textMid  = Color(hex: "#6B4F53")
-    static let textLo   = Color(hex: "#B8A9AB")
-    static let border   = Color(hex: "#C4929A").opacity(0.18)
-    static let bgTop    = Color(hex: "#FFF8F6")
-    static let bgMid    = Color(hex: "#FAF0F2")
-    static let bgBot    = Color(hex: "#F5E8EE")
+    static let primary  = Color(hex: "#6C63FF")
+    static let gradA    = Color(hex: "#4A41C8")
+    static let gradB    = Color(hex: "#9B95E0")
+    static let accent   = Color(hex: "#9B95E0")
+    static let textHi   = Color(hex: "#2D2575")
+    static let textMid  = Color(hex: "#7B6FC0")
+    static let textLo   = Color(hex: "#A9A3D4")
+    static let border   = Color(hex: "#D4CCFF").opacity(0.5)
+    static let soft     = Color(hex: "#EAE7FF")
+    static let bgTop    = Color(hex: "#F8F8FF")
+    static let bgMid    = Color(hex: "#F4F3FF")
+    static let bgBot    = Color(hex: "#EEEEFF")
+
+    static func head(_ size: CGFloat) -> Font  { .custom("Manrope", size: size).weight(.bold) }
+    static func semi(_ size: CGFloat) -> Font  { .custom("PlusJakartaSans-SemiBold", size: size) }
+    static func reg(_ size: CGFloat)  -> Font  { .custom("PlusJakartaSans-Regular",  size: size) }
 }
 
 // MARK: - View
@@ -40,6 +45,7 @@ struct AllInsightsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showSocialShare = false
     @State private var loadingMessageIndex = 0
+    @State private var screenHeight: CGFloat = 0
 
     private var insights: RecoveryInsights? { vm.insights[procedureId] }
     private var isGenerating: Bool { vm.insightsGenerating.contains(procedureId) }
@@ -54,24 +60,26 @@ struct AllInsightsView: View {
     ]
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // Cream → pale blush → soft rose gradient background
-            LinearGradient(
-                stops: [
-                    .init(color: AI.bgTop, location: 0),
-                    .init(color: AI.bgMid, location: 0.4),
-                    .init(color: AI.bgBot, location: 1)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
+        GeometryReader { geo in
+            ZStack(alignment: .bottom) {
+                LinearGradient(
+                    stops: [
+                        .init(color: AI.bgTop, location: 0),
+                        .init(color: AI.bgMid, location: 0.4),
+                        .init(color: AI.bgBot, location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
 
-            if let insights {
-                insightsContent(insights)
-            } else {
-                loadingContent
+                if let insights {
+                    insightsContent(insights)
+                } else {
+                    loadingContent
+                }
             }
+            .onAppear { screenHeight = geo.size.height }
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)
@@ -86,33 +94,29 @@ struct AllInsightsView: View {
             Spacer()
 
             VStack(spacing: 28) {
-                // AI logo mark
                 aiLogoMark
 
-                // Title
                 VStack(spacing: 6) {
                     Text("Rena's Reflection")
                         .font(.system(size: 28, weight: .medium, design: .serif))
                         .foregroundColor(AI.textHi)
 
                     Text("Based on your \(procedureName) recovery")
-                        .font(.custom("Outfit-Regular", size: 12))
+                        .font(AI.reg(12))
                         .foregroundColor(AI.textLo)
                 }
                 .multilineTextAlignment(.center)
 
-                // Spinner + status
                 VStack(spacing: 14) {
                     ProgressView()
                         .tint(AI.accent)
                         .scaleEffect(1.2)
 
                     Text("Analyzing your recovery journey...")
-                        .font(.custom("Outfit-Regular", size: 12))
+                        .font(AI.reg(12))
                         .foregroundColor(AI.textLo)
                 }
 
-                // Cycling encouragement card
                 VStack(spacing: 0) {
                     Text(loadingMessages[loadingMessageIndex])
                         .font(.system(size: 17, weight: .regular, design: .serif))
@@ -136,7 +140,6 @@ struct AllInsightsView: View {
             Spacer()
         }
         .task {
-            // Cycle through messages every 2.8 s while loading
             while isGenerating || insights == nil {
                 try? await Task.sleep(nanoseconds: 2_800_000_000)
                 withAnimation {
@@ -154,15 +157,12 @@ struct AllInsightsView: View {
                 VStack(spacing: 0) {
                     topBar
 
-                    // Entry saved chip
                     entrySavedChip(insights)
                         .padding(.top, 12)
 
-                    // AI logo mark (large)
                     aiLogoMark
-                        .padding(.top, 28)
+                        .padding(.top, 24)
 
-                    // Heading
                     Text("Rena's Reflection")
                         .font(.system(size: 28, weight: .medium, design: .serif))
                         .foregroundColor(AI.textHi)
@@ -170,12 +170,11 @@ struct AllInsightsView: View {
                         .padding(.top, 20)
 
                     Text("Based on your \(insights.procedureName) recovery")
-                        .font(.custom("Outfit-Regular", size: 12))
+                        .font(AI.reg(12))
                         .foregroundColor(AI.textLo)
                         .multilineTextAlignment(.center)
                         .padding(.top, 4)
 
-                    // Decorative gradient divider
                     LinearGradient(
                         colors: [.clear, AI.accent, .clear],
                         startPoint: .leading,
@@ -184,17 +183,14 @@ struct AllInsightsView: View {
                     .frame(width: 40, height: 1)
                     .padding(.top, 20)
 
-                    // Main insight card (summary)
                     InsightRevealCard(label: "RENA INSIGHT", text: insights.summary)
                         .padding(.horizontal, 24)
                         .padding(.top, 20)
 
-                    // Trend chip
                     trendChip(insights)
                         .padding(.horizontal, 24)
                         .padding(.top, 14)
 
-                    // Next steps
                     if let nextSteps = insights.nextSteps {
                         InsightRevealCard(
                             label: "NEXT STEPS",
@@ -206,7 +202,6 @@ struct AllInsightsView: View {
                         .id("nextSteps")
                     }
 
-                    // Flags
                     if !insights.flags.isEmpty {
                         VStack(spacing: 10) {
                             ForEach(Array(insights.flags.enumerated()), id: \.offset) { _, flag in
@@ -218,7 +213,6 @@ struct AllInsightsView: View {
                         .id("flags")
                     }
 
-                    // All encouragements
                     if !insights.encouragements.isEmpty {
                         VStack(spacing: 10) {
                             ForEach(Array(insights.encouragements.enumerated()), id: \.offset) { _, enc in
@@ -230,7 +224,6 @@ struct AllInsightsView: View {
                         .id("encouragements")
                     }
 
-                    // Weekly summaries for completed check-ins
                     weeklySummarySection
                         .padding(.horizontal, 24)
                         .padding(.top, 14)
@@ -267,21 +260,21 @@ struct AllInsightsView: View {
         if !checkIns.isEmpty && vm.insightsEnabled {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(
-                                LinearGradient(colors: [AI.gradA, AI.gradB],
-                                               startPoint: .leading, endPoint: .trailing)
-                            )
-                            .frame(width: 12, height: 2)
-                        Text("AUTO WEEKLY REPORTS")
-                            .font(.custom("Outfit-SemiBold", size: 10))
-                            .kerning(1.0)
+                    HStack(spacing: 8) {
+                        Rectangle()
+                            .fill(LinearGradient(colors: [AI.gradA, AI.gradB],
+                                                 startPoint: .leading, endPoint: .trailing))
+                            .frame(width: 3, height: 14)
+                            .clipShape(Capsule())
+                        Text("WEEKLY REPORTS")
+                            .font(AI.semi(10))
+                            .tracking(1.8)
                             .foregroundColor(AI.primary)
                     }
-                    Text("Daily logs turned into trends, alerts, and a recovery score.")
-                        .font(.custom("Outfit-Regular", size: 12))
+                    Text("Daily logs turned into trends, alerts, and recovery insights.")
+                        .font(AI.reg(12))
                         .foregroundColor(AI.textLo)
+                        .padding(.leading, 11)
                 }
 
                 ForEach(checkIns, id: \.weekNumber) { checkIn in
@@ -299,7 +292,6 @@ struct AllInsightsView: View {
                         }
                     )
                     .task {
-                        // Lazy-generate: trigger if not cached and not already in-flight
                         guard summary == nil, !isGenerating else { return }
                         await vm.refreshWeeklySummary(
                             for: procedureId,
@@ -337,7 +329,7 @@ struct AllInsightsView: View {
                 .fill(AI.primary)
                 .frame(width: 6, height: 6)
             Text("\(insights.procedureName) · \(insights.trend.label)")
-                .font(.custom("Outfit-SemiBold", size: 12))
+                .font(AI.semi(12))
                 .foregroundColor(AI.primary)
         }
         .padding(.horizontal, 14)
@@ -348,25 +340,9 @@ struct AllInsightsView: View {
     }
 
     private var aiLogoMark: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 24)
-                .fill(
-                    LinearGradient(
-                        colors: [AI.gradA, AI.gradB],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 80, height: 80)
-                .shadow(color: Color(hex: "#6B3346").opacity(0.30), radius: 20, x: 0, y: 12)
-
-            ZStack {
-                Circle().stroke(Color.white.opacity(0.20), lineWidth: 1.2).frame(width: 40, height: 40)
-                Circle().stroke(Color.white.opacity(0.35), lineWidth: 1.2).frame(width: 28, height: 28)
-                Circle().stroke(Color.white.opacity(0.55), lineWidth: 1.2).frame(width: 16, height: 16)
-                Circle().fill(Color.white.opacity(0.95)).frame(width: 7, height: 7)
-            }
-        }
+        let size = screenHeight > 0 ? screenHeight * 3 / 8 : 135
+        return LottieView(name: "rena-lottie")
+            .frame(width: size, height: size)
     }
 
     private func trendChip(_ insights: RecoveryInsights) -> some View {
@@ -376,10 +352,10 @@ struct AllInsightsView: View {
                     .fill(trendColor(insights.trend))
                     .frame(width: 8, height: 8)
                 Text(insights.trend.label)
-                    .font(.custom("Outfit-SemiBold", size: 12))
+                    .font(AI.semi(12))
                     .foregroundColor(AI.textMid)
                 Text("· \(insights.entryCount) \(insights.entryCount == 1 ? "entry" : "entries")")
-                    .font(.custom("Outfit-Regular", size: 12))
+                    .font(AI.reg(12))
                     .foregroundColor(AI.textLo)
             }
             .padding(.horizontal, 12)
@@ -432,7 +408,7 @@ struct AllInsightsView: View {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 14, weight: .semibold))
                         Text("Share to Social Media")
-                            .font(.custom("Outfit-SemiBold", size: 14))
+                            .font(AI.semi(14))
                     }
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
@@ -445,7 +421,7 @@ struct AllInsightsView: View {
                         )
                     )
                     .cornerRadius(14)
-                    .shadow(color: Color(hex: "#6B3346").opacity(0.25), radius: 12, x: 0, y: 8)
+                    .shadow(color: Color(hex: "#4A41C8").opacity(0.20), radius: 12, x: 0, y: 8)
                 }
                 .sheet(isPresented: $showSocialShare) {
                     SocialShareSheet(insights: insights)
@@ -455,7 +431,7 @@ struct AllInsightsView: View {
 
                 Button { dismiss() } label: {
                     Text("Back to my journal")
-                        .font(.custom("Outfit-Regular", size: 14))
+                        .font(AI.reg(14))
                         .foregroundColor(AI.textMid)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
@@ -468,12 +444,12 @@ struct AllInsightsView: View {
     }
 }
 
-// MARK: - Insight Reveal Card (frosted glass, italic serif)
+// MARK: - Insight Reveal Card
 
 private struct InsightRevealCard: View {
     let label: String
     let text: String
-    var accent: Color = Color(hex: "#8E4C5C")
+    var accent: Color = Color(hex: "#6C63FF")
     var icon: String? = nil
 
     var body: some View {
@@ -482,7 +458,7 @@ private struct InsightRevealCard: View {
                 RoundedRectangle(cornerRadius: 1)
                     .fill(
                         LinearGradient(
-                            colors: [Color(hex: "#6B3346"), Color(hex: "#B76E79")],
+                            colors: [Color(hex: "#4A41C8"), Color(hex: "#9B95E0")],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
@@ -496,15 +472,15 @@ private struct InsightRevealCard: View {
                 }
 
                 Text(label)
-                    .font(.custom("Outfit-SemiBold", size: 10))
-                    .kerning(1.0)
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                    .tracking(1.2)
                     .foregroundColor(accent)
             }
 
             Text(text)
                 .font(.system(size: 17, weight: .regular, design: .serif))
                 .italic()
-                .foregroundColor(Color(hex: "#3D2B2E"))
+                .foregroundColor(Color(hex: "#2D2575"))
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -514,7 +490,7 @@ private struct InsightRevealCard: View {
         .cornerRadius(20)
         .overlay(
             RoundedRectangle(cornerRadius: 20)
-                .stroke(Color(hex: "#C4929A").opacity(0.20), lineWidth: 1)
+                .stroke(Color(hex: "#D4CCFF").opacity(0.5), lineWidth: 1)
         )
     }
 }
@@ -526,9 +502,9 @@ private struct FlagRevealCard: View {
 
     private var accentColor: Color {
         switch flag.severity {
-        case .urgent:  return Color(hex: "#B76E79")
-        case .warning: return Color(hex: "#C4929A")
-        case .info:    return Color(hex: "#8E4C5C")
+        case .urgent:  return Color(hex: "#C97070")
+        case .warning: return Color(hex: "#C4A45A")
+        case .info:    return Color(hex: "#6C63FF")
         }
     }
 
@@ -552,21 +528,21 @@ private struct FlagRevealCard: View {
                     .foregroundColor(accentColor)
 
                 Text(severityLabel)
-                    .font(.custom("Outfit-SemiBold", size: 10))
-                    .kerning(1.0)
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                    .tracking(1.2)
                     .foregroundColor(accentColor)
 
                 if let metric = flag.metric {
                     Text("· \(metric)")
-                        .font(.custom("Outfit-Regular", size: 10))
-                        .foregroundColor(Color(hex: "#B8A9AB"))
+                        .font(.custom("PlusJakartaSans-Regular", size: 10))
+                        .foregroundColor(Color(hex: "#A9A3D4"))
                 }
             }
 
             Text(flag.message)
                 .font(.system(size: 17, weight: .regular, design: .serif))
                 .italic()
-                .foregroundColor(Color(hex: "#3D2B2E"))
+                .foregroundColor(Color(hex: "#2D2575"))
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -576,7 +552,7 @@ private struct FlagRevealCard: View {
         .cornerRadius(20)
         .overlay(
             RoundedRectangle(cornerRadius: 20)
-                .stroke(accentColor.opacity(0.20), lineWidth: 1)
+                .stroke(accentColor.opacity(0.25), lineWidth: 1)
         )
     }
 }
@@ -590,133 +566,119 @@ private struct WeeklySummaryCard: View {
     let satisfaction: Int?
     let onRateSatisfaction: (Int) -> Void
 
-    private let gradA  = Color(hex: "#6B3346")
-    private let gradB  = Color(hex: "#B76E79")
-    private let accent = Color(hex: "#C4929A")
-    private let textHi = Color(hex: "#3D2B2E")
-    private let textLo = Color(hex: "#B8A9AB")
+    private let gradA  = Color(hex: "#4A41C8")
+    private let gradB  = Color(hex: "#9B95E0")
+    private let primary = Color(hex: "#6C63FF")
+    private let soft   = Color(hex: "#EAE7FF")
+    private let textHi = Color(hex: "#2D2575")
+    private let textMid = Color(hex: "#7B6FC0")
+    private let textLo = Color(hex: "#A9A3D4")
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Week label
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 14) {
+            // Week header
+            HStack(spacing: 10) {
                 ZStack {
                     Circle()
                         .fill(LinearGradient(colors: [gradA, gradB],
                                              startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 24, height: 24)
+                        .frame(width: 26, height: 26)
                     Text("\(weekNumber)")
-                        .font(.custom("Outfit-SemiBold", size: 11))
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 12))
                         .foregroundColor(.white)
                 }
-                Text("Week \(weekNumber)")
-                    .font(.custom("Outfit-SemiBold", size: 13))
-                    .foregroundColor(textHi)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Week \(weekNumber) summary")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                        .foregroundColor(textHi)
+                    Text("Auto-generated from your daily logs")
+                        .font(.custom("PlusJakartaSans-Regular", size: 11))
+                        .foregroundColor(textLo)
+                }
                 Spacer()
                 if isGenerating {
-                    ProgressView().scaleEffect(0.75).tint(accent)
+                    ProgressView().scaleEffect(0.75).tint(gradB)
                 }
             }
 
             if let summary {
+                // Headline
                 Text(summary.headline)
                     .font(.system(size: 15, weight: .medium, design: .serif))
                     .italic()
                     .foregroundColor(textHi)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                if let score = summary.recoveryScore {
-                    HStack(spacing: 8) {
-                        Text("Recovery Score \(score)/100")
-                            .font(.custom("Outfit-SemiBold", size: 12))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(
-                                LinearGradient(colors: [gradA, gradB], startPoint: .leading, endPoint: .trailing)
-                            )
-                            .clipShape(Capsule())
-                    }
-                }
-
+                // Observation
                 Text(summary.observation)
-                    .font(.custom("Outfit-Regular", size: 13))
+                    .font(.custom("PlusJakartaSans-Regular", size: 13))
                     .foregroundColor(textHi.opacity(0.75))
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    summaryMetricRow("Pain trend", value: summary.painTrend ?? "Not enough data")
-                    summaryMetricRow("Swelling", value: summary.swellingStatus ?? "Not enough data")
-                    summaryMetricRow("Bruising", value: summary.bruisingStatus ?? "Not enough data")
+                // Metric rows — left-border timeline style
+                VStack(alignment: .leading, spacing: 0) {
+                    metricTimelineRow("Pain trend",  value: summary.painTrend    ?? "Not enough data")
+                    metricTimelineRow("Swelling",    value: summary.swellingStatus ?? "Not enough data")
+                    metricTimelineRow("Bruising",    value: summary.bruisingStatus ?? "Not enough data")
                 }
 
+                // Pain chart (text sparkline)
                 if !summary.metricPoints.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Pain chart")
-                            .font(.custom("Outfit-SemiBold", size: 12))
-                            .foregroundColor(textHi)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("PAIN TREND")
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 9))
+                            .tracking(1.5)
+                            .foregroundColor(textMid)
                         Text(painChartText(summary.metricPoints))
-                            .font(.system(size: 16, weight: .regular, design: .serif))
+                            .font(.system(size: 15, weight: .regular, design: .serif))
                             .foregroundColor(gradA)
                     }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(soft.opacity(0.6))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
 
+                // Alerts
                 if !summary.alerts.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Alerts")
-                            .font(.custom("Outfit-SemiBold", size: 12))
-                            .foregroundColor(textHi)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("ALERTS")
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 9))
+                            .tracking(1.5)
+                            .foregroundColor(textMid)
                         ForEach(summary.alerts, id: \.self) { alert in
-                            VStack(alignment: .leading, spacing: 6) {
-                                summaryChip(
-                                    icon: alert.severity.systemImage,
-                                    color: alert.severity == .info ? accent : gradB,
-                                    text: alert.title
-                                )
-                                Text(alert.explanation)
-                                    .font(.custom("Outfit-Regular", size: 12))
-                                    .foregroundColor(textHi.opacity(0.72))
-                                    .fixedSize(horizontal: false, vertical: true)
-                                if let nextStep = alert.recommendedNextStep {
-                                    Text("Next: \(nextStep)")
-                                        .font(.custom("Outfit-SemiBold", size: 11))
-                                        .foregroundColor(textHi)
-                                }
-                            }
+                            alertRow(alert)
                         }
                     }
                 }
 
+                // Improvement / concern chips
                 if summary.improvement != nil || summary.concern != nil {
                     VStack(alignment: .leading, spacing: 8) {
                         if let imp = summary.improvement {
-                            summaryChip(
-                                icon: "arrow.up.circle.fill",
-                                color: Color(hex: "#7ABF7A"),
-                                text: imp
-                            )
+                            signalChip(icon: "arrow.up.circle.fill", color: Color(hex: "#7ABF7A"), text: imp)
                         }
                         if let con = summary.concern {
-                            summaryChip(
-                                icon: "exclamationmark.circle.fill",
-                                color: gradB,
-                                text: con
-                            )
+                            signalChip(icon: "exclamationmark.circle.fill", color: gradB, text: con)
                         }
                     }
                 }
 
+                // Satisfaction rating
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Overall satisfaction")
-                        .font(.custom("Outfit-SemiBold", size: 12))
-                        .foregroundColor(textHi)
+                    Text("OVERALL SATISFACTION")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 9))
+                        .tracking(1.5)
+                        .foregroundColor(textMid)
                     HStack(spacing: 8) {
                         ForEach(1...5, id: \.self) { rating in
                             Button {
                                 onRateSatisfaction(rating)
                             } label: {
                                 Text("\(rating)")
-                                    .font(.custom("Outfit-SemiBold", size: 12))
+                                    .font(.custom("PlusJakartaSans-SemiBold", size: 12))
                                     .foregroundColor((satisfaction ?? 0) >= rating ? .white : gradA)
                                     .frame(width: 30, height: 30)
                                     .background((satisfaction ?? 0) >= rating ? gradA : Color.white.opacity(0.7))
@@ -727,24 +689,83 @@ private struct WeeklySummaryCard: View {
                         }
                     }
                 }
+
             } else if isGenerating {
                 Text("Analyzing this week's entries…")
-                    .font(.custom("Outfit-Regular", size: 13))
+                    .font(.custom("PlusJakartaSans-Regular", size: 13))
                     .foregroundColor(textLo)
             } else {
                 Text("No data available for this week.")
-                    .font(.custom("Outfit-Regular", size: 13))
+                    .font(.custom("PlusJakartaSans-Regular", size: 13))
                     .foregroundColor(textLo)
             }
         }
-        .padding(16)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.70))
-        .cornerRadius(16)
+        .cornerRadius(20)
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color(hex: "#C4929A").opacity(0.18), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Color(hex: "#D4CCFF").opacity(0.5), lineWidth: 1)
         )
+    }
+
+    // Timeline-style metric row (left 2px violet border)
+    private func metricTimelineRow(_ label: String, value: String) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            Rectangle()
+                .fill(Color(hex: "#EAE7FF"))
+                .frame(width: 2)
+                .padding(.vertical, 2)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label)
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                    .tracking(0.3)
+                    .foregroundColor(primary)
+                Text(value)
+                    .font(.custom("PlusJakartaSans-Regular", size: 12))
+                    .foregroundColor(textHi.opacity(0.75))
+                    .lineSpacing(2)
+            }
+            .padding(.leading, 10)
+            .padding(.vertical, 6)
+        }
+    }
+
+    private func alertRow(_ alert: RecoveryAlert) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Image(systemName: alert.severity.systemImage)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(alert.severity == .info ? primary : gradB)
+                Text(alert.title)
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 12))
+                    .foregroundColor(textHi)
+            }
+            Text(alert.explanation)
+                .font(.custom("PlusJakartaSans-Regular", size: 12))
+                .foregroundColor(textHi.opacity(0.72))
+                .fixedSize(horizontal: false, vertical: true)
+            if let nextStep = alert.recommendedNextStep {
+                Text("Next: \(nextStep)")
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+                    .foregroundColor(textHi)
+            }
+        }
+    }
+
+    private func signalChip(icon: String, color: Color, text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(color)
+                .padding(.top, 1)
+            Text(text)
+                .font(.custom("PlusJakartaSans-Regular", size: 12))
+                .foregroundColor(Color(hex: "#2D2575").opacity(0.8))
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func painChartText(_ points: [WeeklyMetricPoint]) -> String {
@@ -752,32 +773,6 @@ private struct WeeklySummaryCard: View {
             point.painLevel.map { String(Int($0.rounded())) }
         }
         return values.isEmpty ? "Not enough pain logs yet" : values.joined(separator: " → ")
-    }
-
-    private func summaryMetricRow(_ label: String, value: String) -> some View {
-        HStack {
-            Text(label)
-                .font(.custom("Outfit-Regular", size: 12))
-                .foregroundColor(textLo)
-            Spacer()
-            Text(value)
-                .font(.custom("Outfit-SemiBold", size: 12))
-                .foregroundColor(textHi)
-        }
-    }
-
-    private func summaryChip(icon: String, color: Color, text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(color)
-                .padding(.top, 1)
-            Text(text)
-                .font(.custom("Outfit-Regular", size: 12))
-                .foregroundColor(Color(hex: "#3D2B2E").opacity(0.8))
-                .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
-        }
     }
 }
 

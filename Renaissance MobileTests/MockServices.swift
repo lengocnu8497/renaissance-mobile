@@ -64,33 +64,6 @@ final class MockRecoveryInsightsService: RecoveryInsightsServiceProtocol {
     }
 }
 
-// MARK: - Mock Recovery Plan Copy Service
-
-final class MockRecoveryPlanCopyService: RecoveryPlanCopyGenerating {
-    var generatedCopy: RecoveryPlanGeneratedCopy?
-    var generateError: Error?
-    var generateCallCount = 0
-
-    func generateCopy(
-        input: RecoveryPlanInput,
-        timelinePhase: RecoveryPlanTimelinePhase,
-        journalSignals: RecoveryPlanJournalSignals?
-    ) async throws -> RecoveryPlanGeneratedCopy {
-        generateCallCount += 1
-
-        if let generateError {
-            throw generateError
-        }
-
-        return generatedCopy ?? RecoveryPlanGeneratedCopy(
-            summary: "AI-generated summary",
-            focusAreas: [
-                "AI-generated focus area one.",
-                "AI-generated focus area two."
-            ]
-        )
-    }
-}
 
 // MARK: - RecoveryInsights Test Fixture
 
@@ -231,14 +204,3 @@ extension RecoveryPlanTimelinePhase {
     }
 }
 
-extension RecoveryPlanGeneratedCopy {
-    static func stub(
-        summary: String = "Your recovery is now better judged by weekly comparison than daily checking.",
-        focusAreas: [String] = [
-            "Stay consistent with photos this week.",
-            "Track anything that feels persistently uneven."
-        ]
-    ) -> RecoveryPlanGeneratedCopy {
-        RecoveryPlanGeneratedCopy(summary: summary, focusAreas: focusAreas)
-    }
-}

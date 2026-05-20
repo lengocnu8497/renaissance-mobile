@@ -29,7 +29,24 @@ class ChatViewModel {
     // Whether the AI has already offered the Consultation Prep Flow for this procedure
     var consultationPrepOffered = false
 
+    // First name shown in the welcome card greeting
+    var firstName: String = ""
+
+    // Follow-up chips shown above the input bar after each AI response
+    var followUpSuggestions: [String] = []
+
+    var lastAIReplyIsTimeline: Bool {
+        guard let last = messages.last(where: { !$0.isFromUser }) else { return false }
+        let t = last.text
+        let weekHits = ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5", "Week 6", "Week 7", "Week 8"]
+            .filter { t.contains($0) }.count
+        let phaseHits = ["Phase 1", "Phase 2", "Phase 3"].filter { t.contains($0) }.count
+        let dayHits = t.contains("Day 1") && (t.contains("Day 7") || t.contains("Day 14") || t.contains("Week 2"))
+        return weekHits >= 2 || phaseHits >= 2 || dayHits
+    }
+
     private var sessionMessageCount = 0
+    private var conversationPersisted = false
 
     // Personalization context injected on the first AI call for procedure-context sessions
     private var userContextNote: String? = nil
@@ -55,10 +72,27 @@ class ChatViewModel {
 
     /// Called from ChatView.onAppear for the plain (no initial message) case.
     func initialize() async {
-        await createNewConversation()
+        async let conv: () = createNewConversation()
+        async let name: () = loadFirstName()
+        await conv
+        await name
+    }
+
+    private func loadFirstName() async {
+        guard firstName.isEmpty else { return }
+        if let profile = try? await profileService.getUserProfile(),
+           let full = profile.fullName, !full.isEmpty {
+            firstName = full.components(separatedBy: " ").first ?? full
+        }
     }
 
     // MARK: - Public Methods
+
+    /// Injects an invisible system context string that is prepended to the first AI call.
+    /// Used by ComparisonChatSheet to pass entry metrics and photo context.
+    func injectComparisonContext(_ text: String) {
+        userContextNote = text
+    }
 
     var isProcedureContextChat: Bool {
         procedureContext != nil
@@ -72,32 +106,143 @@ class ChatViewModel {
         ""
     }
 
+    var hasUserMessages: Bool {
+        messages.contains { $0.isFromUser }
+    }
+
+    // "Planning · Rhinoplasty" or "Recovering · Lip Filler" — nil if no journey data
+    var journeyContextLabel: String? {
+        let name = procedureContext?.name ?? OnboardingStore.pendingProcedureName
+        guard let name, !name.isEmpty else { return nil }
+        let branch = OnboardingStore.pendingBranch ?? "planning"
+        let branchLabel: String
+        switch branch {
+        case "recovering":              branchLabel = "Recovering"
+        case "research", "researching": branchLabel = "Researching"
+        default:                        branchLabel = "Planning"
+        }
+        return "\(branchLabel) · \(name)"
+    }
+
+    // "Day 14 of prep", "Day 3 of recovery", or "12 days until procedure"
+    var journeyDayLabel: String? {
+        guard let date = OnboardingStore.pendingProcedureDate else { return nil }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let procedureDay = calendar.startOfDay(for: date)
+        let days = calendar.dateComponents([.day], from: procedureDay, to: today).day ?? 0
+        let branch = OnboardingStore.pendingBranch ?? "planning"
+        if branch == "recovering" {
+            return "Day \(max(1, days + 1)) of recovery"
+        } else if days < 0 {
+            let n = abs(days)
+            return "\(n) day\(n == 1 ? "" : "s") until procedure"
+        } else {
+            return "Day \(days + 1) of prep"
+        }
+    }
+
     var starterPrompts: [String] {
-        if let procedure = procedureContext {
+        let branch = OnboardingStore.pendingBranch ?? ""
+        let hasProcedure = procedureContext != nil || (OnboardingStore.pendingProcedureName?.isEmpty == false)
+
+        if hasProcedure && branch == "recovering" {
             return [
-                "What should I ask in my \(procedure.name) consultation?",
-                "What is recovery usually like for \(procedure.name)?",
-                "Can you explain the main risks and tradeoffs?"
+                "Is this swelling normal?",
+                "When can I exercise again?",
+                "Bruising timeline",
+                "Scar care tips",
+                "What's normal this week?",
+                "Medications I can take"
+            ]
+        }
+
+        if hasProcedure {
+            return [
+                "What's normal week 1?",
+                "Managing swelling",
+                "Questions for my surgeon",
+                "Pain levels",
+                "Sleep position tips",
+                "Diet & prep tips"
             ]
         }
 
         return [
-            "Help me compare two procedures",
-            "What should I ask at a consultation?",
-            "Can you look at this photo?"
+            "Compare two procedures",
+            "What to ask at consultation?",
+            "Can you look at this photo?",
+            "Recovery timeline",
+            "Risks & tradeoffs",
+            "Find a specialist"
         ]
+    }
+
+    struct MessageGroup: Identifiable {
+        let id: Date
+        let dateLabel: String
+        let messages: [ChatMessage]
+    }
+
+    var groupedMessages: [MessageGroup] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today)!
+        var result: [MessageGroup] = []
+        var currentDay: Date?
+        var currentMessages: [ChatMessage] = []
+        for message in messages {
+            let msgDay = calendar.startOfDay(for: message.createdAt)
+            if msgDay != currentDay {
+                if !currentMessages.isEmpty, let day = currentDay {
+                    result.append(MessageGroup(
+                        id: day,
+                        dateLabel: Self.dayLabel(day, today: today, yesterday: yesterday, calendar: calendar),
+                        messages: currentMessages
+                    ))
+                }
+                currentDay = msgDay
+                currentMessages = [message]
+            } else {
+                currentMessages.append(message)
+            }
+        }
+        if !currentMessages.isEmpty, let day = currentDay {
+            result.append(MessageGroup(
+                id: day,
+                dateLabel: Self.dayLabel(day, today: today, yesterday: yesterday, calendar: calendar),
+                messages: currentMessages
+            ))
+        }
+        return result
+    }
+
+    private static func dayLabel(_ day: Date, today: Date, yesterday: Date, calendar: Calendar) -> String {
+        if calendar.isDate(day, inSameDayAs: today) { return "Today" }
+        if calendar.isDate(day, inSameDayAs: yesterday) { return "Yesterday" }
+        let formatter = DateFormatter()
+        if let weekAgo = calendar.date(byAdding: .day, value: -7, to: today), day > weekAgo {
+            formatter.dateFormat = "EEEE"
+        } else if calendar.component(.year, from: day) == calendar.component(.year, from: today) {
+            formatter.dateFormat = "MMM d"
+        } else {
+            formatter.dateFormat = "MMM d, yyyy"
+        }
+        return formatter.string(from: day)
     }
 
     /// Start a new chat session - clears UI and creates fresh conversation
     func startNewChat() async {
         messages = []
         currentConversation = nil
+        conversationPersisted = false
         errorMessage = nil
         isTyping = false
         quotaExceeded = false
         quotaExceededReason = nil
         procedureContext = nil
         consultationPrepOffered = false
+        followUpSuggestions = []
         userContextNote = nil
         shouldResetModelContext = false
 
@@ -126,6 +271,9 @@ class ChatViewModel {
         if let profile = await profileFetch {
             let context = buildUserContext(profile: profile, insight: recentInsight, procedure: procedure)
             userContextNote = context.isEmpty ? nil : context
+            if firstName.isEmpty, let full = profile.fullName, !full.isEmpty {
+                firstName = full.components(separatedBy: " ").first ?? full
+            }
         }
 
         await createNewConversation(title: procedure.name)
@@ -156,6 +304,7 @@ class ChatViewModel {
         do {
             if let conversation = try await databaseService.getConversation(id: conversationId) {
                 currentConversation = conversation
+                conversationPersisted = true
                 await loadMessages(for: conversationId)
             } else {
                 await createNewConversation()
@@ -183,6 +332,17 @@ class ChatViewModel {
         guard let userId = supabase.auth.currentUser?.id else {
             errorMessage = "User not authenticated"
             return
+        }
+
+        // Persist the conversation on the first real user message (lazy creation)
+        if !conversationPersisted, let conv = currentConversation {
+            do {
+                let persisted = try await databaseService.persistConversation(conv)
+                currentConversation = persisted
+                conversationPersisted = true
+            } catch {
+                print("Failed to persist conversation: \(error)")
+            }
         }
 
         let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -261,8 +421,9 @@ class ChatViewModel {
             return
         }
 
-        // Clear error state
+        // Clear error state and stale follow-ups
         errorMessage = nil
+        followUpSuggestions = []
 
         // Show typing indicator (stays visible until first streaming delta arrives)
         isTyping = true
@@ -344,12 +505,26 @@ class ChatViewModel {
                 messages.append(finalMessage)
             }
 
-            // Save AI message to database
+            // Derive follow-up chips from the reply
+            self.followUpSuggestions = deriveFollowUpChips(from: response.reply)
+
+            // Save AI message and update conversation preview for history list
+            let previewText = String(response.reply.prefix(120))
+                .components(separatedBy: .newlines).joined(separator: " ")
+                .trimmingCharacters(in: .whitespaces)
+            let totalMessages = messages.count
             Task {
                 do {
                     _ = try await databaseService.saveMessage(finalMessage)
                 } catch {
                     print("Failed to save AI message: \(error)")
+                }
+                if var conv = currentConversation {
+                    var meta = conv.metadata ?? [:]
+                    meta["last_preview"] = AnyCodable(previewText)
+                    meta["message_count"] = AnyCodable(totalMessages)
+                    conv.metadata = meta
+                    try? await databaseService.updateConversation(conv)
                 }
             }
 
@@ -441,6 +616,7 @@ class ChatViewModel {
             if let latestConversation = conversations.first {
                 // Load existing conversation
                 currentConversation = latestConversation
+                conversationPersisted = true
                 await loadMessages(for: latestConversation.id)
             } else {
                 // Create new conversation
@@ -453,18 +629,15 @@ class ChatViewModel {
         }
     }
 
-    /// Create a new conversation session
+    /// Create a new conversation session (local only — persisted on first real user message)
     private func createNewConversation(title: String = "New Chat") async {
-        do {
-            let conversation = try await databaseService.createConversation(title: title)
-            currentConversation = conversation
-
-            // Add initial greeting
-            await addInitialGreeting()
-        } catch {
-            print("Failed to create conversation: \(error)")
+        guard let userId = supabase.auth.currentUser?.id else {
             errorMessage = "Failed to create conversation"
+            return
         }
+        currentConversation = ChatConversation(userId: userId, title: title)
+        conversationPersisted = false
+        await addInitialGreeting()
     }
 
     /// Load messages for a conversation
@@ -505,14 +678,8 @@ class ChatViewModel {
             createdAt: Date()
         )
         messages.append(greeting)
-
-        Task {
-            do {
-                _ = try await databaseService.saveMessage(greeting)
-            } catch {
-                print("Failed to save greeting: \(error)")
-            }
-        }
+        // Greeting is local-only — saved to DB only after the conversation is persisted
+        // (which happens when the user sends their first real message)
     }
 
     /// After a procedure-context AI response, check if we should offer the Consultation Prep Flow
@@ -561,6 +728,48 @@ class ChatViewModel {
         Do not list or echo this back; just let it inform your response naturally.]
         \(details.joined(separator: "\n"))
         """
+    }
+
+    private func deriveFollowUpChips(from replyText: String) -> [String] {
+        let text = replyText.lowercased()
+        if text.contains("swelling") || text.contains("swell") {
+            return ["How long will swelling last?", "What reduces swelling?", "When should I be worried?"]
+        }
+        if text.contains("bruising") || text.contains("bruise") {
+            return ["Normal bruising timeline?", "What speeds healing?", "Ice vs heat?"]
+        }
+        if text.contains("scar") || text.contains("incision") {
+            return ["Best scar treatments?", "When does it fade?", "Sun protection tips"]
+        }
+        if text.contains("pain") || text.contains("discomfort") {
+            return ["What pain is normal?", "Pain management tips", "When does it get better?"]
+        }
+        if text.contains("exercise") || text.contains("workout") || text.contains("activity") {
+            return ["When can I walk normally?", "Light activity timeline", "What should I avoid?"]
+        }
+        if text.contains("sleep") || text.contains("position") || text.contains("pillow") {
+            return ["Best sleep position?", "How long to elevate?", "Pillow recommendations?"]
+        }
+        if text.contains("diet") || text.contains("food") || text.contains("eat") || text.contains("drink") {
+            return ["Foods that speed healing?", "What to avoid?", "Staying hydrated"]
+        }
+        if text.contains("medication") || text.contains("medicine") || text.contains("pill") {
+            return ["Can I take ibuprofen?", "Medications to avoid", "Pain relief options"]
+        }
+        if text.contains("consult") || text.contains("surgeon") || text.contains("appointment") {
+            return ["Questions to ask my surgeon", "What to bring?", "How to prepare?"]
+        }
+        if text.contains("anesthesia") || text.contains("anesthetic") || text.contains("sedation") {
+            return ["Types of anesthesia?", "Anesthesia risks", "Recovery from anesthesia"]
+        }
+        if text.contains("timeline") || text.contains("week") || text.contains("month") {
+            return ["Full recovery timeline?", "Week-by-week breakdown", "What to expect next?"]
+        }
+        let branch = OnboardingStore.pendingBranch ?? "planning"
+        if branch == "recovering" {
+            return ["Is this normal?", "Recovery tips", "Call my surgeon?"]
+        }
+        return ["Tell me more", "What should I expect?", "Questions to ask?"]
     }
 
     private func callAIFunction(

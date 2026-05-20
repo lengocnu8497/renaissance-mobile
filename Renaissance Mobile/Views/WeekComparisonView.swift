@@ -23,13 +23,15 @@ struct WeekComparisonView: View {
     @State private var showRightPicker = false
     @State private var isLoadingLeft = false
     @State private var isLoadingRight = false
+    @State private var showComparisonChat = false
 
-    private let gradA  = Color(hex: "#6B3346")
-    private let gradB  = Color(hex: "#B76E79")
-    private let accent = Color(hex: "#C4929A")
-    private let textHi = Color(hex: "#3D2B2E")
-    private let textLo = Color(hex: "#B8A9AB")
-    private let bg     = Color(hex: "#FFF8F6")
+    private let primary = Color(hex: "#6C63FF")
+    private let ink     = Color(hex: "#2D2575")
+    private let muted   = Color(hex: "#7B6FC0")
+    private let pale    = Color(hex: "#9C93C8")
+    private let soft    = Color(hex: "#EAE7FF")
+    private let line    = Color(hex: "#D4CCFF")
+    private let bg      = Color(hex: "#F8F8FF")
 
     // Only entries that have photos are meaningful for visual comparison;
     // fall back to all entries so the picker always has options.
@@ -61,11 +63,28 @@ struct WeekComparisonView: View {
                             .padding(.horizontal, 18)
                             .padding(.top, 14)
                     }
+
+                    // Ask Rena — only when both entries are selected
+                    if let left = leftEntry, let right = rightEntry {
+                        askRenaButton(left: left, right: right)
+                            .padding(.horizontal, 18)
+                            .padding(.top, 16)
+                    }
                 } else {
                     emptyState
                 }
 
                 Spacer()
+            }
+        }
+        .sheet(isPresented: $showComparisonChat) {
+            if let left = leftEntry, let right = rightEntry {
+                ComparisonChatSheet(
+                    leftEntry: left,
+                    rightEntry: right,
+                    leftImage: leftImage,
+                    rightImage: rightImage
+                )
             }
         }
     }
@@ -75,8 +94,8 @@ struct WeekComparisonView: View {
     private var headerBar: some View {
         ZStack {
             Text("Recovery Compare")
-                .font(.system(size: 18, weight: .medium, design: .serif))
-                .foregroundColor(textHi)
+                .font(.custom("PlusJakartaSans-SemiBold", size: 18))
+                .foregroundColor(ink)
                 .frame(maxWidth: .infinity, alignment: .center)
 
             HStack {
@@ -84,11 +103,11 @@ struct WeekComparisonView: View {
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(textHi)
+                        .foregroundColor(ink)
                         .frame(width: 32, height: 32)
-                        .background(Color.white.opacity(0.7))
+                        .background(Color.white.opacity(0.85))
                         .clipShape(Circle())
-                        .overlay(Circle().stroke(accent.opacity(0.2), lineWidth: 1))
+                        .overlay(Circle().stroke(line.opacity(0.5), lineWidth: 1))
                 }
             }
             .padding(.horizontal, 24)
@@ -110,7 +129,7 @@ struct WeekComparisonView: View {
 
             Image(systemName: "arrow.left.and.right")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(accent)
+                .foregroundColor(pale)
 
             entryPickerButton(
                 label: rightEntry.map { entryLabel($0) } ?? "After",
@@ -145,30 +164,30 @@ struct WeekComparisonView: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 if isLoading {
-                    ProgressView().scaleEffect(0.8).tint(accent)
+                    ProgressView().scaleEffect(0.8).tint(primary)
                 } else {
                     Image(systemName: placeholder ? "plus.circle" : "calendar")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(placeholder ? accent : gradA)
+                        .foregroundColor(placeholder ? pale : primary)
                 }
                 Text(label)
-                    .font(.custom(placeholder ? "Outfit-Regular" : "Outfit-SemiBold", size: 13))
-                    .foregroundColor(placeholder ? textLo : textHi)
+                    .font(.custom(placeholder ? "PlusJakartaSans-Regular" : "PlusJakartaSans-SemiBold", size: 13))
+                    .foregroundColor(placeholder ? pale : ink)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(accent)
+                    .foregroundColor(pale)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
             .background(Color.white)
             .cornerRadius(12)
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(
-                placeholder ? accent.opacity(0.18) : gradB.opacity(0.3),
+                placeholder ? line.opacity(0.5) : primary.opacity(0.25),
                 lineWidth: 1
             ))
-            .shadow(color: Color(hex: "#8E4C5C").opacity(0.06), radius: 6, x: 0, y: 2)
+            .shadow(color: primary.opacity(0.06), radius: 6, x: 0, y: 2)
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
@@ -204,10 +223,6 @@ struct WeekComparisonView: View {
                 // Drag handle
                 dragHandle
                     .offset(x: width * sliderFraction - 20)
-
-                // Labels
-                labelPill("BEFORE", position: .leading, sliderFraction: sliderFraction, width: width)
-                labelPill("AFTER",  position: .trailing, sliderFraction: sliderFraction, width: width)
             }
             .cornerRadius(16)
             .gesture(
@@ -220,7 +235,7 @@ struct WeekComparisonView: View {
             )
         }
         .frame(height: 340)
-        .shadow(color: Color(hex: "#8E4C5C").opacity(0.12), radius: 12, x: 0, y: 6)
+        .shadow(color: primary.opacity(0.10), radius: 12, x: 0, y: 6)
     }
 
     @ViewBuilder
@@ -231,19 +246,19 @@ struct WeekComparisonView: View {
                 .scaledToFill()
         } else if isLoading {
             ZStack {
-                Color(hex: "#F5E8EE")
-                ProgressView().tint(accent)
+                soft
+                ProgressView().tint(primary)
             }
         } else {
             ZStack {
-                Color(hex: "#F5E8EE")
+                soft
                 VStack(spacing: 8) {
                     Image(systemName: "photo")
                         .font(.system(size: 32, weight: .light))
-                        .foregroundColor(accent.opacity(0.5))
+                        .foregroundColor(pale.opacity(0.6))
                     Text(label)
-                        .font(.custom("Outfit-Regular", size: 12))
-                        .foregroundColor(textLo)
+                        .font(.custom("PlusJakartaSans-Regular", size: 12))
+                        .foregroundColor(pale)
                 }
             }
         }
@@ -254,7 +269,7 @@ struct WeekComparisonView: View {
             Circle()
                 .fill(.white)
                 .frame(width: 40, height: 40)
-                .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 2)
+                .shadow(color: primary.opacity(0.18), radius: 8, x: 0, y: 2)
 
             HStack(spacing: 3) {
                 Image(systemName: "chevron.left")
@@ -262,48 +277,31 @@ struct WeekComparisonView: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 9, weight: .bold))
             }
-            .foregroundColor(gradA)
+            .foregroundColor(primary)
         }
-        .offset(y: 0)
         .frame(width: 40, height: 40)
         .scaleEffect(isDragging ? 1.12 : 1.0)
         .animation(.spring(duration: 0.2), value: isDragging)
-    }
-
-    private func labelPill(_ text: String, position: HorizontalAlignment, sliderFraction: CGFloat, width: CGFloat) -> some View {
-        let show = position == .leading ? sliderFraction > 0.15 : sliderFraction < 0.85
-        return Text(text)
-            .font(.custom("Outfit-SemiBold", size: 9))
-            .kerning(0.8)
-            .foregroundColor(.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.black.opacity(0.30))
-            .clipShape(Capsule())
-            .frame(maxWidth: .infinity, alignment: position == .leading ? .leading : .trailing)
-            .padding(position == .leading ? .leading : .trailing, 10)
-            .padding(.top, 12)
-            .opacity(show ? 1 : 0)
     }
 
     // MARK: - Stats Row
 
     private var statsRow: some View {
         HStack(spacing: 0) {
-            if let entry = leftEntry { entryStatCard(entry, tint: gradA) }
+            if let entry = leftEntry { entryStatCard(entry, tint: primary) }
             Spacer()
-            if let entry = rightEntry { entryStatCard(entry, tint: gradB) }
+            if let entry = rightEntry { entryStatCard(entry, tint: muted) }
         }
     }
 
     private func entryStatCard(_ entry: JournalEntry, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(entry.dayLabel)
-                .font(.custom("Outfit-SemiBold", size: 12))
+                .font(.custom("PlusJakartaSans-SemiBold", size: 12))
                 .foregroundColor(tint)
             Text(shortDate(entry.entryDateAsDate))
-                .font(.custom("Outfit-Regular", size: 11))
-                .foregroundColor(textLo)
+                .font(.custom("PlusJakartaSans-Regular", size: 11))
+                .foregroundColor(pale)
             if entry.hasRecoveryMetrics {
                 HStack(spacing: 6) {
                     metricDot("S", value: entry.swellingInt, tint: tint)
@@ -317,17 +315,44 @@ struct WeekComparisonView: View {
         .background(Color.white)
         .cornerRadius(12)
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(tint.opacity(0.18), lineWidth: 1))
+        .shadow(color: primary.opacity(0.05), radius: 6, x: 0, y: 2)
     }
 
     private func metricDot(_ letter: String, value: Int, tint: Color) -> some View {
         HStack(spacing: 3) {
             Text(letter)
-                .font(.custom("Outfit-Regular", size: 9))
-                .foregroundColor(textLo)
+                .font(.custom("PlusJakartaSans-Regular", size: 9))
+                .foregroundColor(pale)
             Text("\(value)")
-                .font(.custom("Outfit-SemiBold", size: 11))
+                .font(.custom("PlusJakartaSans-SemiBold", size: 11))
                 .foregroundColor(tint)
         }
+    }
+
+    // MARK: - Ask Rena Button
+
+    private func askRenaButton(left: JournalEntry, right: JournalEntry) -> some View {
+        Button { showComparisonChat = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Ask Rena about this comparison")
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 13)
+            .background(
+                LinearGradient(
+                    colors: [primary, Color(hex: "#8B83FF")],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(14)
+            .shadow(color: primary.opacity(0.28), radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Empty State
@@ -337,10 +362,10 @@ struct WeekComparisonView: View {
             Spacer().frame(height: 40)
             Image(systemName: "photo.stack")
                 .font(.system(size: 40, weight: .light))
-                .foregroundColor(accent.opacity(0.4))
+                .foregroundColor(pale.opacity(0.5))
             Text("Pick two entries above to compare your healing progress side by side.")
-                .font(.custom("Outfit-Regular", size: 14))
-                .foregroundColor(textLo)
+                .font(.custom("PlusJakartaSans-Regular", size: 14))
+                .foregroundColor(pale)
                 .multilineTextAlignment(.center)
                 .lineSpacing(4)
                 .padding(.horizontal, 36)

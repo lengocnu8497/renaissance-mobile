@@ -8,14 +8,14 @@
 import SwiftUI
 
 private enum PLV {
-    static let text = Color(hex: "#1F261D")
-    static let muted = Color(hex: "#687064")
-    static let primary = Color(hex: "#516048")
-    static let primaryInk = Color(hex: "#314030")
-    static let lightGlass = Color.white.opacity(0.78)
-    static let lightGlassStrong = Color(hex: "#FBFCF8").opacity(0.94)
-    static let stroke = Color.white.opacity(0.72)
-    static let shadow = Color(red: 90/255, green: 103/255, blue: 80/255).opacity(0.10)
+    static let bg          = Color(hex: "#EEEEFF")
+    static let surface     = Color(hex: "#FAFAFF")
+    static let text        = Color(hex: "#1E1B4B")
+    static let muted       = Color(hex: "#7B6FC0")
+    static let primary     = Color(hex: "#6C63FF")
+    static let primaryInk  = Color(hex: "#2D2575")
+    static let navBtn      = Color(hex: "#EEEEFF")
+    static let shadow      = Color(hex: "#6C63FF").opacity(0.08)
 }
 
 struct ProceduresListView: View {
@@ -57,11 +57,12 @@ struct ProceduresListView: View {
 
     var body: some View {
         ZStack {
-            Theme.Colors.backgroundProcedures
+            PLV.bg
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 header
+                searchBar
                 filterChips
                 proceduresList
                 Spacer()
@@ -89,7 +90,7 @@ struct ProceduresListView: View {
 
     // MARK: - Subviews
     private var header: some View {
-        HStack {
+        HStack(spacing: 0) {
             Button(action: {
                 if let onBackButtonTapped = onBackButtonTapped {
                     onBackButtonTapped()
@@ -97,32 +98,49 @@ struct ProceduresListView: View {
                     dismiss()
                 }
             }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 16, weight: .semibold))
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(PLV.primaryInk)
-                    .frame(width: 44, height: 44)
-                    .background(PLV.lightGlass, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(PLV.stroke, lineWidth: 1)
-                    )
+                    .frame(width: 36, height: 36)
+                    .background(Color.white, in: Circle())
+                    .shadow(color: PLV.shadow, radius: 8, x: 0, y: 2)
             }
             .buttonStyle(.plain)
 
             Spacer()
 
-            Text("Explore Procedures")
-                .font(.custom("Manrope", size: 26))
-                .fontWeight(.heavy)
-                .foregroundColor(PLV.text)
+            VStack(spacing: 1) {
+                Text("Explore Procedures")
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 15))
+                    .foregroundColor(PLV.text)
+            }
 
             Spacer()
 
-            Color.clear.frame(width: 44, height: 44)
+            Color.clear.frame(width: 36, height: 36)
         }
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.top, Theme.Spacing.sm)
-        .padding(.bottom, Theme.Spacing.sm)
+        .padding(.horizontal, 18)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(PLV.muted)
+
+            TextField("Search procedures...", text: $searchText)
+                .font(.custom("PlusJakartaSans-Regular", size: 14))
+                .foregroundColor(PLV.text)
+                .tint(PLV.primary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(PLV.navBtn)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 18)
+        .padding(.bottom, 12)
     }
 
     private var filterChips: some View {
@@ -147,7 +165,7 @@ struct ProceduresListView: View {
                 VStack {
                     Spacer()
                     ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: Theme.Colors.textProceduresPrimary))
+                        .progressViewStyle(CircularProgressViewStyle(tint: PLV.primary))
                     Spacer()
                 }
             } else if let error = viewModel.errorMessage {
@@ -155,10 +173,10 @@ struct ProceduresListView: View {
                     Spacer()
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 32))
-                        .foregroundColor(Theme.Colors.textProceduresSubtle)
+                        .foregroundColor(PLV.muted)
                     Text(error)
                         .font(.system(size: 15))
-                        .foregroundColor(Theme.Colors.textProceduresSubtle)
+                        .foregroundColor(PLV.muted)
                         .multilineTextAlignment(.center)
                     Spacer()
                 }
@@ -168,10 +186,10 @@ struct ProceduresListView: View {
                     Spacer()
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 32))
-                        .foregroundColor(Theme.Colors.textProceduresSubtle)
+                        .foregroundColor(PLV.muted)
                     Text(searchText.isEmpty ? "No procedures in this category yet." : "No results for \"\(searchText)\"")
                         .font(.system(size: 15))
-                        .foregroundColor(Theme.Colors.textProceduresSubtle)
+                        .foregroundColor(PLV.muted)
                         .multilineTextAlignment(.center)
                     Spacer()
                 }
@@ -208,20 +226,20 @@ struct ProceduresListView: View {
             Button {
                 onNavigateToChat?("I'd like help exploring procedures and finding the right treatment for me.", nil)
             } label: {
-                HStack(spacing: Theme.Spacing.md) {
+                HStack(spacing: 10) {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                     Text("Chat with a Concierge")
-                        .font(.custom("PlusJakartaSans-SemiBold", size: 15))
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 14))
                 }
                 .foregroundColor(.white)
-                .padding(.horizontal, Theme.Spacing.xl)
-                .padding(.vertical, Theme.Spacing.lg)
+                .padding(.horizontal, 22)
+                .padding(.vertical, 14)
                 .background(PLV.primary)
-                .cornerRadius(28)
-                .shadow(color: PLV.shadow, radius: 14, x: 0, y: 8)
+                .clipShape(Capsule())
+                .shadow(color: Color(hex: "#6C63FF").opacity(0.35), radius: 10, x: 0, y: 4)
             }
-            .padding(.bottom, 24)
+            .padding(.bottom, 28)
         }
     }
 

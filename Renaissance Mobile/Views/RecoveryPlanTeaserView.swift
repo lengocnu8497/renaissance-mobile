@@ -6,20 +6,20 @@
 import SwiftUI
 
 private enum RecoveryPlanTeaserUI {
-    static let shell = Color(hex: "#EEF1E8")
-    static let bg = Color(hex: "#F6F7F2")
-    static let card = Color.white.opacity(0.88)
-    static let cardSoft = Color(hex: "#EDF1E8")
-    static let current = Color(hex: "#F1DDDA")
-    static let line = Color.black.opacity(0.06)
-    static let text = Color(hex: "#1F261D")
-    static let muted = Color(hex: "#687064")
-    static let primary = Color(hex: "#516048")
-    static let primaryInk = Color(hex: "#314030")
-    static let primarySoft = Color(hex: "#D9E3CE")
-    static let rose = Color(hex: "#B07B7A")
-    static let roseDeep = Color(hex: "#976769")
-    static let shadow = Color(red: 90/255, green: 103/255, blue: 80/255).opacity(0.10)
+    static let shell = Color(hex: "#EEEEFF")
+    static let bg = Color(hex: "#F4F3FF")
+    static let card = Color.white
+    static let cardSoft = Color(hex: "#EAE7FF")
+    static let current = Color(hex: "#EAE7FF")
+    static let line = Color(hex: "#D4CCFF").opacity(0.5)
+    static let text = Color(hex: "#2D2575")
+    static let muted = Color(hex: "#7B6FC0")
+    static let primary = Color(hex: "#6C63FF")
+    static let primaryInk = Color(hex: "#2D2575")
+    static let primarySoft = Color(hex: "#EAE7FF")
+    static let rose = Color(hex: "#9B95E0")
+    static let roseDeep = Color(hex: "#6C63FF")
+    static let shadow = Color(hex: "#6C63FF").opacity(0.09)
 }
 
 struct RecoveryPlanTeaserView: View {
@@ -85,13 +85,14 @@ struct RecoveryPlanTeaserView: View {
         guard !hasNotifiedPlanReady else { return }
 
         hasNotifiedPlanReady = true
+        Analytics.recoveryPlanViewed()
         onPlanReady?()
     }
 
     private var background: some View {
         ZStack {
             LinearGradient(
-                colors: [Color(hex: "#F8FAF4"), RecoveryPlanTeaserUI.bg],
+                colors: [Color(hex: "#F8F8FF"), RecoveryPlanTeaserUI.bg],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -300,7 +301,10 @@ struct RecoveryPlanTeaserView: View {
             )
             .frame(height: 24)
 
-            Button(action: onUnlock) {
+            Button {
+                Analytics.recoveryPlanUnlockTapped()
+                onUnlock()
+            } label: {
                 Text("Unlock My Full Recovery Plan")
                     .font(.custom("Manrope", size: 16).weight(.semibold))
                     .foregroundStyle(Color.white)
@@ -341,7 +345,7 @@ struct RecoveryPlanTeaserView: View {
 
     private func roadmapNode(isCurrent: Bool) -> some View {
         Circle()
-            .fill(isCurrent ? RecoveryPlanTeaserUI.rose : Color(hex: "#D9DED5"))
+            .fill(isCurrent ? RecoveryPlanTeaserUI.primary : Color(hex: "#C8C3F0"))
             .frame(width: isCurrent ? 18 : 16, height: isCurrent ? 18 : 16)
             .overlay(
                 Circle()

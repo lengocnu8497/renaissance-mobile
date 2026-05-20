@@ -25,20 +25,17 @@ enum RecoveryPlanServiceError: LocalizedError {
 final class RecoveryPlanService {
     private let profileService: UserProfileService
     private let timelineResolver: RecoveryPlanTimelineResolver
-    private let copyService: any RecoveryPlanCopyGenerating
     private let calendar: Calendar
     private let planVersion: Int
 
     init(
         profileService: UserProfileService? = nil,
         timelineResolver: RecoveryPlanTimelineResolver? = nil,
-        copyService: (any RecoveryPlanCopyGenerating)? = nil,
         calendar: Calendar = .current,
         planVersion: Int = 1
     ) {
         self.profileService = profileService ?? UserProfileService(supabase: supabase)
         self.timelineResolver = timelineResolver ?? RecoveryPlanTimelineResolver(calendar: calendar)
-        self.copyService = copyService ?? RecoveryPlanCopyService()
         self.calendar = calendar
         self.planVersion = planVersion
     }
@@ -88,8 +85,7 @@ final class RecoveryPlanService {
             let generatedPhase = await makePlanPhase(
                 from: phase,
                 input: context.input,
-                journalSignals: context.input.latestJournalSignals,
-                allowAIGeneration: context.hasAICopyAccess
+                journalSignals: context.input.latestJournalSignals
             )
             phases.append(generatedPhase)
         }
@@ -171,8 +167,7 @@ final class RecoveryPlanService {
             procedureId: procedureContext.id,
             procedureDate: procedureDate,
             timeline: timeline,
-            input: input,
-            hasAICopyAccess: hasAICopyAccess(profile: profile)
+            input: input
         )
     }
 
@@ -252,28 +247,18 @@ final class RecoveryPlanService {
     private func makePlanPhase(
         from timelinePhase: RecoveryPlanTimelinePhase,
         input: RecoveryPlanInput,
-        journalSignals: RecoveryPlanJournalSignals?,
-        allowAIGeneration: Bool
+        journalSignals: RecoveryPlanJournalSignals?
     ) async -> RecoveryPlanPhase {
-        let fallbackSummary = makePhaseSummary(
+        let summary = makePhaseSummary(
             timelinePhase: timelinePhase,
             input: input,
             journalSignals: journalSignals
         )
-        let fallbackFocusAreas = makeFocusAreas(
+        let focusAreas = makeFocusAreas(
             for: timelinePhase,
             input: input,
             journalSignals: journalSignals
         )
-
-        let aiGeneratedCopy = await aiGeneratedCopyIfAvailable(
-            for: timelinePhase,
-            input: input,
-            journalSignals: journalSignals,
-            allowAIGeneration: allowAIGeneration
-        )
-        let summary = aiGeneratedCopy?.summary ?? fallbackSummary
-        let focusAreas = aiGeneratedCopy?.focusAreas ?? fallbackFocusAreas
 
         return RecoveryPlanPhase(
             id: timelinePhase.id,
@@ -289,38 +274,6 @@ final class RecoveryPlanService {
             watchFors: makeWatchFors(for: timelinePhase, input: input, journalSignals: journalSignals),
             encouragement: makeEncouragement(for: timelinePhase, input: input)
         )
-    }
-
-    private func aiGeneratedCopyIfAvailable(
-        for timelinePhase: RecoveryPlanTimelinePhase,
-        input: RecoveryPlanInput,
-        journalSignals: RecoveryPlanJournalSignals?,
-        allowAIGeneration: Bool
-    ) async -> RecoveryPlanGeneratedCopy? {
-        guard FeatureFlags.useAIRecoveryPlanCopy else { return nil }
-        guard allowAIGeneration else { return nil }
-        guard timelinePhase.status == .current else { return nil }
-
-        do {
-            let generatedCopy = try await copyService.generateCopy(
-                input: input,
-                timelinePhase: timelinePhase,
-                journalSignals: journalSignals
-            )
-            print("RecoveryPlanService: using AI-generated copy for phase \(timelinePhase.id)")
-            return generatedCopy
-        } catch {
-            print("RecoveryPlanService: falling back to deterministic copy for phase \(timelinePhase.id): \(error.localizedDescription)")
-            return nil
-        }
-    }
-
-    private func hasAICopyAccess(profile: UserProfile?) -> Bool {
-        if SubscriptionStore.shared.hasActiveSubscription {
-            return true
-        }
-
-        return SubscriptionAccessEvaluator.hasBackendPremiumAccess(profile)
     }
 
     private func makeFallbackPhase(for input: RecoveryPlanInput) -> RecoveryPlanPhase {
@@ -358,23 +311,7 @@ final class RecoveryPlanService {
         input: RecoveryPlanInput,
         journalSignals: RecoveryPlanJournalSignals?
     ) -> String {
-        var fragments = [timelinePhase.summary]
-
-        if timelinePhase.status == .current {
-            fragments = [
-                currentPhaseOpening(for: input),
-                currentPhaseGoalLine(for: input),
-                currentPhaseContextLine(for: input)
-            ].compactMap { $0 }
-
-            fragments.append("This section is anchored to week \(input.currentWeek), so the plan moves forward from today instead of starting over.")
-        }
-
-        if let journalSignals, let headline = journalSignals.weeklySummaryHeadline, timelinePhase.status == .current {
-            fragments.append("Your recent journal trend points to: \(headline).")
-        }
-
-        return fragments.joined(separator: " ")
+        timelinePhase.summary
     }
 
     private func makeExpectations(
@@ -835,7 +772,6 @@ private struct ResolvedRecoveryPlanContext {
     let procedureDate: Date
     let timeline: RecoveryPlanTimeline
     let input: RecoveryPlanInput
-    let hasAICopyAccess: Bool
 }
 
 private struct ProcedureContext {

@@ -9,19 +9,19 @@
 import SwiftUI
 
 private enum RC {
-    static let shell = Color(hex: "#EEF1E8")
-    static let bg = Color(hex: "#F6F7F2")
-    static let surface = Color(hex: "#FBFCF8")
-    static let card = Color(hex: "#EDF1E8")
-    static let cardStrong = Color(hex: "#E1E7DA")
-    static let text = Color(hex: "#1F261D")
-    static let muted = Color(hex: "#687064")
-    static let primary = Color(hex: "#516048")
-    static let primaryInk = Color(hex: "#314030")
-    static let primarySoft = Color(hex: "#D9E3CE")
-    static let roseSoft = Color(hex: "#F1DDDA")
-    static let shadow = Color(red: 90/255, green: 103/255, blue: 80/255).opacity(0.10)
-    static let border = Color.black.opacity(0.05)
+    static let shell      = Color(hex: "#EEEEFF")
+    static let bg         = Color(hex: "#EEEEFF")
+    static let surface    = Color.white
+    static let card       = Color(hex: "#F0EEFF")
+    static let cardStrong = Color(hex: "#E8E5FF")
+    static let text       = Color(hex: "#1E1B4B")
+    static let muted      = Color(hex: "#7B6FC0")
+    static let primary    = Color(hex: "#6C63FF")
+    static let primaryInk = Color(hex: "#2D2575")
+    static let primarySoft = Color(hex: "#EAE7FF")
+    static let roseSoft   = Color(hex: "#E0DBFF")
+    static let shadow     = Color(hex: "#6C63FF").opacity(0.08)
+    static let border     = Color(hex: "#6C63FF").opacity(0.10)
 }
 
 private enum ResearchProcedureImageResolver {
@@ -68,18 +68,11 @@ private struct ResearchDetailNavBar: View {
         ZStack {
             HStack {
                 Button(action: onBack) {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.white.opacity(0.96))
-                        .frame(width: 42, height: 42)
-                        .overlay(
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(RC.primaryInk)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(RC.border, lineWidth: 1)
-                        )
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(RC.primaryInk)
+                        .frame(width: 36, height: 36)
+                        .background(Color.white, in: Circle())
                         .shadow(color: RC.shadow, radius: 8, x: 0, y: 2)
                 }
                 .buttonStyle(.plain)
@@ -87,18 +80,11 @@ private struct ResearchDetailNavBar: View {
                 Spacer()
 
                 Button(action: onExport) {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.white.opacity(0.96))
-                        .frame(width: 42, height: 42)
-                        .overlay(
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(RC.primaryInk)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(RC.border, lineWidth: 1)
-                        )
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(RC.primaryInk)
+                        .frame(width: 36, height: 36)
+                        .background(Color.white, in: Circle())
                         .shadow(color: RC.shadow, radius: 8, x: 0, y: 2)
                 }
                 .buttonStyle(.plain)
@@ -210,8 +196,6 @@ struct ResearchTabView: View {
     @State private var selectedProcedure: Procedure?
     @State private var showExploreSheet = false
     @State private var selectedSavedForDetail: SavedProcedure?
-    @State private var recentSessions: [ChatConversation] = []
-    @State private var loadingRecentSessions = false
     var onNavigateToChat: ((String, Procedure?, UUID?) -> Void)?
     var onReopenConversation: ((UUID) -> Void)?
 
@@ -267,15 +251,11 @@ struct ResearchTabView: View {
             }
             .onChange(of: showExploreSheet) { _, isPresented in
                 guard !isPresented else { return }
-                Task {
-                    await viewModel.load()
-                    await loadRecentSessions()
-                }
+                Task { await viewModel.load() }
             }
             .task {
                 await viewModel.load()
                 await proceduresViewModel.fetchProcedures()
-                await loadRecentSessions()
             }
         }
     }
@@ -341,8 +321,6 @@ struct ResearchTabView: View {
                 savedResearchSection
 
                 consultationPrepSection
-
-                researchSessionsSection
             }
             .padding(.horizontal, 18)
             .padding(.bottom, 100)
@@ -639,112 +617,6 @@ struct ResearchTabView: View {
         }
     }
 
-    private var researchSessionsSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Research Sessions")
-                        .font(.custom("PlusJakartaSans-SemiBold", size: 10))
-                        .tracking(2.1)
-                        .foregroundColor(RC.muted)
-                        .textCase(.uppercase)
-                    Text("Continue where you left off")
-                        .font(.custom("Manrope", size: 24))
-                        .fontWeight(.bold)
-                        .foregroundColor(RC.text)
-                }
-                Spacer()
-                if loadingRecentSessions {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                        .tint(RC.primary)
-                } else {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(RC.primary)
-                }
-            }
-
-            if recentSessions.isEmpty && !loadingRecentSessions {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Your future research chats will live here.")
-                        .font(.custom("PlusJakartaSans-SemiBold", size: 14))
-                        .foregroundColor(RC.primaryInk)
-                    Text("Ask Rena about a procedure, then come back here to quickly resume your research without starting over.")
-                        .font(.custom("PlusJakartaSans-Regular", size: 13))
-                        .foregroundColor(RC.muted)
-                        .lineSpacing(3)
-
-                    HStack(alignment: .top, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Example session")
-                                .font(.custom("PlusJakartaSans-SemiBold", size: 14))
-                                .foregroundColor(RC.text)
-                            Text("Rhinoplasty consultation prep • resume later")
-                                .font(.custom("PlusJakartaSans-Regular", size: 11))
-                                .foregroundColor(RC.muted)
-                        }
-                        Spacer()
-                        Text("Resume")
-                            .font(.custom("PlusJakartaSans-SemiBold", size: 11))
-                            .foregroundColor(RC.primaryInk)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Color.white)
-                            .clipShape(Capsule())
-                    }
-                    .padding(16)
-                    .background(Color.white)
-                    .cornerRadius(22)
-                    .overlay(RoundedRectangle(cornerRadius: 22).stroke(RC.border, lineWidth: 1))
-                }
-                .padding(18)
-                .background(RC.cardStrong)
-                .cornerRadius(28)
-                .overlay(RoundedRectangle(cornerRadius: 28).stroke(RC.border, lineWidth: 1))
-            } else {
-                VStack(spacing: 10) {
-                    ForEach(recentSessions.prefix(3)) { conversation in
-                        Button {
-                            onReopenConversation?(conversation.id)
-                        } label: {
-                            HStack(alignment: .top, spacing: 12) {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(conversation.title ?? "Research session")
-                                        .font(.custom("PlusJakartaSans-SemiBold", size: 14))
-                                        .foregroundColor(RC.text)
-                                        .lineLimit(2)
-                                    Text(sessionSubtitle(for: conversation))
-                                        .font(.custom("PlusJakartaSans-Regular", size: 11))
-                                        .foregroundColor(RC.muted)
-                                }
-                                Spacer()
-                                Text("Resume")
-                                    .font(.custom("PlusJakartaSans-SemiBold", size: 11))
-                                    .foregroundColor(RC.primaryInk)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .background(RC.card)
-                                    .clipShape(Capsule())
-                            }
-                            .padding(16)
-                            .background(Color.white)
-                            .cornerRadius(22)
-                            .overlay(RoundedRectangle(cornerRadius: 22).stroke(RC.border, lineWidth: 1))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(onReopenConversation == nil)
-                        .opacity(onReopenConversation == nil ? 0.55 : 1)
-                    }
-                }
-                .padding(18)
-                .background(RC.cardStrong)
-                .cornerRadius(28)
-                .overlay(RoundedRectangle(cornerRadius: 28).stroke(RC.border, lineWidth: 1))
-            }
-        }
-    }
-
     private func savedCard(card: SavedProcedureCardModel) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top) {
@@ -920,10 +792,6 @@ struct ResearchTabView: View {
         }
     }
 
-    private func sessionSubtitle(for conversation: ChatConversation) -> String {
-        "\(RelativeDateTimeFormatter().localizedString(for: conversation.updatedAt, relativeTo: Date()).capitalized) • saved research"
-    }
-
     private var exploreSuggestions: [String] {
         if viewModel.shortlistCards.isEmpty {
             return [
@@ -943,14 +811,6 @@ struct ResearchTabView: View {
         ]
     }
 
-    private func loadRecentSessions() async {
-        loadingRecentSessions = true
-        defer { loadingRecentSessions = false }
-
-        let conversationIds = Array(Set(viewModel.savedProcedures.flatMap(\.conversationIds)))
-        let conversations = await viewModel.fetchConversations(for: conversationIds)
-        recentSessions = conversations.sorted { $0.updatedAt > $1.updatedAt }
-    }
 }
 
 // MARK: - Saved Procedure Detail (questions + notes + export)
@@ -1175,7 +1035,7 @@ struct SavedProcedureDetailView: View {
                         title: "Normal",
                         text: normal,
                         tint: RC.card,
-                        accent: Color(hex: "#4D7A58")
+                        accent: RC.primary
                     )
                 }
                 if let watch = procedure.whatToWatchFor {
@@ -1183,7 +1043,7 @@ struct SavedProcedureDetailView: View {
                         title: "Watch For",
                         text: watch,
                         tint: RC.roseSoft,
-                        accent: Color(hex: "#A85555")
+                        accent: Color(hex: "#8B7FF0")
                     )
                 }
             }
@@ -1620,7 +1480,7 @@ struct SavedProcedureDetailView: View {
         case .saving, .saved:
             return RC.primary
         case .failed:
-            return Color(hex: "#A85555")
+            return Color(hex: "#8B7FF0")
         }
     }
 }

@@ -48,6 +48,7 @@ private enum OnboardingScreen: Equatable {
     case personalizedTeaser
     case softPitch
     case paywall
+    case discountOffer
 }
 
 enum OnboardingBranch: String, Equatable {
@@ -235,6 +236,7 @@ struct OnboardingFlowView: View {
                 case .personalizedTeaser: personalizedTeaserScreen
                 case .softPitch:          softPitchScreen
                 case .paywall:            paywallScreen
+                case .discountOffer:      discountOfferScreen
                 }
             }
             .id(currentScreen)
@@ -1100,6 +1102,11 @@ struct OnboardingFlowView: View {
                 Analytics.paywallDismissed(method: "skip")
                 Task { await completeOnboardingWithoutSubscription() }
             },
+            onMaybeLater: {
+                withAnimation {
+                    currentScreen = .discountOffer
+                }
+            },
             onSubscribed: {
                 Task { @MainActor in completeOnboardingAfterSubscription() }
             }
@@ -1107,6 +1114,19 @@ struct OnboardingFlowView: View {
         .onAppear {
             Analytics.paywallViewed(branch: selectedBranch, source: "onboarding")
         }
+    }
+
+    // MARK: - Discount Offer Screen
+
+    private var discountOfferScreen: some View {
+        DiscountOfferView(
+            onSubscribed: {
+                Task { @MainActor in completeOnboardingAfterSubscription() }
+            },
+            onSkip: {
+                Task { await completeOnboardingWithoutSubscription() }
+            }
+        )
     }
 
     // MARK: - Teaser loading
