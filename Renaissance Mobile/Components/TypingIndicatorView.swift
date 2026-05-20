@@ -15,7 +15,7 @@ struct TypingIndicatorView: View {
             HStack(spacing: 7) {
                 ForEach(0..<3, id: \.self) { index in
                     Circle()
-                        .fill(Color(hex: "#7E8778").opacity(index == 1 ? 0.55 : 0.32))
+                        .fill(Color(hex: "#8B7FF0").opacity(index == 1 ? 0.55 : 0.32))
                         .frame(width: 7, height: 7)
                 }
             }
@@ -46,5 +46,5 @@ struct TypingIndicatorView: View {
 #Preview {
     TypingIndicatorView()
         .padding()
-        .background(Color(hex: "#F6F7F2"))
+        .background(Color(hex: "#FAFAFF"))
 }

@@ -121,6 +121,7 @@ class JournalViewModel {
     private let journalService: any JournalServiceProtocol
     private let insightsService: any RecoveryInsightsServiceProtocol
     private let weeklySummaryService = WeeklySummaryService()
+    private let usageService = UsageTrackingService(supabase: supabase)
 
     init(
         journalService: any JournalServiceProtocol = JournalService(),
@@ -296,6 +297,19 @@ class JournalViewModel {
         insights.removeValue(forKey: procedureId)
     }
 
+    // MARK: - Credit Pre-check
+
+    /// Returns false if the user's remaining credits are below `cost`.
+    /// Best-effort — returns true on any fetch error so the server remains the hard gate.
+    private func hasCreditsAvailable(_ cost: Int) async -> Bool {
+        do {
+            let usage = try await usageService.getCurrentUsage()
+            return (usage.creditsUsed + cost) <= usage.creditsLimit
+        } catch {
+            return true
+        }
+    }
+
     // MARK: - Cross-Entry Insights
 
     /// Generates cross-entry insights for a procedure and stores the result.
@@ -306,6 +320,10 @@ class JournalViewModel {
         let procedureEntries = entries.filter { $0.procedureId == procedureId }
         guard procedureEntries.count >= 2 else { return }
         guard !insightsGenerating.contains(procedureId) else { return }
+        guard await hasCreditsAvailable(2) else {
+            print("RecoveryInsights: insufficient credits for \(procedureName), skipping")
+            return
+        }
 
         insightsGenerating.insert(procedureId)
         defer { insightsGenerating.remove(procedureId) }
@@ -691,6 +709,11 @@ class JournalViewModel {
         guard insightsEnabled else { return }
         let key = weeklySummaryKey(procedureId, weekNumber)
         guard !weeklySummaryGenerating.contains(key) else { return }
+
+        guard await hasCreditsAvailable(1) else {
+            print("WeeklySummary: insufficient credits for wk\(weekNumber) \(procedureName), skipping")
+            return
+        }
 
         weeklySummaryGenerating.insert(key)
         defer { weeklySummaryGenerating.remove(key) }

@@ -10,6 +10,10 @@
 
 import Foundation
 import UserNotifications
+#if canImport(Lottie)
+import Lottie
+import UIKit
+#endif
 
 final class WeeklyCheckInService {
     static let shared = WeeklyCheckInService()
@@ -117,19 +121,46 @@ final class WeeklyCheckInService {
 
     // MARK: - Notifications
 
+    private func notificationBody(branch: String, weekNumber: Int, procedureName: String) -> String {
+        switch branch {
+        case "researching":
+            let messages = [
+                "Pick up where you left off — your Week \(weekNumber) \(procedureName) research is waiting.",
+                "Studies show informed patients report higher satisfaction. Keep researching \(procedureName).",
+                "Your Week \(weekNumber) insights are ready. Stay curious — every session brings you closer to a confident decision.",
+            ]
+            return messages[weekNumber % messages.count]
+        case "planning":
+            let messages = [
+                "Your Week \(weekNumber) prep is ready. Stay on track — a little planning now goes a long way.",
+                "Patients who prepare report smoother consultations. Review your Week \(weekNumber) \(procedureName) notes.",
+                "Keep the momentum going — your Week \(weekNumber) planning summary is waiting.",
+            ]
+            return messages[weekNumber % messages.count]
+        default:
+            return "Your Week \(weekNumber) insights get better with every entry. Keep going."
+        }
+    }
+
     func scheduleNotifications(for checkIns: [WeeklyCheckIn], procedureName: String) async {
         guard await TreatmentNotificationService.shared.requestPermissionIfNeeded() else { return }
+        let imageURL = await planningNotificationImageURL()
+        let branch = OnboardingStore.pendingBranch ?? "recovering"
         let center = UNUserNotificationCenter.current()
         for checkIn in checkIns where !checkIn.isCompleted && checkIn.scheduledDate > Date() {
             let content = UNMutableNotificationContent()
-            content.title = "Week \(checkIn.weekNumber) Recovery Report — \(procedureName)"
-            content.body = "Keep logging daily so your weekly recovery report stays accurate and useful."
+            content.title = "\(procedureName) · Week \(checkIn.weekNumber)"
+            content.body = notificationBody(branch: branch, weekNumber: checkIn.weekNumber, procedureName: procedureName)
             content.sound = .default
             content.userInfo = [
                 "procedureName": procedureName,
                 "weekNumber": checkIn.weekNumber,
                 "procedureId": checkIn.procedureId
             ]
+            if let url = imageURL,
+               let attachment = try? UNNotificationAttachment(identifier: "planningImage", url: url, options: nil) {
+                content.attachments = [attachment]
+            }
             var comps = Calendar.current.dateComponents([.year, .month, .day], from: checkIn.scheduledDate)
             comps.hour = 9
             comps.minute = 0
@@ -141,6 +172,47 @@ final class WeeklyCheckInService {
             )
             try? await center.add(request)
         }
+    }
+
+    /// Renders the first frame of lottie-planning.lottie to a cached PNG for notification attachments.
+    @MainActor
+    private func planningNotificationImageURL() async -> URL? {
+        #if canImport(Lottie)
+        let cacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
+            .first?.appendingPathComponent("rena_notification_planning.png")
+        guard let cacheURL else { return nil }
+
+        // Return cached version if already rendered
+        if FileManager.default.fileExists(atPath: cacheURL.path) { return cacheURL }
+
+        guard let lottieURL = Bundle.main.url(forResource: "lottie-planning", withExtension: "lottie") else {
+            return nil
+        }
+
+        do {
+            let file = try await DotLottieFile.loadedFrom(url: lottieURL)
+            let size = CGSize(width: 300, height: 300)
+            let view = LottieAnimationView()
+            view.frame = CGRect(origin: .zero, size: size)
+            view.contentMode = .scaleAspectFit
+            view.backgroundColor = UIColor(red: 0.97, green: 0.97, blue: 1.0, alpha: 1.0)
+            view.loadAnimation(from: file)
+            view.currentProgress = 0
+            view.layoutIfNeeded()
+
+            let renderer = UIGraphicsImageRenderer(size: size)
+            let image = renderer.image { _ in
+                view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
+            }
+            if let data = image.pngData() {
+                try data.write(to: cacheURL)
+                return cacheURL
+            }
+        } catch {
+            print("[WeeklyCheckIn] Planning image render failed: \(error)")
+        }
+        #endif
+        return nil
     }
 
     // MARK: - Private

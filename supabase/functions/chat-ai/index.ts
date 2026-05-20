@@ -15,7 +15,7 @@ import {
   type RecoveryPlanCacheRow,
 } from './knowledgeResolvers.ts'
 
-const FREE_DAILY_LIMIT = 3
+const FREE_MONTHLY_LIMIT = 3
 const modelUsed = 'gpt-4o'
 const scopeClassifierModel = 'gpt-4o-mini'
 const blockedReply = "I can help with Renaissance app questions, cosmetic procedure research, consultation prep, and recovery tracking. I can't help with unrelated coding or general knowledge requests."
@@ -606,26 +606,30 @@ Deno.serve(async (req) => {
       && new Date(subscription_current_period_end) > new Date()
     const hasActiveSubscription = !!subscription_tier && (isActive || isCanceledButStillInPeriod)
 
-    // FREE TIER: Non-subscribed users get FREE_DAILY_LIMIT questions per day.
+    // FREE TIER: Non-subscribed users get FREE_MONTHLY_LIMIT questions per month.
+    // We key off the first day of the current month so the existing usage_date column
+    // acts as a month bucket without a schema migration.
     let isFreeTierRequest = false
     if (!hasActiveSubscription) {
-      const today = new Date().toISOString().split('T')[0]
+      const now = new Date()
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+
       const { data: freeUsage } = await adminClient
         .from('free_chat_usage')
         .select('count')
         .eq('user_id', user.id)
-        .eq('usage_date', today)
+        .eq('usage_date', monthStart)
         .maybeSingle()
 
-      const usedToday = freeUsage?.count ?? 0
+      const usedThisMonth = freeUsage?.count ?? 0
 
-      if (usedToday >= FREE_DAILY_LIMIT) {
+      if (usedThisMonth >= FREE_MONTHLY_LIMIT) {
         return new Response(
           JSON.stringify({
-            error: 'Free daily limit reached',
+            error: 'Free monthly limit reached',
             code: 'FREE_LIMIT_REACHED',
-            questionsLimit: FREE_DAILY_LIMIT,
-            message: `You've used your ${FREE_DAILY_LIMIT} free questions today. Subscribe to unlock unlimited access.`
+            questionsLimit: FREE_MONTHLY_LIMIT,
+            message: `You've used your ${FREE_MONTHLY_LIMIT} free questions this month. Subscribe to unlock unlimited access.`
           }),
           { status: 403, headers: { 'Content-Type': 'application/json' } }
         )
@@ -635,7 +639,7 @@ Deno.serve(async (req) => {
       await adminClient
         .from('free_chat_usage')
         .upsert(
-          { user_id: user.id, usage_date: today, count: usedToday + 1, updated_at: new Date().toISOString() },
+          { user_id: user.id, usage_date: monthStart, count: usedThisMonth + 1, updated_at: new Date().toISOString() },
           { onConflict: 'user_id,usage_date' }
         )
 
@@ -839,10 +843,17 @@ Deno.serve(async (req) => {
       inputMessages = [{ role: 'user', content: userMessageContent }]
     }
 
-    // Consultation Prep requests need more room for 3 structured sections
+    // Allocate output tokens based on response type:
+    // Consultation Prep: 3 structured sections (~700)
+    // Timeline/week-by-week: multi-week breakdown (~650)
+    // Default: concise conversational reply (~350)
     const isConsultationPrep = message.toLowerCase().includes('consultation prep') ||
       message.toLowerCase().includes('questions to ask my surgeon')
-    const maxOutputTokens = isConsultationPrep ? 700 : 300
+    const isTimeline = message.toLowerCase().includes('week by week') ||
+      message.toLowerCase().includes('week-by-week') ||
+      message.toLowerCase().includes('timeline') ||
+      (message.toLowerCase().includes('week') && message.toLowerCase().includes('recovery') && message.toLowerCase().includes('when'))
+    const maxOutputTokens = isConsultationPrep ? 700 : isTimeline ? 650 : 350
 
     // Build request parameters
     const requestParams: any = {

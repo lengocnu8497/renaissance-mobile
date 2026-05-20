@@ -7,22 +7,24 @@ import SwiftUI
 import StoreKit
 
 private enum HomeUI {
-    static let shell = Color(hex: "#EEF1E8")
-    static let background = Color(hex: "#F6F7F2")
-    static let surface = Color(hex: "#FBFCF8")
-    static let card = Color(hex: "#EDF1E8")
-    static let cardStrong = Color(hex: "#E1E7DA")
-    static let line = Color(hex: "#CFD6C7")
-    static let text = Color(hex: "#1F261D")
-    static let muted = Color(hex: "#687064")
-    static let primary = Color(hex: "#516048")
-    static let primaryInk = Color(hex: "#314030")
-    static let primarySoft = Color(hex: "#D9E3CE")
-    static let rose = Color(hex: "#B07B7A")
-    static let roseSoft = Color(hex: "#F1DDDA")
-    static let alert = Color(hex: "#A85555")
-    static let success = Color(hex: "#4D7A58")
-    static let shadow = Color(hex: "#5A6750").opacity(0.10)
+    static let shell       = Color(hex: "#EEEEFF")
+    static let background  = Color(hex: "#EEEEFF")
+    static let surface     = Color.white
+    static let card        = Color(hex: "#F0EEFF")
+    static let cardStrong  = Color(hex: "#E8E5FF")
+    static let line        = Color(hex: "#D4CCFF")
+    static let text        = Color(hex: "#2D2575")
+    static let muted       = Color(hex: "#7B6FC0")
+    static let primary     = Color(hex: "#6C63FF")
+    static let primaryInk  = Color(hex: "#2D2575")
+    static let primarySoft = Color(hex: "#EAE7FF")
+    static let rose        = Color(hex: "#B07B7A")
+    static let roseSoft    = Color(hex: "#F1DDDA")
+    static let alert       = Color(hex: "#A85555")
+    static let success     = Color(hex: "#4D7A58")
+    static let shadow      = Color(hex: "#6C63FF").opacity(0.08)
+    static let soft        = Color(hex: "#EAE7FF")
+    static let ink         = Color(hex: "#2D2575")
 }
 
 private enum HomeMode {
@@ -79,13 +81,23 @@ struct PostLoginHomeView: View {
     @State private var showExploreSheet = false
     @State private var didAttemptValueMomentReview = false
     @State private var showPaywall = false
+    @State private var showDiscountOffer = false
     @State private var showRecoveryPlan = false
     @State private var showFreeBanner = false
     @State private var freeBannerDismissed = false
+    @State private var hasAppliedOnboardingMode = false
+    @State private var showResearchHistory = false
+    @State private var showPhotoReel = false
+    @State private var showInsights = false
+    @State private var showWeekReport = false
+    @State private var showComparison = false
+    @State private var showNotificationSettings = false
     @Environment(\.scenePhase) private var scenePhase
 
     var onNavigateToChat: ((String) -> Void)?
     var onNavigateToJournal: (() -> Void)?
+    var onNavigateToResearch: (() -> Void)?
+    var onReopenConversation: ((UUID) -> Void)?
 
     private let userProfileService = UserProfileService(supabase: supabase)
 
@@ -156,9 +168,56 @@ struct PostLoginHomeView: View {
                     )
                 }
             }
+            .sheet(isPresented: $showResearchHistory) {
+                ResearchHistoryView(
+                    sessions: recentSessions,
+                    isLoading: loadingRecentSessions,
+                    onResume: onReopenConversation
+                )
+            }
+            .sheet(isPresented: $showPhotoReel) {
+                HomePhotoReelView(
+                    entries: journalViewModel.photoReelEntries(limit: 1000)
+                )
+            }
+            .sheet(isPresented: $showComparison) {
+                WeekComparisonView(entries: journalViewModel.entries)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.hidden)
+            }
+            .sheet(isPresented: $showInsights) {
+                HomeInsightsView(vm: journalViewModel, procedureName: primaryProcedureName)
+            }
+            .sheet(isPresented: $showWeekReport) {
+                if let procedureId = journalViewModel.primaryProcedureId {
+                    AllInsightsView(
+                        vm: journalViewModel,
+                        procedureId: procedureId,
+                        procedureName: primaryProcedureName
+                    )
+                }
+            }
+            .sheet(isPresented: $showNotificationSettings) {
+                NotificationSettingsSheet()
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.hidden)
+            }
+            .sheet(isPresented: $journalViewModel.showAddEntry, onDismiss: {
+                journalViewModel.pendingProcedureName = nil
+                Task { await loadHomeData() }
+            }) {
+                AddJournalEntryView(vm: journalViewModel, prefilledProcedureName: journalViewModel.pendingProcedureName)
+            }
             .sheet(isPresented: $showPaywall) {
                 QuotaExceededView(
                     onDismiss: { showPaywall = false },
+                    onMaybeLater: {
+                        showPaywall = false
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(600))
+                            showDiscountOffer = true
+                        }
+                    },
                     onSubscribed: {
                         showPaywall = false
                         Task {
@@ -167,6 +226,19 @@ struct PostLoginHomeView: View {
                         }
                     }
                 )
+            }
+            .sheet(isPresented: $showDiscountOffer) {
+                DiscountOfferView(
+                    onSubscribed: {
+                        showDiscountOffer = false
+                        Task {
+                            await loadHomeData()
+                            requestValueMomentReviewIfNeeded()
+                        }
+                    },
+                    onSkip: { showDiscountOffer = false }
+                )
+                .environment(subscriptionStore)
             }
             .onChange(of: showExploreSheet) { _, isPresented in
                 guard !isPresented else { return }
@@ -186,6 +258,7 @@ struct PostLoginHomeView: View {
             .task {
                 await subscriptionStore.prepare()
                 await loadHomeData()
+                applyOnboardingModeIfNeeded()
                 requestValueMomentReviewIfNeeded()
             }
             .onReceive(NotificationCenter.default.publisher(for: .subscriptionStatusChanged)) { _ in
@@ -199,12 +272,25 @@ struct PostLoginHomeView: View {
 
     // MARK: - Data
 
+    private func applyOnboardingModeIfNeeded() {
+        guard !hasAppliedOnboardingMode else { return }
+        guard OnboardingStore.hasCompleted else { return }
+        hasAppliedOnboardingMode = true
+        switch OnboardingStore.pendingBranch {
+        case "researching", "planning":
+            selectedMode = .research
+        default:
+            selectedMode = .recovery
+        }
+    }
+
     private func loadHomeData() async {
         do {
             let profile = try await userProfileService.getUserProfile()
             if let fullName = profile.fullName, !fullName.isEmpty {
                 firstName = fullName.components(separatedBy: " ").first ?? fullName
             }
+            NotificationModeService.shared.loadFromProfile(profile)
 
             let subscribed = subscriptionStore.hasActiveSubscription
                 || SubscriptionAccessEvaluator.hasBackendPremiumAccess(profile)
@@ -235,24 +321,23 @@ struct PostLoginHomeView: View {
 
     private func requestValueMomentReviewIfNeeded() {
         guard !didAttemptValueMomentReview else { return }
-        guard ReviewPromptStore.shouldRequestAutomaticReview else { return }
-        guard isSubscribed else { return }
-        guard journalViewModel.entries.count >= 3 else { return }
-        guard latestPrimaryWeeklySummary != nil else { return }
+        guard journalViewModel.entries.count >= 1 else { return }
 
         didAttemptValueMomentReview = true
         Task { @MainActor in
             let outcome = await ReviewRequestHelper.requestWhenReady()
-            guard outcome == .requested else {
+            if outcome != .requested {
                 didAttemptValueMomentReview = false
-                return
             }
-            ReviewPromptStore.markAutomaticReviewRequested()
         }
     }
 
     private var primaryProcedureName: String {
         journalViewModel.primaryProcedureName ?? "Recovery"
+    }
+
+    private var dayNumber: Int {
+        journalViewModel.heroData?.dayNumber ?? 0
     }
 
     private var firstNameDisplay: String {
@@ -336,7 +421,7 @@ struct PostLoginHomeView: View {
                 Text("Ready to unlock your full plan?")
                     .font(.custom("PlusJakartaSans-SemiBold", size: 14))
                     .foregroundColor(HomeUI.primaryInk)
-                Text("\(FreeUsageStore.questionsRemaining) free question\(FreeUsageStore.questionsRemaining == 1 ? "" : "s") left today")
+                Text("\(FreeUsageStore.questionsRemaining) free question\(FreeUsageStore.questionsRemaining == 1 ? "" : "s") left this month")
                     .font(.custom("PlusJakartaSans-Regular", size: 12))
                     .foregroundColor(HomeUI.muted)
             }
@@ -378,12 +463,18 @@ struct PostLoginHomeView: View {
 
     private var headerSection: some View {
         HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text("Hello, \(firstNameDisplay)")
                     .font(.system(size: 29, weight: .heavy, design: .rounded))
                     .foregroundColor(HomeUI.text)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
+
+                if let subtitle = headerSubtitle {
+                    Text(subtitle)
+                        .font(.custom("PlusJakartaSans-Regular", size: 14))
+                        .foregroundColor(HomeUI.muted)
+                }
             }
 
             Spacer()
@@ -392,18 +483,34 @@ struct PostLoginHomeView: View {
         }
     }
 
-    private var modeSwitch: some View {
-        HStack(spacing: 8) {
-            modeButton(title: "Recovery", mode: .recovery)
-            modeButton(title: "Research", mode: .research)
+    private var headerSubtitle: String? {
+        switch selectedMode {
+        case .recovery:
+            let proc = journalViewModel.primaryProcedureName
+                ?? OnboardingStore.pendingProceduresOfInterest.first
+            if dayNumber > 0, let name = proc {
+                return "Day \(dayNumber) of your \(name) recovery"
+            } else if let name = proc {
+                return "Your \(name) recovery"
+            }
+            return nil
+        case .research:
+            if let proc = OnboardingStore.pendingProceduresOfInterest.first {
+                return "Exploring \(proc) & more"
+            }
+            return "Exploring your options"
         }
-        .padding(8)
-        .background(HomeUI.card)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.black.opacity(0.05), lineWidth: 1)
-        )
+    }
+
+    private var modeSwitch: some View {
+        HStack(spacing: 0) {
+            modeButton(title: "Research", mode: .research)
+            modeButton(title: "Recovery", mode: .recovery)
+        }
+        .padding(4)
+        .background(Color.white)
+        .clipShape(Capsule())
+        .shadow(color: HomeUI.shadow, radius: 8, x: 0, y: 2)
     }
 
     @ViewBuilder
@@ -423,70 +530,238 @@ struct PostLoginHomeView: View {
         } label: {
             Text(title)
                 .font(.custom("PlusJakartaSans-SemiBold", size: 14))
-                .foregroundColor(isSelected ? .white : HomeUI.primaryInk)
+                .foregroundColor(isSelected ? .white : HomeUI.muted)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 13)
-                .background(isSelected ? HomeUI.primary : .white)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(isSelected ? Color.clear : Color.black.opacity(0.05), lineWidth: 1)
-                )
+                .padding(.vertical, 11)
+                .background(isSelected ? HomeUI.primary : Color.clear)
+                .clipShape(Capsule())
         }
         .buttonStyle(.plain)
     }
 
+    private var quickActionsStrip: some View {
+        Group {
+            switch selectedMode {
+            case .recovery:
+                HStack(alignment: .top, spacing: 0) {
+                    quickActionButton(icon: "photo.on.rectangle.angled", label: "Photo Reel") {
+                        showPhotoReel = true
+                    }.frame(maxWidth: .infinity)
+                    quickActionButton(icon: "map", label: "Roadmap") {
+                        showRecoveryPlan = true
+                    }.frame(maxWidth: .infinity)
+                    quickActionButton(icon: "chart.bar", label: "Weekly report") {
+                        showWeekReport = true
+                    }.frame(maxWidth: .infinity)
+                    quickActionButton(icon: "square.2.layers.3d.top.filled", label: "Compare") {
+                        showComparison = true
+                    }.frame(maxWidth: .infinity)
+                    quickActionButton(icon: "lightbulb", label: "Insights") {
+                        showInsights = true
+                    }.frame(maxWidth: .infinity)
+                }
+            case .research:
+                HStack(alignment: .top, spacing: 0) {
+                    quickActionButton(icon: "magnifyingglass", label: "Browse") {
+                        showExploreSheet = true
+                    }.frame(maxWidth: .infinity)
+                    quickActionButton(icon: "clock.arrow.circlepath", label: "History") {
+                        showResearchHistory = true
+                    }.frame(maxWidth: .infinity)
+                    quickActionButton(icon: "arrow.left.arrow.right", label: "Compare") {
+                        onNavigateToChat?("Help me compare my saved procedures and figure out which one is best for my goals.")
+                    }.frame(maxWidth: .infinity)
+                    quickActionButton(icon: "bookmark", label: "Saved Q&As") {
+                        onNavigateToResearch?()
+                    }.frame(maxWidth: .infinity)
+                }
+            }
+        }
+    }
+
+    private func quickActionButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
+        VStack(spacing: 5) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white)
+                    .frame(width: 48, height: 48)
+                    .shadow(color: HomeUI.shadow, radius: 8, x: 0, y: 2)
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(HomeUI.primarySoft)
+                    .frame(width: 28, height: 28)
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(HomeUI.primary)
+            }
+            Text(label)
+                .font(.custom("PlusJakartaSans-SemiBold", size: 8.5))
+                .foregroundStyle(HomeUI.muted)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .frame(width: 54, height: 24, alignment: .top)
+        }
+        .environment(\.colorScheme, .light)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            SoundHapticManager.shared.playButtonTick()
+            action()
+        }
+    }
+
     private var recoveryModeContent: some View {
         Group {
-            JournalStreakStrip(
-                streak: journalViewModel.streak,
-                dayNumber: journalViewModel.heroData?.dayNumber ?? 0,
-                procedureName: journalViewModel.primaryProcedureName
-            )
-
-            JournalTodayCard(
-                latestEntry: journalViewModel.latestEntry,
-                procedureName: journalViewModel.primaryProcedureName,
-                onLogToday: { journalViewModel.tapAddEntry(for: journalViewModel.primaryProcedureName) }
-            )
-
-            JournalRecoveryScoreCard(score: journalViewModel.primaryRecoveryScore)
-
             askRenaRecoveryCard
-
-            HStack(alignment: .top, spacing: 12) {
-                JournalPainTrendCard(painSeries: journalViewModel.primaryPainSeries)
-                JournalTodaySignalsCard(
-                    pain: journalViewModel.latestPainLevel,
-                    swelling: journalViewModel.latestSwellingLevel,
-                    bruising: journalViewModel.latestBruisingLevel
-                )
-            }
-
-            if let alert = journalViewModel.journalAlert {
-                JournalAlertCard(alert: alert)
-            }
-
-            recoveryRoadmapCard
-
-            JournalWeeklyReportCard(
-                preview: resolvedWeeklyPreview,
-                onOpenReport: {
-                    guard isSubscribed else {
-                        showPaywall = true
-                        return
-                    }
-                    onNavigateToJournal?()
-                }
-            )
-
-            recentJournalSection
-
-            JournalPhotoReelSection(
-                entries: journalViewModel.photoReelEntries(),
-                onOpenGallery: { onNavigateToJournal?() }
-            )
+            lottieHeroSection
+            quickActionsStrip
+            todayCheckInCard
+            recoverySnapshotCard
         }
+    }
+
+    // MARK: - Home cards
+
+    private var lottieHeroSection: some View {
+        let name: String = selectedMode == .recovery ? "lottie-recovery" : "lottie-research"
+        return LottieView(name: name)
+            .frame(maxWidth: .infinity)
+            .frame(height: 200)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var todayCheckInCard: some View {
+        let cal = Calendar.current
+        let loggedToday = latestEntry.map { cal.isDateInToday($0.entryDateAsDate) } ?? false
+        let loggedYest  = latestEntry.map { cal.isDateInYesterday($0.entryDateAsDate) } ?? false
+        let statusText: String = {
+            if loggedToday { return "Logged today" }
+            if loggedYest  { return "You logged yesterday" }
+            return latestEntry != nil ? "Last entry a while ago" : "Ready to check in?"
+        }()
+        return TodayCheckInCard(
+            statusText: statusText,
+            showCheck: loggedToday || loggedYest,
+            onLog: { journalViewModel.tapAddEntry(for: journalViewModel.primaryProcedureName) }
+        )
+    }
+
+    private var recoverySnapshotCard: some View {
+        let entries = journalViewModel.entries
+        let headline: String
+        let subtitle: String?
+        if entries.count < 2 {
+            headline = "Just getting started"
+            subtitle = "Log daily to see your healing trend"
+        } else if let summary = journalViewModel.primaryInsights?.summary, !summary.isEmpty {
+            headline = "Healing steadily"
+            subtitle = summary
+        } else {
+            let score = journalViewModel.primaryRecoveryScore?.score ?? 0
+            headline = score > 0 && score < 50 ? "Something to watch" : "Healing steadily"
+            subtitle = nil
+        }
+        return ModernHomeCard(background: HomeUI.surface, padding: 15) {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    HomeEyebrow("How you're healing", color: HomeUI.muted)
+                    Text(headline)
+                        .font(.custom("Manrope", size: 16).weight(.bold))
+                        .foregroundColor(HomeUI.text)
+                        .padding(.top, 1)
+                    if let sub = subtitle {
+                        Text(sub)
+                            .font(.custom("PlusJakartaSans-Regular", size: 12))
+                            .foregroundColor(HomeUI.muted)
+                            .lineSpacing(2)
+                            .lineLimit(2)
+                    }
+                }
+                Spacer()
+                ZStack {
+                    Circle().fill(HomeUI.soft).frame(width: 32, height: 32)
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(HomeUI.primary)
+                }
+            }
+        }
+    }
+
+    private var shortlistChipsCard: some View {
+        ModernHomeCard(background: HomeUI.surface, padding: 17) {
+            VStack(alignment: .leading, spacing: 10) {
+                HomeEyebrow("Your shortlist", color: HomeUI.muted)
+                if researchViewModel.shortlistCards.isEmpty {
+                    Text("Save your first procedure")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                        .foregroundColor(HomeUI.text)
+                    Button { showExploreSheet = true } label: {
+                        Text("+ Browse procedures")
+                            .font(.custom("PlusJakartaSans-Medium", size: 12))
+                            .foregroundColor(HomeUI.primary)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(researchViewModel.shortlistCards, id: \.id) { card in
+                                Button {
+                                    selectedSavedForDetail = researchViewModel.savedEntry(for: card.procedure.id)
+                                } label: {
+                                    Text(card.procedure.name)
+                                        .font(.custom("PlusJakartaSans-Medium", size: 11))
+                                        .foregroundColor(HomeUI.primary)
+                                        .padding(.horizontal, 13)
+                                        .padding(.vertical, 5)
+                                        .background(HomeUI.soft)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    Button { showExploreSheet = true } label: {
+                        Text("+ Add procedure")
+                            .font(.custom("PlusJakartaSans-Medium", size: 12))
+                            .foregroundColor(HomeUI.primary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 2)
+                }
+            }
+        }
+    }
+
+    private var consultationPrepContextCard: some View {
+        let questionCount = researchViewModel.savedProcedures.flatMap(\.questions).count
+        return Button {
+            onNavigateToChat?("Help me prepare questions for my consultation.")
+        } label: {
+            ModernHomeCard(background: HomeUI.surface, padding: 15) {
+                HStack(alignment: .center, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HomeEyebrow("Questions to bring", color: HomeUI.muted)
+                        Text(questionCount > 0
+                             ? "\(questionCount) question\(questionCount == 1 ? "" : "s") saved"
+                             : "Start collecting questions")
+                            .font(.custom("Manrope", size: 16).weight(.bold))
+                            .foregroundColor(HomeUI.text)
+                        Text(questionCount > 0
+                             ? "Tap to review and add more"
+                             : "Ask Rena to help you prep for your consult")
+                            .font(.custom("PlusJakartaSans-Regular", size: 12))
+                            .foregroundColor(HomeUI.muted)
+                    }
+                    Spacer()
+                    ZStack {
+                        Circle().fill(HomeUI.soft).frame(width: 32, height: 32)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(HomeUI.muted)
+                    }
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private var recoveryRoadmapCard: some View {
@@ -558,29 +833,26 @@ struct PostLoginHomeView: View {
 
     private var researchModeContent: some View {
         Group {
-            researchHeroSection
             askRenaResearchCard
-            proceduresToResearchSection
-            shortlistShelfSection
-            exploreNextSection
-            savedResearchSection
-            consultationPrepSection
-            researchSessionsSection
+            lottieHeroSection
+            quickActionsStrip
+            shortlistChipsCard
+            consultationPrepContextCard
         }
     }
 
     private var bellStatusButton: some View {
         Button {
-            onNavigateToJournal?()
+            showNotificationSettings = true
         } label: {
             ZStack(alignment: .topTrailing) {
                 Image(systemName: "bell")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(HomeUI.primary)
-                    .frame(width: 44, height: 44)
-                    .background(HomeUI.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .shadow(color: HomeUI.shadow, radius: 10, x: 0, y: 4)
+                    .frame(width: 38, height: 38)
+                    .background(Color.white)
+                    .clipShape(Circle())
+                    .shadow(color: HomeUI.shadow, radius: 8, x: 0, y: 2)
 
                 if hasHomeAttentionState {
                     Circle()
@@ -732,55 +1004,77 @@ struct PostLoginHomeView: View {
     }
 
     private var askRenaRecoveryCard: some View {
-        Button {
-            onNavigateToChat?("What is normal for swelling in week 2?")
-        } label: {
-            askRenaCardContent(
-                title: "Ask Rena",
-                body: "What is normal today?"
-            )
-        }
-        .buttonStyle(.plain)
+        let seed = dayNumber > 0
+            ? "What is normal for day \(dayNumber) of my \(primaryProcedureName) recovery?"
+            : "What is normal during \(primaryProcedureName) recovery?"
+        let headline = dayNumber > 0
+            ? "You're \(dayNumber) days post-op.\nWhat's on your mind?"
+            : "What's on your mind today?"
+        return askRenaHeroCard(
+            headline: headline,
+            body: "Ask me anything — I know what's normal.",
+            seed: seed,
+            bodyBottomPadding: 30
+        )
     }
 
     private var askRenaResearchCard: some View {
-        Button {
-            onNavigateToChat?("Help me compare procedures and figure out what to research first.")
-        } label: {
-            askRenaCardContent(
-                title: "Ask Rena",
-                body: "What should I ask in a consultation?"
-            )
-        }
-        .buttonStyle(.plain)
+        askRenaHeroCard(
+            headline: "Still weighing options?\nAsk me anything.",
+            body: "I can compare procedures, timelines, and costs.",
+            seed: "Help me compare procedures and figure out what to research first."
+        )
     }
 
-    private func askRenaCardContent(title: String, body: String) -> some View {
-        ModernHomeCard(background: HomeUI.surface, padding: 16) {
-            HStack(spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(HomeUI.primarySoft)
-                        .frame(width: 48, height: 48)
-                    Image(systemName: "bubble.left.and.bubble.right.fill")
-                        .font(.system(size: 18))
-                        .foregroundColor(HomeUI.primary)
+    private func askRenaHeroCard(headline: String, body: String, seed: String, bodyBottomPadding: CGFloat = 22) -> some View {
+        Button { onNavigateToChat?(seed) } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(headline)
+                    .font(.custom("Manrope", size: 19).weight(.heavy))
+                    .foregroundColor(HomeUI.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, 58)
+                    .padding(.bottom, 3)
+
+                Text(body)
+                    .font(.custom("PlusJakartaSans-Regular", size: 12))
+                    .foregroundColor(HomeUI.muted)
+                    .lineSpacing(2)
+                    .padding(.bottom, bodyBottomPadding)
+
+                HStack(spacing: 6) {
+                    Text("Ask Rena")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 13))
+                        .foregroundColor(.white)
+                    Text("→")
+                        .font(.system(size: 13))
+                        .foregroundColor(.white)
                 }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .font(.custom("Outfit-SemiBold", size: 15))
-                        .foregroundColor(HomeUI.text)
-                    Text(body)
-                        .font(.custom("Outfit-Regular", size: 12.5))
-                        .foregroundColor(HomeUI.muted)
-                }
-
-                Spacer()
-
-                CircleArrow()
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .background(HomeUI.primary)
+                .clipShape(Capsule())
             }
+            .padding(.horizontal, 18)
+            .padding(.top, 20)
+            .padding(.bottom, 17)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(HomeUI.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(alignment: .topTrailing) {
+                HomeRingsView()
+                    .frame(width: 50, height: 50)
+                    .padding(.top, 20)
+                    .padding(.trailing, 18)
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(HomeUI.line.opacity(0.5), lineWidth: 1)
+            )
+            .shadow(color: HomeUI.shadow, radius: 14, x: 0, y: 2)
         }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -1333,6 +1627,206 @@ struct PostLoginHomeView: View {
     }
 }
 
+private struct ResearchHistoryView: View {
+    let sessions: [ChatConversation]
+    let isLoading: Bool
+    var onResume: ((UUID) -> Void)?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            sheetHeader("Research History")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
+                    } else if sessions.isEmpty {
+                        emptyState
+                    } else {
+                        ForEach(sessions) { conversation in
+                            sessionCard(conversation)
+                        }
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 16)
+                .padding(.bottom, 40)
+            }
+        }
+        .background(HomeUI.shell.ignoresSafeArea())
+    }
+
+    private func sheetHeader(_ title: String) -> some View {
+        HStack(alignment: .center) {
+            Text(title)
+                .font(.system(size: 34, weight: .bold))
+                .foregroundColor(HomeUI.text)
+            Spacer()
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(HomeUI.muted)
+                    .frame(width: 30, height: 30)
+                    .background(HomeUI.primarySoft)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 24)
+        .padding(.bottom, 12)
+        .background(HomeUI.shell)
+    }
+
+    private func sessionCard(_ conversation: ChatConversation) -> some View {
+        Button {
+            dismiss()
+            onResume?(conversation.id)
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(conversation.title ?? "Research session")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                        .foregroundColor(HomeUI.text)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Text(subtitle(for: conversation))
+                        .font(.custom("PlusJakartaSans-Regular", size: 11))
+                        .foregroundColor(HomeUI.muted)
+                }
+                Spacer()
+                Text("Resume")
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(HomeUI.primary)
+                    .clipShape(Capsule())
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(HomeUI.line.opacity(0.4), lineWidth: 1)
+            )
+            .shadow(color: HomeUI.shadow, radius: 8, x: 0, y: 2)
+        }
+        .buttonStyle(.plain)
+        .disabled(onResume == nil)
+        .opacity(onResume == nil ? 0.55 : 1)
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("No research sessions yet")
+                .font(.custom("PlusJakartaSans-SemiBold", size: 15))
+                .foregroundColor(HomeUI.text)
+            Text("Start a conversation with Rena about procedures you're considering — they'll appear here so you can pick up where you left off.")
+                .font(.custom("PlusJakartaSans-Regular", size: 13))
+                .foregroundColor(HomeUI.muted)
+                .lineSpacing(3)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(HomeUI.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(.top, 20)
+    }
+
+    private func subtitle(for conversation: ChatConversation) -> String {
+        "\(RelativeDateTimeFormatter().localizedString(for: conversation.updatedAt, relativeTo: Date()).capitalized) · research session"
+    }
+}
+
+private struct TodayCheckInCard: View {
+    let statusText: String
+    let showCheck: Bool
+    let onLog: () -> Void
+    @State private var pulse = false
+
+    var body: some View {
+        ModernHomeCard(background: HomeUI.surface, padding: 17) {
+            VStack(alignment: .leading, spacing: 13) {
+                HomeEyebrow("Today's check-in", color: HomeUI.muted)
+                HStack(spacing: 5) {
+                    Text(statusText)
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                        .foregroundColor(HomeUI.text)
+                    if showCheck {
+                        Text("✓")
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 14))
+                            .foregroundColor(HomeUI.primary)
+                    }
+                }
+                Button(action: onLog) {
+                    HStack(spacing: 8) {
+                        MiniRingsView()
+                        Text("Add today's entry")
+                            .font(.custom("PlusJakartaSans-SemiBold", size: 13))
+                            .foregroundColor(.white)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background(HomeUI.primary)
+                    .clipShape(Capsule())
+                    .shadow(
+                        color: HomeUI.primary.opacity(pulse ? 0.38 : 0.10),
+                        radius: pulse ? 14 : 4,
+                        x: 0, y: pulse ? 5 : 2
+                    )
+                    .scaleEffect(pulse ? 1.025 : 1.0)
+                    .animation(
+                        .easeInOut(duration: 1.4).repeatForever(autoreverses: true),
+                        value: pulse
+                    )
+                }
+                .buttonStyle(.plain)
+                .onAppear { pulse = true }
+            }
+        }
+    }
+}
+
+private struct HomeRingsView: View {
+    @State private var pulse = false
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(Color(hex: "#D4CCFF"), lineWidth: 1.4).frame(width: 44, height: 44)
+            Circle().stroke(Color(hex: "#B8B0F0"), lineWidth: 1.2).frame(width: 32, height: 32)
+            Circle().stroke(Color(hex: "#6C63FF"), lineWidth: 1.5).frame(width: 20, height: 20)
+            Circle()
+                .trim(from: 0, to: 0.25)
+                .stroke(Color(hex: "#D4CCFF"), style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                .frame(width: 32, height: 32)
+                .rotationEffect(.degrees(90))
+            Circle().fill(Color(hex: "#6C63FF")).frame(width: 6, height: 6)
+        }
+        .scaleEffect(pulse ? 1.07 : 0.97)
+        .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: pulse)
+        .onAppear { pulse = true }
+    }
+}
+
+private struct MiniRingsView: View {
+    @State private var pulse = false
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(Color.white.opacity(0.40), lineWidth: 1.2).frame(width: 18, height: 18)
+            Circle().stroke(Color.white.opacity(0.70), lineWidth: 1.0).frame(width: 11, height: 11)
+            Circle().fill(Color.white).frame(width: 4, height: 4)
+        }
+        .scaleEffect(pulse ? 1.12 : 0.90)
+        .animation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: pulse)
+        .onAppear { pulse = true }
+    }
+}
+
 private struct HomeEyebrow: View {
     let title: String
     let color: Color
@@ -1394,14 +1888,343 @@ private struct ModernHomeCard<Content: View>: View {
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(background)
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(.black.opacity(0.05), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(HomeUI.line.opacity(0.4), lineWidth: 1)
             )
-            .shadow(color: HomeUI.shadow, radius: 18, x: 0, y: 8)
+            .shadow(color: HomeUI.shadow, radius: 14, x: 0, y: 2)
     }
 }
+
+// MARK: - Home Insights Sheet
+
+struct HomeInsightsView: View {
+    let vm: JournalViewModel
+    let procedureName: String
+    @Environment(\.dismiss) private var dismiss
+
+    private var entries: [JournalEntry] {
+        vm.primaryProcedureEntries.sorted { $0.entryDateAsDate < $1.entryDateAsDate }
+    }
+    private var painSeries: [Int]     { entries.compactMap { $0.painLevel.map    { Int($0.rounded()) } } }
+    private var swellingSeries: [Int] { entries.compactMap { $0.swellingLevel.map { Int($0.rounded()) } } }
+    private var bruisingSeries: [Int] { entries.compactMap { $0.bruisingLevel.map { Int($0.rounded()) } } }
+    private var rednessSeries: [Int]  { entries.compactMap { $0.rednessLevel.map  { Int($0.rounded()) } } }
+
+    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            sheetHeader("Insights")
+            ScrollView {
+                VStack(spacing: 14) {
+                    if entries.isEmpty {
+                        emptyState
+                    } else {
+                        summaryHeader
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            metricCard(
+                                name: "Pain",
+                                series: painSeries,
+                                current: vm.latestPainLevel,
+                                icon: "waveform.path.ecg",
+                                color: Color(hex: "#E8887A")
+                            )
+                            metricCard(
+                                name: "Swelling",
+                                series: swellingSeries,
+                                current: vm.latestSwellingLevel,
+                                icon: "drop",
+                                color: Color(hex: "#6B9ECC")
+                            )
+                            metricCard(
+                                name: "Bruising",
+                                series: bruisingSeries,
+                                current: vm.latestBruisingLevel,
+                                icon: "circle.lefthalf.filled",
+                                color: HomeUI.primary
+                            )
+                            metricCard(
+                                name: "Redness",
+                                series: rednessSeries,
+                                current: vm.latestRednessLevel,
+                                icon: "thermometer.medium",
+                                color: Color(hex: "#C97070")
+                            )
+                        }
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 16)
+                .padding(.bottom, 40)
+            }
+        }
+        .background(HomeUI.shell.ignoresSafeArea())
+    }
+
+    private func sheetHeader(_ title: String) -> some View {
+        HStack(alignment: .center) {
+            Text(title)
+                .font(.system(size: 34, weight: .bold))
+                .foregroundColor(HomeUI.text)
+            Spacer()
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(HomeUI.muted)
+                    .frame(width: 30, height: 30)
+                    .background(HomeUI.primarySoft)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 24)
+        .padding(.bottom, 12)
+        .background(HomeUI.shell)
+    }
+
+    private var summaryHeader: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(procedureName)
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 13))
+                    .foregroundColor(HomeUI.text)
+                Text("\(entries.count) entr\(entries.count == 1 ? "y" : "ies") logged")
+                    .font(.custom("PlusJakartaSans-Regular", size: 11))
+                    .foregroundColor(HomeUI.muted)
+            }
+            Spacer()
+            if let first = entries.first, let last = entries.last, entries.count > 1 {
+                Text("Day \(first.dayNumber) – \(last.dayNumber)")
+                    .font(.custom("PlusJakartaSans-Regular", size: 11))
+                    .foregroundColor(HomeUI.muted)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(HomeUI.card)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func metricCard(name: String, series: [Int], current: Int?, icon: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center) {
+                ZStack {
+                    Circle().fill(color.opacity(0.13)).frame(width: 28, height: 28)
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(color)
+                }
+                Text(name)
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+                    .foregroundColor(HomeUI.muted)
+                Spacer()
+                trendBadge(series: series, color: color)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(current.map { "\($0)" } ?? "--")
+                    .font(.custom("Manrope", size: 30).weight(.heavy))
+                    .foregroundColor(HomeUI.text)
+                if current != nil {
+                    Text("/10")
+                        .font(.custom("PlusJakartaSans-Regular", size: 11))
+                        .foregroundColor(HomeUI.muted)
+                        .padding(.bottom, 3)
+                }
+            }
+
+            if series.count >= 2 {
+                sparkline(series: series, color: color)
+            } else {
+                Text("Log more entries\nto see your trend")
+                    .font(.custom("PlusJakartaSans-Regular", size: 9))
+                    .foregroundColor(HomeUI.muted.opacity(0.65))
+                    .lineSpacing(2)
+                    .frame(height: 40, alignment: .bottom)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(HomeUI.line.opacity(0.4), lineWidth: 1))
+        .shadow(color: HomeUI.shadow, radius: 8, x: 0, y: 2)
+    }
+
+    @ViewBuilder
+    private func trendBadge(series: [Int], color: Color) -> some View {
+        if series.count >= 2 {
+            let diff = series.last! - series[series.count - 2]
+            let icon = diff < 0 ? "arrow.down" : diff > 0 ? "arrow.up" : "minus"
+            let tint = diff < 0 ? HomeUI.success : diff > 0 ? HomeUI.alert : HomeUI.muted
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(tint)
+                .frame(width: 20, height: 20)
+                .background(tint.opacity(0.12))
+                .clipShape(Circle())
+        }
+    }
+
+    private func sparkline(series: [Int], color: Color) -> some View {
+        let values = Array(series.suffix(7))
+        return HStack(alignment: .bottom, spacing: 3) {
+            ForEach(values.indices, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(i == values.count - 1 ? color : color.opacity(0.2 + Double(i) / Double(values.count) * 0.4))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: max(CGFloat(values[i]) * 4.0, 4))
+            }
+        }
+        .frame(height: 40, alignment: .bottom)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "lightbulb")
+                .font(.system(size: 40, weight: .light))
+                .foregroundColor(HomeUI.muted.opacity(0.4))
+            VStack(spacing: 6) {
+                Text("No metrics logged yet")
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 16))
+                    .foregroundColor(HomeUI.text)
+                Text("Start logging pain, swelling, bruising, and redness in your journal to see your trends here.")
+                    .font(.custom("PlusJakartaSans-Regular", size: 13))
+                    .foregroundColor(HomeUI.muted)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+            }
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 60)
+    }
+}
+
+// MARK: - Home Photo Reel Sheet
+
+struct HomePhotoReelView: View {
+    let entries: [JournalEntry]
+    @Environment(\.dismiss) private var dismiss
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12)
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            sheetHeader("Photo Reel")
+            ScrollView {
+                if entries.isEmpty {
+                    emptyState
+                } else {
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(entries) { entry in
+                            photoCell(entry)
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 16)
+                    .padding(.bottom, 40)
+                }
+            }
+        }
+        .background(HomeUI.shell.ignoresSafeArea())
+    }
+
+    private func sheetHeader(_ title: String) -> some View {
+        HStack(alignment: .center) {
+            Text(title)
+                .font(.system(size: 34, weight: .bold))
+                .foregroundColor(HomeUI.text)
+            Spacer()
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(HomeUI.muted)
+                    .frame(width: 30, height: 30)
+                    .background(HomeUI.primarySoft)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 24)
+        .padding(.bottom, 12)
+        .background(HomeUI.shell)
+    }
+
+    private func photoCell(_ entry: JournalEntry) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(cellBackground(for: entry))
+                .aspectRatio(0.85, contentMode: .fit)
+                .overlay {
+                    if let urlString = entry.photoUrl, let url = URL(string: urlString) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                            case .failure, .empty:
+                                Image(systemName: "photo")
+                                    .font(.system(size: 22, weight: .light))
+                                    .foregroundColor(HomeUI.muted.opacity(0.5))
+                            @unknown default:
+                                ProgressView()
+                            }
+                        }
+                    } else {
+                        Image(systemName: "photo")
+                            .font(.system(size: 22, weight: .light))
+                            .foregroundColor(HomeUI.muted.opacity(0.5))
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            Text(entry.dayLabel)
+                .font(.custom("PlusJakartaSans-SemiBold", size: 12))
+                .foregroundColor(HomeUI.text)
+                .lineLimit(1)
+
+            Text(entry.entryDateAsDate.formatted(.dateTime.month(.abbreviated).day()))
+                .font(.custom("PlusJakartaSans-Regular", size: 11))
+                .foregroundColor(HomeUI.muted)
+        }
+    }
+
+    private func cellBackground(for entry: JournalEntry) -> Color {
+        let palette: [Color] = [HomeUI.primarySoft, HomeUI.soft, HomeUI.card]
+        return palette[abs(entry.dayNumber) % palette.count]
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "photo.stack")
+                .font(.system(size: 40, weight: .light))
+                .foregroundColor(HomeUI.muted.opacity(0.5))
+            VStack(spacing: 6) {
+                Text("No photos yet")
+                    .font(.custom("PlusJakartaSans-SemiBold", size: 16))
+                    .foregroundColor(HomeUI.text)
+                Text("Photos added to your journal entries will appear here.")
+                    .font(.custom("PlusJakartaSans-Regular", size: 13))
+                    .foregroundColor(HomeUI.muted)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+            }
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 60)
+    }
+}
+
 
 #Preview {
     PostLoginHomeView()

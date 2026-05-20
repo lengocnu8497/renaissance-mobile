@@ -5,6 +5,7 @@ struct SubscriptionPaywallView: View {
     @Environment(SubscriptionStore.self) private var subscriptionStore
 
     var onDismiss: (() -> Void)? = nil
+    var onMaybeLater: (() -> Void)? = nil
     var onSubscribed: (() -> Void)? = nil
     var showsPurchaseCTA: Bool = true
     var showsRestoreButton: Bool = true
@@ -313,9 +314,9 @@ struct SubscriptionPaywallView: View {
 
     private var footerSection: some View {
         VStack(spacing: 0) {
-            if let onDismiss {
-                Button(action: onDismiss) {
-                    Text(selectedTier == .monthly ? "Remind me later" : "Maybe later")
+            if onDismiss != nil || onMaybeLater != nil {
+                Button(action: { (onMaybeLater ?? onDismiss)?() }) {
+                    Text("Maybe later")
                         .font(.custom("PlusJakartaSans-SemiBold", size: 15))
                         .foregroundStyle(Color(hex: "#7B6FC0"))
                         .frame(maxWidth: .infinity)

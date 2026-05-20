@@ -2,30 +2,20 @@
 //  ProcedureListItemView.swift
 //  Renaissance Mobile
 //
-//  Created by Nu Le on 12/1/25.
-//
 
 import SwiftUI
 
 private enum PLCColor {
-    static let surface = Color(hex: "#FBFCF8")
-    static let text = Color(hex: "#1F261D")
-    static let muted = Color(hex: "#687064")
-    static let primary = Color(hex: "#516048")
-    static let primaryInk = Color(hex: "#314030")
-    static let primarySoft = Color(hex: "#D9E3CE")
-    static let roseSoft = Color(hex: "#F1DDDA")
-    static let lightGlass = Color.white.opacity(0.76)
-    static let lightGlassStrong = Color(hex: "#FBFCF8").opacity(0.94)
-    static let stroke = Color.white.opacity(0.74)
-    static let shadow = Color(red: 90/255, green: 103/255, blue: 80/255).opacity(0.10)
-}
-
-private enum PLC {
-    static let surfaceTop = Color.white.opacity(0.82)
-    static let surfaceBottom = Color(hex: "#F5F8F0").opacity(0.94)
-    static let tintTop = Color(hex: "#EDF1E8").opacity(0.92)
-    static let tintBottom = Color.white.opacity(0.82)
+    static let bg          = Color(hex: "#EEEEFF")
+    static let surface     = Color.white
+    static let text        = Color(hex: "#1E1B4B")
+    static let muted       = Color(hex: "#7B6FC0")
+    static let primary     = Color(hex: "#6C63FF")
+    static let primaryInk  = Color(hex: "#2D2575")
+    static let primarySoft = Color(hex: "#EAE7FF")
+    static let pillBorder  = Color(hex: "#E0DBFF")
+    static let shadow      = Color(hex: "#6C63FF").opacity(0.08)
+    static let cardBorder  = Color(hex: "#6C63FF").opacity(0.10)
 }
 
 private enum ProcedureListImageResolver {
@@ -62,6 +52,18 @@ private enum ProcedureListImageResolver {
     }
 }
 
+private func categoryIcon(for category: String) -> String {
+    switch category.lowercased() {
+    case "face":         return "face.smiling"
+    case "body":         return "figure.stand"
+    case "skin":         return "sparkles"
+    case "injectables":  return "syringe"
+    case "non-surgical": return "wand.and.stars"
+    case "surgical":     return "scissors"
+    default:             return "plus.circle"
+    }
+}
+
 struct ProcedureListItemView: View {
     let procedure: Procedure
     let isSaved: Bool
@@ -71,104 +73,76 @@ struct ProcedureListItemView: View {
 
     private var summaryText: String {
         let text = procedure.editorialSummary?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let text, !text.isEmpty {
-            return text
-        }
+        if let text, !text.isEmpty { return text }
         return procedure.description
     }
 
-    private var saveLabel: String {
-        isSaved ? "Unsave" : "Save"
-    }
-
-    private var badgeLabel: String {
-        isSaved ? "Saved" : "Unsaved"
-    }
-
-    private var procedureTypeLabel: String {
-        procedure.isSurgical ? "Surgical" : "Non-surgical"
-    }
+    private var saveLabel: String { isSaved ? "Unsave" : "Save" }
+    private var procedureTypeLabel: String { procedure.isSurgical ? "Surgical" : "Non-surgical" }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 12) {
-                    procedureAvatar
+        VStack(alignment: .leading, spacing: 16) {
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(alignment: .top, spacing: 8) {
-                            Text(procedure.category.uppercased())
-                                .font(.custom("PlusJakartaSans-SemiBold", size: 10))
-                                .tracking(2.2)
-                                .foregroundColor(PLCColor.muted)
+            // ── Header row ──────────────────────────────────────────
+            HStack(alignment: .top, spacing: 14) {
+                procedureAvatar
 
-                            Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(procedure.category.uppercased())
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 10))
+                        .tracking(2.2)
+                        .foregroundColor(PLCColor.muted)
 
-                            statusBadge(label: badgeLabel, isSaved: isSaved)
-                        }
+                    Text(procedure.name)
+                        .font(.custom("Manrope", size: 20).weight(.bold))
+                        .foregroundColor(PLCColor.text)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                        Text(procedure.name)
-                            .font(.custom("Manrope", size: 24))
-                            .fontWeight(.bold)
-                            .foregroundColor(PLCColor.text)
-                            .multilineTextAlignment(.leading)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(summaryText)
+                        .font(.custom("PlusJakartaSans-Regular", size: 13))
+                        .foregroundColor(PLCColor.muted)
+                        .lineSpacing(3)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text(summaryText)
-                    .font(.custom("PlusJakartaSans-Regular", size: 14))
-                    .foregroundColor(PLCColor.text.opacity(0.76))
-                    .lineSpacing(4)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 18)
-            .padding(.bottom, 16)
-            .background(
-                LinearGradient(
-                    colors: [PLC.tintTop, PLC.tintBottom],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 8) {
-                    if !procedure.recoveryDurationLabel.isEmpty {
-                        infoPill(procedure.recoveryDurationLabel, tint: PLCColor.surface, textColor: PLCColor.muted)
-                    }
-                    infoPill(procedureTypeLabel, tint: procedure.isSurgical ? PLCColor.roseSoft : PLCColor.primarySoft, textColor: PLCColor.primaryInk)
-                    if let costRange = procedure.costRangeDisplay {
-                        infoPill(costRange.replacingOccurrences(of: " – ", with: "-"), tint: PLCColor.primarySoft, textColor: PLCColor.primaryInk)
-                    }
-                }
-
-                HStack(spacing: 8) {
-                    actionButton("Open details", style: .primary, action: onOpenDetails)
-                    actionButton("Ask Rena", style: .glass, action: onAskRena)
-                    actionButton(saveLabel, style: .secondary, action: onToggleSave)
+                if isSaved {
+                    savedBadge
                 }
             }
-            .padding(18)
-            .background(Color.white.opacity(0.18))
+
+            // ── Info pills ──────────────────────────────────────────
+            HStack(spacing: 6) {
+                if !procedure.recoveryDurationLabel.isEmpty {
+                    infoPill(procedure.recoveryDurationLabel)
+                }
+                infoPill(procedureTypeLabel)
+                if let costRange = procedure.costRangeDisplay {
+                    infoPill(costRange.replacingOccurrences(of: " – ", with: "–"))
+                }
+            }
+
+            // ── Action row ──────────────────────────────────────────
+            HStack(spacing: 8) {
+                actionButton("Open details", isPrimary: true, action: onOpenDetails)
+                actionButton("Ask Rena", isPrimary: false, action: onAskRena)
+                actionButton(saveLabel, isPrimary: false, action: onToggleSave)
+            }
         }
-        .background(
-            LinearGradient(
-                colors: [PLC.surfaceTop, PLC.surfaceBottom],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .padding(18)
+        .background(PLCColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .stroke(Color.white.opacity(0.78), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(PLCColor.cardBorder, lineWidth: 1)
         )
-        .shadow(color: PLCColor.shadow.opacity(0.85), radius: 14, x: 0, y: 6)
+        .shadow(color: PLCColor.shadow, radius: 12, x: 0, y: 2)
     }
+
+    // MARK: - Avatar
 
     @ViewBuilder
     private var procedureAvatar: some View {
@@ -176,112 +150,67 @@ struct ProcedureListItemView: View {
             if let image = ProcedureListImageResolver.image(for: procedure) {
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFit()
+                    .scaledToFill()
+                    .clipped()
             } else {
-                LinearGradient(
-                    colors: [PLCColor.primarySoft.opacity(0.96), Color.white.opacity(0.92)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .overlay(
-                    Image(systemName: "photo")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(PLCColor.primary.opacity(0.78))
-                )
+                PLCColor.primarySoft
+
+                Image(systemName: categoryIcon(for: procedure.category))
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(PLCColor.primary)
             }
         }
-        .frame(width: 82, height: 82)
-        .background(PLCColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.white.opacity(0.78), lineWidth: 1)
-        )
+        .frame(width: 56, height: 56)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    @ViewBuilder
-    private func statusBadge(label: String, isSaved: Bool) -> some View {
-        Text(label)
-            .font(.custom("PlusJakartaSans-SemiBold", size: 11))
-            .foregroundColor(isSaved ? PLCColor.primaryInk : PLCColor.muted)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(isSaved ? PLCColor.primarySoft.opacity(0.92) : Color.white.opacity(0.72))
-            .clipShape(Capsule())
-            .overlay(
-                Capsule()
-                    .stroke(Color.white.opacity(0.72), lineWidth: 1)
-            )
-    }
+    // MARK: - Saved badge
 
-    @ViewBuilder
-    private func infoPill(_ label: String, tint: Color, textColor: Color) -> some View {
-        Text(label)
+    private var savedBadge: some View {
+        Text("Saved")
             .font(.custom("PlusJakartaSans-SemiBold", size: 11))
-            .foregroundColor(textColor)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(tint)
+            .foregroundColor(PLCColor.primary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(PLCColor.primarySoft)
             .clipShape(Capsule())
     }
 
-    @ViewBuilder
-    private func actionButton(_ title: String, style: ActionButtonStyle, action: @escaping () -> Void) -> some View {
+    // MARK: - Info pill
+
+    private func infoPill(_ label: String) -> some View {
+        Text(label)
+            .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+            .foregroundColor(PLCColor.primaryInk)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.white)
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(PLCColor.pillBorder, lineWidth: 1))
+    }
+
+    // MARK: - Action button
+
+    private func actionButton(_ title: String, isPrimary: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.custom("PlusJakartaSans-SemiBold", size: 14))
-                .foregroundColor(style.textColor)
+                .font(.custom("PlusJakartaSans-SemiBold", size: 13))
+                .foregroundColor(isPrimary ? .white : PLCColor.primaryInk)
                 .frame(maxWidth: .infinity)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 13)
-                .background(style.background)
+                .padding(.vertical, 11)
+                .background(isPrimary ? PLCColor.primary : Color.white)
                 .clipShape(Capsule())
                 .overlay(
-                    Capsule()
-                        .stroke(style.borderColor, lineWidth: style.borderWidth)
+                    Capsule().stroke(isPrimary ? Color.clear : PLCColor.pillBorder, lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
     }
 }
 
-private struct ActionButtonStyle {
-    let background: AnyShapeStyle
-    let textColor: Color
-    let borderColor: Color
-    let borderWidth: CGFloat
-
-    static let primary = ActionButtonStyle(
-        background: AnyShapeStyle(PLCColor.primary),
-        textColor: .white,
-        borderColor: .clear,
-        borderWidth: 0
-    )
-
-    static let glass = ActionButtonStyle(
-        background: AnyShapeStyle(
-            LinearGradient(
-                colors: [PLCColor.lightGlassStrong, PLCColor.lightGlass],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        ),
-        textColor: PLCColor.primaryInk,
-        borderColor: PLCColor.stroke,
-        borderWidth: 1
-    )
-
-    static let secondary = ActionButtonStyle(
-        background: AnyShapeStyle(Color.white.opacity(0.68)),
-        textColor: PLCColor.primaryInk,
-        borderColor: PLCColor.stroke,
-        borderWidth: 1
-    )
-}
-
 #Preview {
     ZStack {
-        Color(hex: "#EEF1E8").ignoresSafeArea()
+        Color(hex: "#EEEEFF").ignoresSafeArea()
 
         ProcedureListItemView(
             procedure: Procedure(
@@ -290,7 +219,7 @@ private struct ActionButtonStyle {
                 description: "Collagen-induction therapy using fine needles to improve skin texture, tone, and fine lines.",
                 category: "Skin",
                 recoveryDurationDays: 4,
-                recoveryDurationLabel: "2-4 days",
+                recoveryDurationLabel: "2–4 days",
                 isSurgical: false,
                 sortOrder: 210,
                 editorialSummary: "A lower-downtime option for improving skin texture and tone when you want gradual change without surgery.",

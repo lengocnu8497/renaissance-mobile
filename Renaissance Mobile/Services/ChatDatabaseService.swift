@@ -84,6 +84,18 @@ class ChatDatabaseService {
         return response
     }
 
+    /// Insert a locally-created conversation into the database (lazy persistence path)
+    func persistConversation(_ conversation: ChatConversation) async throws -> ChatConversation {
+        let response: ChatConversation = try await supabase.database
+            .from("chat_conversations")
+            .insert(conversation)
+            .select()
+            .single()
+            .execute()
+            .value
+        return response
+    }
+
     /// Update conversation (title, metadata, etc.)
     func updateConversation(_ conversation: ChatConversation) async throws {
         try await supabase.database

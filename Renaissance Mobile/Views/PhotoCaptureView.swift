@@ -76,6 +76,7 @@ struct PhotoCaptureView: View {
                             if let data = try? await item?.loadTransferable(type: Data.self),
                                let img = UIImage(data: data) {
                                 capturedImage = img
+                                Analytics.photoCaptured(source: "library")
                                 dismiss()
                             }
                         }
@@ -86,6 +87,7 @@ struct PhotoCaptureView: View {
                         Task {
                             if let img = await cameraVM.capturePhoto() {
                                 capturedImage = img
+                                Analytics.photoCaptured(source: "camera")
                                 dismiss()
                             }
                         }
@@ -128,6 +130,7 @@ struct PhotoCaptureView: View {
             }
         }
         .task {
+            Analytics.photoCaptureOpened()
             await cameraVM.setup()
             // Poll lighting every 2 seconds
             for await _ in AsyncStream<Void>.polling(every: 2) {

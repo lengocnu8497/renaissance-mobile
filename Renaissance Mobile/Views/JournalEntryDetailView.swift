@@ -5,6 +5,19 @@
 
 import SwiftUI
 
+// MARK: - Design tokens (violet cloud palette)
+
+private enum D {
+    static let bg       = Color(hex: "#EEEEFF")
+    static let primary  = Color(hex: "#6C63FF")
+    static let ink      = Color(hex: "#2D2575")
+    static let muted    = Color(hex: "#7B6FC0")
+    static let pale     = Color(hex: "#9C93C8")
+    static let soft     = Color(hex: "#EAE7FF")
+    static let line     = Color(hex: "#D4CCFF")
+    static let cardBg   = Color.white
+}
+
 struct JournalEntryDetailView: View {
     let entry: JournalEntry
     var onDelete: () async -> Void
@@ -15,120 +28,55 @@ struct JournalEntryDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
+        VStack(spacing: 0) {
+            headerSection
 
-                // Photo
-                if let urlString = entry.photoUrl, let url = URL(string: urlString) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 280)
-                                .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
-                        default:
-                            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                                .fill(Theme.Brand.softBlush)
-                                .frame(height: 280)
-                        }
-                    }
-                }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
 
-                // Metadata
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(entry.procedureName)
-                            .font(.system(size: 24, weight: .bold, design: .serif))
-                            .foregroundStyle(Theme.Colors.textPrimary)
-                        Text(entry.dayLabel)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(Theme.Brand.dustyRose)
-                    }
-                    Spacer()
-                    Text(entry.entryDateAsDate, style: .date)
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                }
-
-                // Notes
-                if let notes = entry.notes, !notes.isEmpty {
-                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                        sectionLabel("Notes")
-                        Text(notes)
-                            .font(.system(size: 16, weight: .light))
-                            .foregroundStyle(Theme.Colors.textPrimary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                // Recovery Metrics
-                if entry.hasRecoveryMetrics {
-                    VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                        sectionLabel("Recovery Metrics")
-                        VStack(spacing: 10) {
-                            if let level = entry.bruisingLevel, level > 0 {
-                                MetricDisplayRow(label: "Bruising", value: Int(level), color: Color(hex: "#7B4B6A"))
-                            }
-                            if let level = entry.swellingLevel, level > 0 {
-                                MetricDisplayRow(label: "Swelling", value: Int(level), color: Color(hex: "#B76E79"))
-                            }
-                            if let level = entry.rednessLevel, level > 0 {
-                                MetricDisplayRow(label: "Redness", value: Int(level), color: Color(hex: "#C4929A"))
+                    // Photo
+                    if let urlString = entry.photoUrl, let url = URL(string: urlString) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 260)
+                                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                            default:
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(D.soft)
+                                    .frame(height: 260)
                             }
                         }
                     }
-                }
 
-                // Share button
-                Button {
-                    Task { await prepareShare() }
-                } label: {
-                    HStack {
-                        if isPreparingShare {
-                            ProgressView().scaleEffect(0.85)
-                                .tint(Theme.Brand.mauveBerry)
-                        } else {
-                            Image(systemName: "square.and.arrow.up")
-                        }
-                        Text(isPreparingShare ? "Preparing…" : "Share Entry")
-                    }
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Theme.Brand.mauveBerry)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(
-                        RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                            .fill(Theme.Brand.mauveBerry.opacity(0.08))
-                    )
-                }
-                .disabled(isPreparingShare)
+                    // Metadata card
+                    metadataCard
 
-                // Delete button
-                Button(role: .destructive) {
-                    showDeleteConfirm = true
-                } label: {
-                    HStack {
-                        Image(systemName: "trash")
-                        Text("Delete Entry")
+                    // Notes
+                    if let notes = entry.notes, !notes.isEmpty {
+                        notesSection(notes)
                     }
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Color(hex: "#EF4444"))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(
-                        RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                            .fill(Color(hex: "#FEF2F2"))
-                    )
+
+                    // Recovery Metrics
+                    if entry.hasRecoveryMetrics {
+                        metricsSection
+                    }
+
+                    // Actions
+                    actionButtons
+
+                    Color.clear.frame(height: 20)
                 }
+                .padding(.horizontal, 18)
+                .padding(.top, 4)
             }
-            .padding(Theme.Spacing.xl)
         }
-        .background(Color(hex: "#FAF7F5").ignoresSafeArea())
-        .navigationTitle("Entry Detail")
-        .navigationBarTitleDisplayMode(.inline)
+        .background(D.bg.ignoresSafeArea())
+        .navigationBarHidden(true)
         .sheet(isPresented: Binding(
             get: { shareItems != nil },
             set: { if !$0 { shareItems = nil } }
@@ -151,6 +99,171 @@ struct JournalEntryDetailView: View {
         }
     }
 
+    // MARK: - Header
+
+    private var headerSection: some View {
+        HStack {
+            Button { dismiss() } label: {
+                Circle()
+                    .fill(D.cardBg)
+                    .frame(width: 38, height: 38)
+                    .overlay(
+                        Image(systemName: "arrow.left")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(D.ink)
+                    )
+                    .shadow(color: D.primary.opacity(0.12), radius: 6, x: 0, y: 2)
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            Text("Journal Entry")
+                .font(.custom("PlusJakartaSans-SemiBold", size: 18))
+                .foregroundColor(D.ink)
+
+            Spacer()
+
+            // Balance the back button
+            Circle()
+                .fill(Color.clear)
+                .frame(width: 38, height: 38)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 56)
+        .padding(.bottom, 14)
+    }
+
+    // MARK: - Metadata Card
+
+    private var metadataCard: some View {
+        HStack(alignment: .top, spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(entry.procedureName)
+                    .font(.custom("PlusJakartaSans-Bold", size: 20))
+                    .foregroundColor(D.ink)
+
+                HStack(spacing: 6) {
+                    Text(entry.dayLabel)
+                        .font(.custom("PlusJakartaSans-Medium", size: 12))
+                        .foregroundColor(D.primary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(D.soft)
+                        .clipShape(Capsule())
+
+                    Text(entry.entryDateAsDate, style: .date)
+                        .font(.custom("PlusJakartaSans-Regular", size: 12))
+                        .foregroundColor(D.pale)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(16)
+        .background(D.cardBg)
+        .cornerRadius(16)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(D.line.opacity(0.5), lineWidth: 1))
+        .shadow(color: D.primary.opacity(0.06), radius: 8, x: 0, y: 2)
+    }
+
+    // MARK: - Notes
+
+    private func notesSection(_ notes: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel("Notes")
+            Text(notes)
+                .font(.custom("PlusJakartaSans-Regular", size: 15))
+                .foregroundColor(D.ink)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(D.cardBg)
+        .cornerRadius(16)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(D.line.opacity(0.5), lineWidth: 1))
+        .shadow(color: D.primary.opacity(0.06), radius: 8, x: 0, y: 2)
+    }
+
+    // MARK: - Metrics
+
+    private var metricsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel("Recovery Metrics")
+            VStack(spacing: 10) {
+                if let level = entry.bruisingLevel, level > 0 {
+                    MetricDisplayRow(label: "Bruising", value: Int(level), color: Color(hex: "#5B5BD6"))
+                }
+                if let level = entry.swellingLevel, level > 0 {
+                    MetricDisplayRow(label: "Swelling", value: Int(level), color: Color(hex: "#7C73E6"))
+                }
+                if let level = entry.rednessLevel, level > 0 {
+                    MetricDisplayRow(label: "Redness", value: Int(level), color: Color(hex: "#B76E79"))
+                }
+            }
+        }
+        .padding(16)
+        .background(D.cardBg)
+        .cornerRadius(16)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(D.line.opacity(0.5), lineWidth: 1))
+        .shadow(color: D.primary.opacity(0.06), radius: 8, x: 0, y: 2)
+    }
+
+    // MARK: - Actions
+
+    private var actionButtons: some View {
+        VStack(spacing: 10) {
+            Button {
+                Task { await prepareShare() }
+            } label: {
+                HStack(spacing: 8) {
+                    if isPreparingShare {
+                        ProgressView().scaleEffect(0.85).tint(D.primary)
+                    } else {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    Text(isPreparingShare ? "Preparing…" : "Share Entry")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 15))
+                }
+                .foregroundColor(D.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 15)
+                .background(D.soft)
+                .cornerRadius(14)
+            }
+            .disabled(isPreparingShare)
+            .buttonStyle(.plain)
+
+            Button(role: .destructive) {
+                showDeleteConfirm = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Delete Entry")
+                        .font(.custom("PlusJakartaSans-SemiBold", size: 15))
+                }
+                .foregroundColor(Color(hex: "#EF4444"))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 15)
+                .background(Color(hex: "#FEF2F2"))
+                .cornerRadius(14)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.custom("PlusJakartaSans-SemiBold", size: 11))
+            .tracking(1.2)
+            .foregroundColor(D.pale)
+    }
+
     // MARK: - Share
 
     @MainActor
@@ -158,32 +271,19 @@ struct JournalEntryDetailView: View {
         isPreparingShare = true
         defer { isPreparingShare = false }
 
-        // Load photo if available
         var loadedPhoto: UIImage?
         if let urlString = entry.photoUrl, let url = URL(string: urlString) {
             let data = try? await URLSession.shared.data(from: url).0
             loadedPhoto = data.flatMap { UIImage(data: $0) }
         }
 
-        // Render branded card
         let card = ShareableEntryCard(entry: entry, photo: loadedPhoto)
         let renderer = ImageRenderer(content: card)
         renderer.scale = 3.0
         renderer.proposedSize = .init(width: 375, height: 470)
 
         guard let image = renderer.uiImage else { return }
-
         shareItems = [image, ShareableEntryCard.caption(for: entry)]
-    }
-
-    // MARK: - Helpers
-
-    private func sectionLabel(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(Theme.Colors.textSecondary)
-            .textCase(.uppercase)
-            .tracking(0.8)
     }
 }
 
@@ -205,15 +305,15 @@ private struct MetricDisplayRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 7) {
             HStack {
                 Text(label)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.Colors.textPrimary)
+                    .font(.custom("PlusJakartaSans-Medium", size: 13))
+                    .foregroundColor(Color(hex: "#2D2575"))
                 Spacer()
                 Text("\(value)/10 · \(levelLabel)")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(color)
+                    .font(.custom("PlusJakartaSans-Regular", size: 12))
+                    .foregroundColor(color)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -228,9 +328,6 @@ private struct MetricDisplayRow: View {
             }
             .frame(height: 6)
         }
-        .padding(12)
-        .background(Color(hex: "#FAF7F5"))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(color.opacity(0.15), lineWidth: 1))
+        .padding(.vertical, 4)
     }
 }

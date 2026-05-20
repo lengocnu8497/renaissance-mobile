@@ -5,21 +5,50 @@
 
 import SwiftUI
 import PhotosUI
+import StoreKit
+
+// MARK: - Local design tokens (violet palette)
+private enum AEV {
+    static let ink      = Color(hex: "#2D2575")
+    static let muted    = Color(hex: "#7B6FC0")
+    static let pale     = Color(hex: "#A9A3D4")
+    static let primary  = Color(hex: "#6C63FF")
+    static let soft     = Color(hex: "#EAE7FF")
+    static let line     = Color(hex: "#D4CCFF")
+    static let success  = Color(hex: "#5BBF84")
+    static let card     = Color.white
+    // Metric tints — semantic, not violet
+    static let pain     = Color(hex: "#E07373")
+    static let swell    = Color(hex: "#6B9ECC")
+    static let bruise   = Color(hex: "#7B70D4")
+    static let redness  = Color(hex: "#C97070")
+}
 
 struct AddJournalEntryView: View {
     @Environment(\.dismiss) private var dismiss
-
+    @Environment(\.requestReview) private var requestReview
     let vm: JournalViewModel
 
-    // Navigation
+    // Steps 0–2 are the entry flow; 3 is celebration
     @State private var currentStep: Int
     @State private var goingForward = true
     private let startStep: Int
-    private let totalSteps = 6
+    private let totalSteps = 3
 
-    // Procedure
     @State private var procedureName: String
     @State private var showNewProcedureField = false
+    @State private var entryDate = Date()
+    @State private var notes = ""
+    @State private var painLevel = 0
+    @State private var bruisingLevel = 0
+    @State private var swellingLevel = 0
+    @State private var rednessLevel = 0
+    @State private var isSaving = false
+    @State private var capturedImage: UIImage?
+    @State private var libraryItem: PhotosPickerItem?
+    @State private var showCamera = false
+    @State private var showLibraryPicker = false
+    @State private var showInsights = false
 
     init(vm: JournalViewModel, prefilledProcedureName: String? = nil) {
         self.vm = vm
@@ -29,44 +58,15 @@ struct AddJournalEntryView: View {
         _procedureName = State(initialValue: prefilledProcedureName ?? "")
     }
 
-    // Entry fields
-    @State private var entryDate = Date()
-    @State private var notes = ""
-    @State private var painLevel = 0
-    @State private var bruisingLevel = 0
-    @State private var swellingLevel = 0
-    @State private var rednessLevel = 0
-
-    // Save state
-    @State private var isSaving = false
-
-    // Reminder step (step 5) — populated after a successful save
-    @State private var reminderConfig: ProcedureReminderConfig? = nil
-    @State private var reminderEnabled = true
-    @State private var reminderDate = Date()
-    @State private var followUpMilestones: [FollowUpMilestone] = []
-    @State private var isSchedulingReminder = false
-
-    // Photo
-    @State private var capturedImage: UIImage?
-    @State private var libraryItem: PhotosPickerItem?
-    @State private var showCamera = false
-
-    // Derived day number — days from earliest existing entry for this procedure
     private var dayNumber: Int {
         let pid = makeId(procedureName)
         guard !pid.isEmpty else { return 0 }
         let relevant = vm.entries.filter { $0.procedureId == pid }
-        guard let earliest = relevant.min(by: { $0.entryDateAsDate < $1.entryDateAsDate }) else {
-            return 0
-        }
+        guard let earliest = relevant.min(by: { $0.entryDateAsDate < $1.entryDateAsDate }) else { return 0 }
         let cal = Calendar.current
-        let diff = cal.dateComponents(
-            [.day],
+        return max(0, cal.dateComponents([.day],
             from: cal.startOfDay(for: earliest.entryDateAsDate),
-            to: cal.startOfDay(for: entryDate)
-        ).day ?? 0
-        return max(0, diff)
+            to: cal.startOfDay(for: entryDate)).day ?? 0)
     }
 
     private var canAdvance: Bool {
@@ -75,13 +75,35 @@ struct AddJournalEntryView: View {
             : true
     }
 
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "MMM d, yyyy"; return f
-    }()
+    private var loggedStreak: Int {
+        let pid = makeId(procedureName)
+        guard !pid.isEmpty else { return 1 }
+        let cal = Calendar.current
+        let relevant = vm.entries.filter { $0.procedureId == pid }
+        var streak = 0
+        var check = cal.startOfDay(for: Date())
+        while relevant.contains(where: { cal.startOfDay(for: $0.entryDateAsDate) == check }) {
+            streak += 1
+            guard let prev = cal.date(byAdding: .day, value: -1, to: check) else { break }
+            check = prev
+        }
+        return max(streak, 1)
+    }
+
+    private var procedureEntryCount: Int {
+        let pid = makeId(procedureName)
+        return vm.entries.filter { $0.procedureId == pid }.count
+    }
+
+    // MARK: - Body
 
     var body: some View {
         ZStack {
-            Color(hex: "#C4929A").ignoresSafeArea()
+            LinearGradient(
+                colors: [Color(hex: "#F8F8FF"), Color(hex: "#EEEEFF")],
+                startPoint: .top, endPoint: .bottom
+            )
+            .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 topBar
@@ -89,12 +111,10 @@ struct AddJournalEntryView: View {
 
                 ZStack {
                     switch currentStep {
-                    case 0: procedureStep
-                    case 1: dayStep
-                    case 2: metricsStep
-                    case 3: photoStep
-                    case 5: reminderStep
-                    default: notesStep
+                    case 0:  procedureStep
+                    case 1:  metricsStep
+                    case 2:  notesPhotoStep
+                    default: celebrationStep
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -110,9 +130,21 @@ struct AddJournalEntryView: View {
                 bottomNav
             }
         }
+        .onAppear { Analytics.journalEntryStarted() }
         .interactiveDismissDisabled(isSaving)
         .fullScreenCover(isPresented: $showCamera) {
             PhotoCaptureView(capturedImage: $capturedImage)
+        }
+        .sheet(isPresented: $showInsights) {
+            HomeInsightsView(vm: vm, procedureName: procedureName)
+        }
+        .photosPicker(isPresented: $showLibraryPicker, selection: $libraryItem, matching: .images)
+        .onChange(of: libraryItem) { _, item in
+            Task {
+                if let data = try? await item?.loadTransferable(type: Data.self) {
+                    capturedImage = UIImage(data: data)
+                }
+            }
         }
     }
 
@@ -120,26 +152,33 @@ struct AddJournalEntryView: View {
 
     private var topBar: some View {
         HStack {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.65))
-                    .frame(width: 36, height: 36)
-                    .background(Theme.Brand.charcoalRose.opacity(0.1))
-                    .clipShape(Circle())
+            if currentStep > startStep && currentStep < totalSteps {
+                Button {
+                    goingForward = false
+                    withAnimation { currentStep -= 1 }
+                } label: {
+                    Image(systemName: "arrow.left")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(AEV.muted)
+                        .frame(width: 36, height: 36)
+                        .background(AEV.soft)
+                        .clipShape(Circle())
+                }
+                .disabled(isSaving)
+            } else {
+                Color.clear.frame(width: 36, height: 36)
             }
-            .disabled(isSaving)
 
             Spacer()
 
             HStack(spacing: 5) {
                 ForEach(startStep..<totalSteps, id: \.self) { i in
                     Capsule()
-                        .fill(i <= currentStep
-                              ? Theme.Brand.charcoalRose
-                              : Theme.Brand.charcoalRose.opacity(0.18))
+                        .fill(
+                            currentStep == 3
+                                ? AEV.success
+                                : (i <= currentStep ? AEV.primary : AEV.line)
+                        )
                         .frame(width: i == currentStep ? 22 : 6, height: 6)
                         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: currentStep)
                 }
@@ -147,7 +186,15 @@ struct AddJournalEntryView: View {
 
             Spacer()
 
-            Color.clear.frame(width: 36, height: 36)
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(AEV.muted)
+                    .frame(width: 36, height: 36)
+                    .background(AEV.soft)
+                    .clipShape(Circle())
+            }
+            .disabled(isSaving)
         }
         .padding(.horizontal, Theme.Spacing.lg)
     }
@@ -156,19 +203,14 @@ struct AddJournalEntryView: View {
 
     private var procedureStep: some View {
         VStack(alignment: .leading, spacing: 0) {
-            stepHeader(
-                title: "What procedure\nare you tracking?",
-                subtitle: Self.dateFormatter.string(from: Date())
-            )
+            stepHeader(title: "What procedure\nare you tracking?", subtitle: "")
 
             if vm.proceduresWithEntries.isEmpty || showNewProcedureField {
-                // ── Text-input mode ──────────────────────────────
                 Spacer()
                 newProcedureInputView(showBack: !vm.proceduresWithEntries.isEmpty)
                 Spacer()
                 Spacer()
             } else {
-                // ── Picker mode ──────────────────────────────────
                 ScrollView(showsIndicators: false) {
                     previousProceduresList(procedures: vm.proceduresWithEntries)
                         .padding(.top, Theme.Spacing.lg)
@@ -185,37 +227,34 @@ struct AddJournalEntryView: View {
             Text("YOUR PROCEDURES")
                 .font(.system(size: 10, weight: .semibold))
                 .kerning(2)
-                .foregroundColor(Theme.Brand.charcoalRose.opacity(0.45))
+                .foregroundColor(AEV.pale)
                 .padding(.horizontal, Theme.Spacing.xl)
 
             VStack(spacing: 8) {
                 ForEach(procedures, id: \.id) { proc in
                     let isSelected = procedureName == proc.name
-                    Button {
-                        procedureName = proc.name
-                    } label: {
+                    Button { procedureName = proc.name } label: {
                         HStack(spacing: 12) {
                             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                                 .font(.system(size: 20))
-                                .foregroundColor(
-                                    isSelected
-                                        ? Theme.Brand.charcoalRose
-                                        : Theme.Brand.charcoalRose.opacity(0.25)
-                                )
+                                .foregroundColor(isSelected ? AEV.primary : AEV.line)
                             Text(proc.name)
                                 .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(Theme.Brand.charcoalRose)
+                                .foregroundColor(AEV.ink)
                                 .lineLimit(2)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 14)
-                        .background(
-                            isSelected
-                                ? Theme.Brand.charcoalRose.opacity(0.14)
-                                : Theme.Brand.charcoalRose.opacity(0.07)
-                        )
+                        .background(isSelected ? AEV.soft : AEV.card)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(
+                                    isSelected ? AEV.primary.opacity(0.3) : AEV.line.opacity(0.5),
+                                    lineWidth: 1
+                                )
+                        )
                         .animation(.easeInOut(duration: 0.15), value: isSelected)
                     }
                     .buttonStyle(.plain)
@@ -223,7 +262,6 @@ struct AddJournalEntryView: View {
             }
             .padding(.horizontal, Theme.Spacing.xl)
 
-            // New procedure row
             Button {
                 procedureName = ""
                 showNewProcedureField = true
@@ -231,10 +269,10 @@ struct AddJournalEntryView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "plus.circle")
                         .font(.system(size: 18))
-                        .foregroundColor(Theme.Brand.charcoalRose.opacity(0.55))
+                        .foregroundColor(AEV.muted)
                     Text("New procedure")
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(Theme.Brand.charcoalRose.opacity(0.65))
+                        .foregroundColor(AEV.muted)
                 }
                 .padding(.horizontal, Theme.Spacing.xl)
                 .padding(.top, 6)
@@ -256,7 +294,7 @@ struct AddJournalEntryView: View {
                         Text("My procedures")
                             .font(.system(size: 14, weight: .medium))
                     }
-                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.6))
+                    .foregroundColor(AEV.muted)
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, Theme.Spacing.xl)
@@ -267,13 +305,13 @@ struct AddJournalEntryView: View {
                 if procedureName.isEmpty {
                     Text("Rhinoplasty,\nLip filler…")
                         .font(.system(size: 38, weight: .bold))
-                        .foregroundColor(Theme.Brand.charcoalRose.opacity(0.18))
+                        .foregroundColor(AEV.line)
                         .allowsHitTesting(false)
                 }
                 TextField("", text: $procedureName, axis: .vertical)
                     .font(.system(size: 38, weight: .bold))
-                    .foregroundColor(Theme.Brand.charcoalRose)
-                    .tint(Theme.Brand.charcoalRose)
+                    .foregroundColor(AEV.ink)
+                    .tint(AEV.primary)
                     .lineLimit(3)
                     .submitLabel(.done)
             }
@@ -281,160 +319,32 @@ struct AddJournalEntryView: View {
         }
     }
 
-    // MARK: - Step 1: Date
-
-    private var dayStep: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            stepHeader(
-                title: "When is this\nentry for?",
-                subtitle: procedureName
-            )
-
-            Spacer()
-
-            VStack(spacing: Theme.Spacing.xl) {
-                HStack(alignment: .lastTextBaseline, spacing: 10) {
-                    if dayNumber == 0 {
-                        Text("Day of\nprocedure")
-                            .font(.system(size: 36, weight: .bold))
-                            .foregroundColor(Theme.Brand.charcoalRose)
-                            .lineLimit(2)
-                    } else {
-                        Text("Day")
-                            .font(.system(size: 28, weight: .light))
-                            .foregroundColor(Theme.Brand.charcoalRose.opacity(0.45))
-                        Text("\(dayNumber)")
-                            .font(.system(size: 80, weight: .bold))
-                            .foregroundColor(Theme.Brand.charcoalRose)
-                    }
-                }
-                .padding(.horizontal, Theme.Spacing.xl)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Text("Auto-calculated from your first entry date")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.55))
-                    .padding(.horizontal, Theme.Spacing.xl)
-
-                HStack(spacing: Theme.Spacing.sm) {
-                    Image(systemName: "calendar")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Theme.Brand.charcoalRose.opacity(0.6))
-                    DatePicker("", selection: $entryDate, in: ...Date(), displayedComponents: .date)
-                        .labelsHidden()
-                        .tint(Theme.Brand.charcoalRose)
-                        .colorScheme(.light)
-                }
-                .padding(.horizontal, Theme.Spacing.xl)
-                .padding(.top, Theme.Spacing.sm)
-            }
-
-            Spacer()
-            Spacer()
-        }
-    }
-
-    // MARK: - Step 2: Photo
-
-    private var photoStep: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            stepHeader(
-                title: "Add a photo\n(optional)",
-                subtitle: "Day \(dayNumber) — \(procedureName)"
-            )
-
-            Spacer()
-
-            if let image = capturedImage {
-                ZStack(alignment: .topTrailing) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 270)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
-                        .padding(.horizontal, Theme.Spacing.xl)
-
-                    Button { capturedImage = nil } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 28))
-                            .foregroundStyle(Color.white)
-                            .shadow(color: .black.opacity(0.2), radius: 4)
-                            .padding(Theme.Spacing.xl + 4)
-                    }
-                }
-            } else {
-                VStack(spacing: Theme.Spacing.md) {
-                    Button { showCamera = true } label: {
-                        photoOptionRow(icon: "camera.fill", label: "Take Photo")
-                    }
-
-                    PhotosPicker(selection: $libraryItem, matching: .images) {
-                        photoOptionRow(icon: "photo.on.rectangle.angled", label: "Choose from Library")
-                    }
-                    .onChange(of: libraryItem) { _, item in
-                        Task {
-                            if let data = try? await item?.loadTransferable(type: Data.self) {
-                                capturedImage = UIImage(data: data)
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, Theme.Spacing.xl)
-            }
-
-            Spacer()
-            Spacer()
-        }
-    }
-
-    // MARK: - Step 3: Recovery Metrics
+    // MARK: - Step 1: Metrics
 
     private var metricsStep: some View {
         VStack(alignment: .leading, spacing: 0) {
             stepHeader(
-                title: "How are you\nrecovering?",
-                subtitle: "Day \(dayNumber) — \(procedureName)"
+                title: "How are you\nfeeling today?",
+                subtitle: "Day \(dayNumber) · \(procedureName)"
             )
 
-            Spacer()
-
-            VStack(spacing: 12) {
-                metricRow(
-                    label: "Pain",
-                    icon: "bolt.fill",
-                    value: $painLevel,
-                    color: Color(hex: "#8E4C5C")
-                )
-                metricRow(
-                    label: "Bruising",
-                    icon: "drop.fill",
-                    value: $bruisingLevel,
-                    color: Color(hex: "#7B4B6A")
-                )
-                metricRow(
-                    label: "Swelling",
-                    icon: "waveform.path",
-                    value: $swellingLevel,
-                    color: Color(hex: "#B76E79")
-                )
-                metricRow(
-                    label: "Redness",
-                    icon: "flame.fill",
-                    value: $rednessLevel,
-                    color: Color(hex: "#E8635A")
-                )
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 10) {
+                    metricRow(label: "Pain",     icon: "bolt.fill",     value: $painLevel,     color: AEV.pain)
+                    metricRow(label: "Swelling", icon: "waveform.path", value: $swellingLevel, color: AEV.swell)
+                    metricRow(label: "Bruising", icon: "drop.fill",     value: $bruisingLevel, color: AEV.bruise)
+                    metricRow(label: "Redness",  icon: "flame.fill",    value: $rednessLevel,  color: AEV.redness)
+                }
+                .padding(.horizontal, Theme.Spacing.xl)
+                .padding(.top, Theme.Spacing.lg)
+                .padding(.bottom, Theme.Spacing.xl)
             }
-            .padding(.horizontal, Theme.Spacing.xl)
 
-            Text("Tap a segment to rate 0–10. Tap again to clear.")
-                .font(.system(size: 11, weight: .regular))
-                .foregroundColor(Theme.Brand.charcoalRose.opacity(0.4))
+            Text("Tap a segment to rate 0–10 · Tap again to clear")
+                .font(.system(size: 11))
+                .foregroundColor(AEV.pale)
                 .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 10)
-
-            Spacer()
-            Spacer()
+                .padding(.bottom, 8)
         }
     }
 
@@ -447,13 +357,11 @@ struct AddJournalEntryView: View {
                     .frame(width: 16)
                 Text(label)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Theme.Brand.charcoalRose)
+                    .foregroundColor(AEV.ink)
                 Spacer()
                 Text(levelLabel(value.wrappedValue))
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(value.wrappedValue == 0
-                        ? Theme.Brand.charcoalRose.opacity(0.35)
-                        : color)
+                    .foregroundColor(value.wrappedValue == 0 ? AEV.pale : color)
                     .frame(minWidth: 58, alignment: .trailing)
                     .animation(.easeInOut(duration: 0.15), value: value.wrappedValue)
             }
@@ -465,12 +373,7 @@ struct AddJournalEntryView: View {
                         .frame(height: 8)
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            // Tap the current level to reset to 0
-                            if lvl == value.wrappedValue {
-                                value.wrappedValue = 0
-                            } else {
-                                value.wrappedValue = lvl
-                            }
+                            value.wrappedValue = (lvl == value.wrappedValue) ? 0 : lvl
                         }
                 }
             }
@@ -478,8 +381,13 @@ struct AddJournalEntryView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
-        .background(Theme.Brand.charcoalRose.opacity(0.07))
+        .background(AEV.card)
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(AEV.line.opacity(0.5), lineWidth: 1)
+        )
+        .shadow(color: AEV.primary.opacity(0.05), radius: 4, y: 2)
     }
 
     private func levelLabel(_ value: Int) -> String {
@@ -493,104 +401,279 @@ struct AddJournalEntryView: View {
         }
     }
 
-    // MARK: - Step 4: Notes
+    // MARK: - Step 2: Notes + Photo
 
-    private var notesStep: some View {
+    private var notesPhotoStep: some View {
         VStack(alignment: .leading, spacing: 0) {
             stepHeader(
-                title: "How are you\nfeeling today?",
-                subtitle: "Day \(dayNumber) — \(procedureName)"
+                title: "Anything to\nadd?",
+                subtitle: "Day \(dayNumber) · \(procedureName)"
             )
 
-            Spacer()
+            VStack(spacing: 14) {
+                ZStack(alignment: .topLeading) {
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(AEV.card)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20)
+                                .stroke(AEV.line.opacity(0.6), lineWidth: 1)
+                        )
+                        .shadow(color: AEV.primary.opacity(0.05), radius: 6, y: 2)
 
-            ZStack(alignment: .topLeading) {
-                if notes.isEmpty {
-                    Text("Symptoms, mood,\nanything you've noticed…")
-                        .font(.system(size: 26, weight: .light))
-                        .foregroundColor(Theme.Brand.charcoalRose.opacity(0.2))
-                        .allowsHitTesting(false)
-                        .padding(.horizontal, Theme.Spacing.xl)
-                        .padding(.top, 8)
+                    if notes.isEmpty {
+                        Text("Symptoms, mood,\nanything you've noticed…")
+                            .font(.system(size: 16, weight: .light))
+                            .foregroundColor(AEV.pale)
+                            .allowsHitTesting(false)
+                            .padding(16)
+                    }
+                    TextEditor(text: $notes)
+                        .font(.system(size: 16))
+                        .foregroundColor(AEV.ink)
+                        .tint(AEV.primary)
+                        .scrollContentBackground(.hidden)
+                        .background(.clear)
+                        .padding(12)
                 }
-                TextEditor(text: $notes)
-                    .font(.system(size: 26, weight: .light))
-                    .foregroundColor(Theme.Brand.charcoalRose)
-                    .tint(Theme.Brand.charcoalRose)
-                    .scrollContentBackground(.hidden)
-                    .background(.clear)
-                    .padding(.horizontal, Theme.Spacing.lg)
-                    .frame(maxHeight: 260)
-            }
+                .frame(minHeight: 150, maxHeight: 210)
 
+                if let image = capturedImage {
+                    ZStack(alignment: .topTrailing) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 130)
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
+                        Button { capturedImage = nil } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 26))
+                                .foregroundStyle(.white)
+                                .shadow(color: .black.opacity(0.2), radius: 4)
+                                .padding(8)
+                        }
+                    }
+                } else {
+                    photoPickerRow
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.xl)
+            .padding(.top, Theme.Spacing.lg)
+
+            Text("Not medical advice · Photos stored privately")
+                .font(.system(size: 10.5))
+                .foregroundColor(AEV.pale)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 10)
+        }
+    }
+
+    private var photoPickerRow: some View {
+        Menu {
+            Button {
+                showCamera = true
+            } label: {
+                Label("Take Photo", systemImage: "camera.fill")
+            }
+            Button {
+                showLibraryPicker = true
+            } label: {
+                Label("Choose from Library", systemImage: "photo.on.rectangle.angled")
+            }
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(AEV.soft)
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(AEV.primary)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Add a photo")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(AEV.ink)
+                    Text("Camera or library · Optional")
+                        .font(.system(size: 11))
+                        .foregroundColor(AEV.muted)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AEV.pale)
+            }
+            .padding(16)
+            .background(AEV.card)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 3]))
+                    .foregroundColor(AEV.line)
+            )
+        }
+    }
+
+    // MARK: - Step 3: Celebration
+
+    private var celebrationStep: some View {
+        ZStack {
+            ConfettiView()
+            celebrationContent
+        }
+    }
+
+    private var celebrationContent: some View {
+        VStack(spacing: 0) {
             Spacer()
+
+            ZStack(alignment: .center) {
+                LottieView(name: "flower-growing", loop: true)
+                    .frame(width: 200, height: 200)
+                    .offset(y: 30)
+                LottieView(name: "water", loop: true)
+                    .frame(width: 140, height: 140)
+                    .offset(x: -70, y: -55)
+            }
+            .frame(width: 260, height: 270)
+
+            Text("Entry saved!")
+                .font(.system(size: 34, weight: .bold))
+                .foregroundColor(AEV.ink)
+                .padding(.top, 16)
+
+            Text("You showed up for yourself today.\nSmall, steady care is how everything heals.")
+                .font(.system(size: 14))
+                .foregroundColor(AEV.muted)
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+                .padding(.top, 14)
+                .padding(.horizontal, 32)
+
             Spacer()
         }
     }
+}
+
+// MARK: - Confetti
+
+private struct ConfettiParticle: Identifiable {
+    let id: Int
+    let xFraction: CGFloat
+    let color: Color
+    let width: CGFloat
+    let height: CGFloat
+    let delay: Double
+    let duration: Double
+    let isCircle: Bool
+}
+
+private struct ConfettiView: View {
+    @State private var animate = false
+
+    var body: some View {
+        GeometryReader { geo in
+            ForEach(Self.particles) { p in
+                (p.isCircle
+                    ? AnyView(Circle().fill(p.color))
+                    : AnyView(RoundedRectangle(cornerRadius: 2).fill(p.color))
+                )
+                .frame(width: p.width, height: p.height)
+                .position(x: p.xFraction * geo.size.width, y: animate ? geo.size.height + 30 : -20)
+                .opacity(0.85)
+                .animation(
+                    .linear(duration: p.duration).delay(p.delay).repeatForever(autoreverses: false),
+                    value: animate
+                )
+            }
+        }
+        .onAppear { animate = true }
+    }
+
+    private static let particles: [ConfettiParticle] = {
+        let colors: [Color] = [
+            Color(hex: "#6C63FF"), Color(hex: "#EAE7FF"), Color(hex: "#9B95E0"),
+            Color(hex: "#D4CCFF"), Color(hex: "#5BBF84"), Color(hex: "#FFD166"),
+            Color(hex: "#FF9F9F"), Color(hex: "#4A41C8"), Color(hex: "#A9A3D4"),
+            Color(hex: "#B0F0D8")
+        ]
+        let xs: [CGFloat] = [
+            0.05, 0.12, 0.18, 0.24, 0.30, 0.36, 0.42, 0.48, 0.54, 0.60,
+            0.66, 0.72, 0.78, 0.84, 0.90, 0.96, 0.09, 0.21, 0.33, 0.45,
+            0.57, 0.69, 0.81, 0.93, 0.15, 0.27, 0.39, 0.51, 0.63, 0.75,
+            0.87, 0.03, 0.25, 0.50, 0.75, 0.10
+        ]
+        let delays: [Double] = [
+            0.00, 0.30, 0.60, 0.10, 0.40, 0.70, 0.20, 0.50, 0.80, 0.15,
+            0.45, 0.75, 0.25, 0.55, 0.85, 0.35, 0.65, 0.95, 0.05, 0.50,
+            0.20, 0.70, 0.40, 0.90, 0.10, 0.60, 0.30, 0.80, 0.00, 0.40,
+            0.70, 0.20, 0.50, 0.80, 0.30, 0.60
+        ]
+        let durations: [Double] = [
+            2.8, 3.2, 2.5, 3.5, 2.7, 3.0, 2.9, 3.3, 2.6, 3.1,
+            2.8, 3.4, 2.5, 3.0, 2.7, 3.2, 2.9, 3.5, 2.6, 3.0,
+            2.8, 3.2, 2.5, 3.3, 2.7, 3.0, 2.9, 3.4, 2.6, 3.1,
+            2.8, 3.0, 2.5, 3.2, 2.7, 3.3
+        ]
+        let widths: [CGFloat] = [
+            7, 5, 9, 6, 8, 10, 5, 7, 9, 6,
+            8, 7, 5, 9, 6, 8, 7, 5, 9, 6,
+            8, 7, 5, 9, 6, 8, 7, 5, 9, 6,
+            8, 7, 5, 9, 6, 8
+        ]
+        return xs.enumerated().map { i, x in
+            let w = widths[i % widths.count]
+            let circle = i % 3 == 0
+            return ConfettiParticle(
+                id: i,
+                xFraction: x,
+                color: colors[i % colors.count],
+                width: w,
+                height: circle ? w : w * 1.6,
+                delay: delays[i % delays.count],
+                duration: durations[i % durations.count],
+                isCircle: circle
+            )
+        }
+    }()
+}
+
+extension AddJournalEntryView {
 
     // MARK: - Bottom Navigation
 
     private var bottomNav: some View {
-        VStack(spacing: Theme.Spacing.sm) {
-            // Disclaimer on the notes step (step 4, previously the last step)
-            if currentStep == totalSteps - 2 {
-                Text("Not medical advice. Photos stored privately.")
-                    .font(.system(size: 11))
-                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.45))
-                    .multilineTextAlignment(.center)
-            }
-
-            if currentStep == totalSteps - 1 {
-                // Reminder step — own nav layout
-                reminderBottomNav
+        Group {
+            if currentStep == 3 {
+                VStack(spacing: 8) {
+                    ctaButton(label: "View my insights") { showInsights = true }
+                    ghostButton(label: "Done") { dismiss() }
+                }
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.bottom, Theme.Spacing.xl)
             } else {
-                HStack(spacing: Theme.Spacing.md) {
-                    // Back button: hidden on step 5 (reminder) since entry is already saved
-                    if currentStep > startStep && currentStep < totalSteps - 1 {
-                        Button {
-                            goingForward = false
-                            withAnimation { currentStep -= 1 }
-                        } label: {
-                            Image(systemName: "arrow.left")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(Theme.Brand.charcoalRose.opacity(0.65))
-                                .frame(width: 52, height: 52)
-                                .background(Theme.Brand.charcoalRose.opacity(0.1))
-                                .clipShape(Circle())
-                        }
-                        .disabled(isSaving)
-                    }
-
-                    Button {
-                        if currentStep < totalSteps - 2 {
-                            // Steps 0–3: advance
+                VStack(spacing: 8) {
+                    ctaButton(
+                        label: currentStep == 2 ? "Save Entry" : "Continue",
+                        isLoading: isSaving,
+                        enabled: canAdvance && !isSaving
+                    ) {
+                        if currentStep < 2 {
                             goingForward = true
                             withAnimation { currentStep += 1 }
                         } else {
-                            // Step 4 (notes): save entry, then advance to reminder step
                             saveEntry()
                         }
-                    } label: {
-                        Group {
-                            if isSaving {
-                                ProgressView()
-                                    .tint(.white)
-                            } else {
-                                Text(currentStep < totalSteps - 2 ? "Continue" : "Save Entry")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundColor(.white)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(
-                            (canAdvance && !isSaving)
-                                ? Theme.Brand.charcoalRose
-                                : Theme.Brand.charcoalRose.opacity(0.25)
-                        )
-                        .clipShape(Capsule())
                     }
-                    .disabled(!canAdvance || isSaving)
+                    if currentStep == 1 {
+                        ghostButton(label: "Skip all metrics") {
+                            goingForward = true
+                            withAnimation { currentStep += 1 }
+                        }
+                    } else if currentStep == 2 {
+                        ghostButton(label: "Save without notes") { saveEntry() }
+                            .disabled(isSaving)
+                    }
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
                 .padding(.bottom, Theme.Spacing.xl)
@@ -598,266 +681,37 @@ struct AddJournalEntryView: View {
         }
     }
 
-    // MARK: - Step 5: Reminder
-
-    private var reminderStep: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            stepHeader(
-                title: (reminderConfig?.isSurgical == true)
-                    ? "Schedule your\nfollow-ups"
-                    : "One last thing",
-                subtitle: procedureName.trimmingCharacters(in: .whitespaces)
-            )
-
-            Spacer()
-
-            if let config = reminderConfig {
-                if config.isSurgical {
-                    surgicalMilestonesContent(config: config)
+    private func ctaButton(
+        label: String,
+        isLoading: Bool = false,
+        enabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Group {
+                if isLoading {
+                    ProgressView().tint(.white)
                 } else {
-                    retreatmentReminderContent(config: config)
+                    Text(label)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
                 }
             }
-
-            Spacer()
-            Spacer()
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(enabled ? AEV.primary : AEV.primary.opacity(0.35))
+            .clipShape(Capsule())
+            .shadow(color: enabled ? AEV.primary.opacity(0.30) : .clear, radius: 10, y: 4)
         }
+        .disabled(!enabled)
     }
 
-    private func retreatmentReminderContent(config: ProcedureReminderConfig) -> some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // Context note
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.55))
-                    .padding(.top, 1)
-                Text(config.contextNote)
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.75))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, Theme.Spacing.xl)
-
-            // Toggle + date picker
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Text("Remind me")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(Theme.Brand.charcoalRose)
-                    Spacer()
-                    Toggle("", isOn: $reminderEnabled)
-                        .tint(Theme.Brand.charcoalRose)
-                        .labelsHidden()
-                }
-                .padding(.horizontal, Theme.Spacing.xl)
-
-                if reminderEnabled {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: Theme.Spacing.sm) {
-                            Image(systemName: "calendar")
-                                .font(.system(size: 13))
-                                .foregroundColor(Theme.Brand.charcoalRose.opacity(0.55))
-                            if let label = config.retreatmentRangeLabel {
-                                Text("Suggested: \(label) from today")
-                                    .font(.system(size: 12, weight: .regular))
-                                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.5))
-                            }
-                            Spacer()
-                            DatePicker(
-                                "",
-                                selection: $reminderDate,
-                                in: Date()...,
-                                displayedComponents: .date
-                            )
-                            .labelsHidden()
-                            .tint(Theme.Brand.charcoalRose)
-                            .colorScheme(.light)
-                        }
-                        .padding(.horizontal, Theme.Spacing.xl)
-                    }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-            }
-            .animation(.easeInOut(duration: 0.2), value: reminderEnabled)
-        }
-    }
-
-    private func surgicalMilestonesContent(config: ProcedureReminderConfig) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Context note
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "stethoscope")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.55))
-                    .padding(.top, 1)
-                Text(config.contextNote)
-                    .font(.system(size: 14))
-                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.75))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, Theme.Spacing.xl)
-
-            // Milestone rows
-            VStack(spacing: 6) {
-                ForEach(followUpMilestones.indices, id: \.self) { idx in
-                    let milestone = followUpMilestones[idx]
-                    let milestoneDate = Calendar.current.date(
-                        byAdding: .day,
-                        value: milestone.daysFromProcedure,
-                        to: entryDate
-                    ) ?? entryDate
-                    let isPast = milestoneDate <= Date()
-
-                    Button {
-                        guard !isPast else { return }
-                        followUpMilestones[idx].enabled.toggle()
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: milestone.enabled ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 20))
-                                .foregroundColor(
-                                    isPast
-                                        ? Theme.Brand.charcoalRose.opacity(0.18)
-                                        : (milestone.enabled
-                                            ? Theme.Brand.charcoalRose
-                                            : Theme.Brand.charcoalRose.opacity(0.28))
-                                )
-
-                            Text(milestone.label)
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(
-                                    isPast
-                                        ? Theme.Brand.charcoalRose.opacity(0.28)
-                                        : Theme.Brand.charcoalRose
-                                )
-
-                            Spacer()
-
-                            Text(Self.dateFormatter.string(from: milestoneDate))
-                                .font(.system(size: 12, weight: .regular))
-                                .foregroundColor(
-                                    isPast
-                                        ? Theme.Brand.charcoalRose.opacity(0.22)
-                                        : Theme.Brand.charcoalRose.opacity(0.55)
-                                )
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 11)
-                        .background(
-                            milestone.enabled && !isPast
-                                ? Theme.Brand.charcoalRose.opacity(0.1)
-                                : Color.clear
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Theme.Brand.charcoalRose.opacity(0.15), lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isPast)
-                }
-            }
-            .padding(.horizontal, Theme.Spacing.xl)
-
-            Text("Dates calculated from your procedure date")
-                .font(.system(size: 11))
-                .foregroundColor(Theme.Brand.charcoalRose.opacity(0.38))
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.horizontal, Theme.Spacing.xl)
-        }
-    }
-
-    // MARK: - Reminder Bottom Nav
-
-    private var reminderBottomNav: some View {
-        VStack(spacing: 12) {
-            Button {
-                isSchedulingReminder = true
-                Task { @MainActor in
-                    await scheduleSelectedReminders()
-                    isSchedulingReminder = false
-                    dismiss()
-                }
-            } label: {
-                Group {
-                    if isSchedulingReminder {
-                        ProgressView().tint(.white)
-                    } else {
-                        Text(reminderButtonLabel)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 52)
-                .background(
-                    isSchedulingReminder
-                        ? Theme.Brand.charcoalRose.opacity(0.5)
-                        : Theme.Brand.charcoalRose
-                )
-                .clipShape(Capsule())
-            }
-            .disabled(isSchedulingReminder)
-
-            Button {
-                dismiss()
-            } label: {
-                Text("Skip")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.55))
-                    .padding(.vertical, 8)
-            }
-            .disabled(isSchedulingReminder)
-        }
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.bottom, Theme.Spacing.xl)
-    }
-
-    private var reminderButtonLabel: String {
-        guard let config = reminderConfig else { return "Done" }
-        if config.isSurgical {
-            let count = followUpMilestones.filter(\.enabled).count
-            return count == 0 ? "Done" : "Set \(count) Reminder\(count == 1 ? "" : "s")"
-        }
-        return reminderEnabled ? "Set Reminder" : "Done"
-    }
-
-    // MARK: - Schedule Reminders
-
-    private func scheduleSelectedReminders() async {
-        guard let config = reminderConfig else { return }
-        let name = procedureName.trimmingCharacters(in: .whitespaces)
-
-        if config.isSurgical {
-            var reminders: [TreatmentReminder] = []
-            for milestone in followUpMilestones where milestone.enabled {
-                let date = Calendar.current.date(
-                    byAdding: .day, value: milestone.daysFromProcedure, to: entryDate
-                ) ?? entryDate
-                guard date > Date() else { continue }
-                let reminder = TreatmentReminder(
-                    procedureName: name,
-                    procedureDate: entryDate,
-                    reminderDate: date,
-                    label: milestone.label,
-                    kind: .followUp
-                )
-                await TreatmentNotificationService.shared.schedule(reminder)
-                reminders.append(reminder)
-            }
-            TreatmentReminderStore.shared.saveAll(reminders)
-        } else if reminderEnabled {
-            let reminder = TreatmentReminder(
-                procedureName: name,
-                procedureDate: entryDate,
-                reminderDate: reminderDate,
-                label: "Next \(config.procedureDisplayName)",
-                kind: .retreatment
-            )
-            await TreatmentNotificationService.shared.schedule(reminder)
-            TreatmentReminderStore.shared.save(reminder)
+    private func ghostButton(label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(AEV.muted)
+                .frame(height: 36)
         }
     }
 
@@ -884,34 +738,33 @@ struct AddJournalEntryView: View {
                 rednessLevel: rednessLevel > 0 ? rednessLevel : nil
             )
 
+            isSaving = false
             if success {
-                // Set up reminder step from the procedure that was just saved
-                let name = procedureName.trimmingCharacters(in: .whitespaces)
-                let config = ProcedureReminderConfig.config(for: name)
-                reminderConfig = config
-                reminderDate = config.defaultReminderDate(from: entryDate)
-                // Pre-populate milestones; auto-disable any whose dates are already past
-                followUpMilestones = config.followUpMilestones.map { m in
-                    let date = Calendar.current.date(
-                        byAdding: .day, value: m.daysFromProcedure, to: entryDate
-                    ) ?? entryDate
-                    guard date > Date() else {
-                        var disabled = m; disabled.enabled = false; return disabled
-                    }
-                    return m
-                }
-                isSaving = false
+                Analytics.journalEntrySaved(
+                    procedure: trimmedName,
+                    dayNumber: dayNumber,
+                    hasPhoto: photoData != nil,
+                    hasNotes: !trimmedNotes.isEmpty,
+                    painLevel: painLevel,
+                    swellingLevel: swellingLevel,
+                    bruisingLevel: bruisingLevel,
+                    rednessLevel: rednessLevel,
+                    entryCount: procedureEntryCount
+                )
                 goingForward = true
-                withAnimation { currentStep = 5 }
-            } else {
-                isSaving = false
+                withAnimation { currentStep = 3 }
+                if vm.entries.count == 1,
+                   !UserDefaults.standard.bool(forKey: "rena.hasRequestedReview") {
+                    UserDefaults.standard.set(true, forKey: "rena.hasRequestedReview")
+                    try? await Task.sleep(for: .seconds(2.5))
+                    requestReview()
+                }
             }
         }
     }
 
     // MARK: - Helpers
 
-    /// Converts a human-readable procedure name to a stable slug used as procedureId.
     private func makeId(_ name: String) -> String {
         name.lowercased()
             .trimmingCharacters(in: .whitespaces)
@@ -924,37 +777,17 @@ struct AddJournalEntryView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.system(size: 34, weight: .bold))
-                .foregroundColor(Theme.Brand.charcoalRose)
+                .foregroundColor(AEV.ink)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
 
             if !subtitle.isEmpty {
                 Text(subtitle)
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundColor(Theme.Brand.charcoalRose.opacity(0.5))
+                    .font(.system(size: 15))
+                    .foregroundColor(AEV.muted)
             }
         }
         .padding(.horizontal, Theme.Spacing.xl)
         .padding(.top, Theme.Spacing.lg)
-    }
-
-    private func photoOptionRow(icon: String, label: String) -> some View {
-        HStack(spacing: Theme.Spacing.md) {
-            Image(systemName: icon)
-                .font(.system(size: 18, weight: .regular))
-                .foregroundColor(Theme.Brand.charcoalRose)
-                .frame(width: 28)
-            Text(label)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(Theme.Brand.charcoalRose)
-            Spacer()
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(Theme.Brand.charcoalRose.opacity(0.35))
-        }
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.vertical, Theme.Spacing.md + 4)
-        .background(Theme.Brand.charcoalRose.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
     }
 }

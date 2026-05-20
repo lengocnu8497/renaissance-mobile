@@ -17,6 +17,10 @@ enum Analytics {
         let config = PostHogConfig(apiKey: AppConfig.postHogAPIKey, host: AppConfig.postHogHost)
         config.captureApplicationLifecycleEvents = false  // we fire session_start manually
         config.captureScreenViews = false
+        #if DEBUG
+        config.flushAt = 1
+        config.flushIntervalSeconds = 1
+        #endif
         PostHogSDK.shared.setup(config)
     }
 
@@ -86,6 +90,56 @@ enum Analytics {
 
     static func askRenaUsed(countPerSession: Int) {
         capture("ask_rena_used", properties: ["count_per_session": countPerSession])
+    }
+
+    // MARK: - Journal
+
+    static func journalEntryStarted() {
+        capture("journal_entry_started")
+    }
+
+    static func journalEntrySaved(
+        procedure: String,
+        dayNumber: Int,
+        hasPhoto: Bool,
+        hasNotes: Bool,
+        painLevel: Int,
+        swellingLevel: Int,
+        bruisingLevel: Int,
+        rednessLevel: Int,
+        entryCount: Int
+    ) {
+        capture("journal_entry_saved", properties: [
+            "procedure": procedure,
+            "day_number": dayNumber,
+            "has_photo": hasPhoto,
+            "has_notes": hasNotes,
+            "pain_level": painLevel,
+            "swelling_level": swellingLevel,
+            "bruising_level": bruisingLevel,
+            "redness_level": rednessLevel,
+            "entry_count": entryCount
+        ])
+    }
+
+    // MARK: - Photo Capture
+
+    static func photoCaptureOpened() {
+        capture("photo_capture_opened")
+    }
+
+    static func photoCaptured(source: String) {
+        capture("photo_captured", properties: ["source": source])
+    }
+
+    // MARK: - Recovery Plan
+
+    static func recoveryPlanViewed() {
+        capture("recovery_plan_viewed")
+    }
+
+    static func recoveryPlanUnlockTapped() {
+        capture("recovery_plan_unlock_tapped")
     }
 
     // MARK: - Private

@@ -166,6 +166,72 @@ final class SubscriptionStore {
         }
     }
 
+    /// Purchase the monthly plan with a StoreKit 2 promotional offer signature obtained from the backend.
+    func purchaseWithPromoOffer(
+        offerID: String,
+        keyID: String,
+        nonce: UUID,
+        signature: Data,
+        timestamp: Int
+    ) async -> SubscriptionPurchaseOutcome {
+        await loadProductsIfNeeded()
+
+        guard let product = productsByTier[.monthly] else {
+            let message = "Monthly subscription is not available right now."
+            errorMessage = message
+            return .failed(message)
+        }
+
+        isPurchasing = true
+        errorMessage = nil
+        defer { isPurchasing = false }
+
+        do {
+            var options = purchaseOptionsForCurrentUser()
+            options.insert(.promotionalOffer(
+                offerID: offerID,
+                keyID: keyID,
+                nonce: nonce,
+                signature: signature,
+                timestamp: timestamp
+            ))
+            let result = try await product.purchase(options: options)
+
+            switch result {
+            case .success(let verification):
+                guard let transaction = verifiedTransaction(from: verification) else {
+                    let message = "Unable to verify this App Store purchase."
+                    errorMessage = message
+                    return .failed(message)
+                }
+                if let entitlement = await makeEntitlement(
+                    from: transaction,
+                    signedTransactionInfo: verification.jwsRepresentation
+                ) {
+                    setCurrentEntitlement(entitlement)
+                }
+                await transaction.finish()
+                Analytics.subscriptionStarted(plan: SubscriptionTier.monthly.rawValue)
+                _ = await ensurePremiumAccessIsSynced()
+                NotificationCenter.default.post(name: .subscriptionStatusChanged, object: nil)
+                return .success
+            case .pending:
+                errorMessage = "Your purchase is pending approval."
+                return .pending
+            case .userCancelled:
+                return .cancelled
+            @unknown default:
+                let message = "The App Store returned an unexpected purchase state."
+                errorMessage = message
+                return .failed(message)
+            }
+        } catch {
+            let message = error.localizedDescription
+            errorMessage = message
+            return .failed(message)
+        }
+    }
+
     func restorePurchases() async -> Bool {
         do {
             try await AppStore.sync()
@@ -343,7 +409,10 @@ final class SubscriptionStore {
         }
 
         guard let appAccountToken = transaction.appAccountToken else {
-            return false
+            // No account token on the transaction — accept it. This covers sandbox
+            // purchases, restored transactions, and purchases made before account
+            // tokens were introduced. We can't verify ownership, so we trust it.
+            return true
         }
 
         return appAccountToken == currentUserId
